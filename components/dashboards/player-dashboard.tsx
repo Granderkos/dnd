@@ -1,0 +1,166 @@
+'use client'
+
+import { useState, useEffect, useRef, memo } from 'react'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Button } from '@/components/ui/button'
+import { CharacterSheet } from '@/components/dnd/character-sheet'
+import { Spellbook } from '@/components/dnd/spellbook'
+import { Inventory } from '@/components/dnd/inventory'
+import { Notes, Note } from '@/components/dnd/notes'
+import { PlayerMapViewer } from '@/components/dnd/player-map-viewer'
+import { useAuth } from '@/lib/auth-context'
+import { emptyCharacter, emptyInventory, emptySpellbook } from '@/lib/auth-types'
+import { loadCurrentPlayerData, saveCurrentPlayerData } from '@/lib/supabase-data'
+import {
+  Character,
+  Spellbook as SpellbookType,
+  Inventory as InventoryType,
+  MapSettings,
+} from '@/lib/dnd-types'
+import { User, BookOpen, Package, FileText, Map, LogOut } from 'lucide-react'
+
+function useDebouncedRemoteSave<T>(value: T, delay: number, enabled: boolean, saveFn: (value: T) => Promise<void>) {
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!enabled) return
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    timeoutRef.current = setTimeout(() => {
+      void saveFn(value)
+    }, delay)
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [value, delay, enabled, saveFn])
+}
+
+const defaultMapSettings: MapSettings = {
+  gridEnabled: false,
+  gridSize: 50,
+  gridOpacity: 0.5,
+  zoom: 1,
+  panX: 0,
+  panY: 0,
+}
+
+export const PlayerDashboard = memo(function PlayerDashboard() {
+  const { user, logout, updateCurrentPage } = useAuth()
+  const [isLoaded, setIsLoaded] = useState(false)
+  const [activeTab, setActiveTab] = useState('character')
+  const [character, setCharacter] = useState<Character>(emptyCharacter)
+  const [spellbook, setSpellbook] = useState<SpellbookType>(emptySpellbook)
+  const [inventory, setInventory] = useState<InventoryType>(emptyInventory)
+  const [notes, setNotes] = useState<Note[]>([])
+  const [mapSettings, setMapSettings] = useState<MapSettings>(defaultMapSettings)
+
+  useEffect(() => {
+    if (!user?.id) return
+    let mounted = true
+    ;(async () => {
+      try {
+        const data = await loadCurrentPlayerData(user.id)
+        if (!mounted) return
+        setCharacter(data.character)
+        setSpellbook(data.spellbook)
+        setInventory(data.inventory)
+        setNotes(data.notes)
+      } catch (e) {
+        console.error('Failed to load player data', e)
+      } finally {
+        if (mounted) setIsLoaded(true)
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    void updateCurrentPage(activeTab)
+  }, [activeTab, updateCurrentPage])
+
+  useDebouncedRemoteSave(
+    { character, spellbook, inventory, notes },
+    500,
+    isLoaded && !!user?.id,
+    async (payload) => {
+      if (!user?.id) return
+      try {
+        await saveCurrentPlayerData(user.id, payload)
+      } catch (e) {
+        console.error('Failed to save player data', e)
+      }
+    }
+  )
+
+  if (!isLoaded) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="mb-4 size-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
+          <p className="text-muted-foreground">Loading character data...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <main className="min-h-screen bg-background">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-screen flex-col">
+        <header className="border-b border-border bg-card px-3 py-3">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold uppercase tracking-[0.08em] text-primary truncate max-w-[180px]">
+                {character.info.name || user?.username || 'Character'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">v2.3</span>
+              <Button variant="ghost" size="icon" className="size-7" onClick={() => void logout()}>
+                <LogOut className="size-4" />
+              </Button>
+            </div>
+          </div>
+          <TabsList className="w-full justify-between">
+            <TabsTrigger value="character" className="flex-1 gap-1 px-2">
+              <User className="size-4" />
+              <span className="hidden sm:inline text-xs">Character</span>
+            </TabsTrigger>
+            <TabsTrigger value="inventory" className="flex-1 gap-1 px-2">
+              <Package className="size-4" />
+              <span className="hidden sm:inline text-xs">Inventory</span>
+            </TabsTrigger>
+            <TabsTrigger value="spellbook" className="flex-1 gap-1 px-2">
+              <BookOpen className="size-4" />
+              <span className="hidden sm:inline text-xs">Spells</span>
+            </TabsTrigger>
+            <TabsTrigger value="notes" className="flex-1 gap-1 px-2">
+              <FileText className="size-4" />
+              <span className="hidden sm:inline text-xs">Notes</span>
+            </TabsTrigger>
+            <TabsTrigger value="map" className="flex-1 gap-1 px-2">
+              <Map className="size-4" />
+              <span className="hidden sm:inline text-xs">Map</span>
+            </TabsTrigger>
+          </TabsList>
+        </header>
+
+        <TabsContent value="character" className="mt-0 flex-1 overflow-hidden">
+          <CharacterSheet character={character} onChange={setCharacter} />
+        </TabsContent>
+        <TabsContent value="inventory" className="mt-0 flex-1 overflow-hidden">
+          <Inventory inventory={inventory} onChange={setInventory} />
+        </TabsContent>
+        <TabsContent value="spellbook" className="mt-0 flex-1 overflow-hidden">
+          <Spellbook spellbook={spellbook} proficiencyBonus={character.proficiencyBonus} abilityScores={character.abilities} onChange={setSpellbook} />
+        </TabsContent>
+        <TabsContent value="notes" className="mt-0 flex-1 overflow-hidden">
+          <Notes notes={notes} onChange={setNotes} />
+        </TabsContent>
+        <TabsContent value="map" className="mt-0 flex-1 overflow-hidden">
+          <PlayerMapViewer settings={mapSettings} onSettingsChange={setMapSettings} />
+        </TabsContent>
+      </Tabs>
+    </main>
+  )
+})
