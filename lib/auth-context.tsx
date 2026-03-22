@@ -105,11 +105,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user])
 
   const login = useCallback(async (username: string, password: string) => {
-    const identifier = username.trim()
-    if (!identifier || !password) return { success: false, error: 'Username and password are required' }
+    const normalizedUsername = username
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "")
 
-    const emailLike = identifier.includes('@') ? identifier : `${identifier}@dnd.local`
-    const { data, error } = await supabase.auth.signInWithPassword({ email: emailLike, password })
+    if (!normalizedUsername || !password) {
+      return { success: false, error: 'Username and password are required' }
+    }
+
+    const emailLike = normalizedUsername.includes('@')
+      ? normalizedUsername
+      : `${normalizedUsername}@example.com`
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: emailLike,
+      password,
+    })
     if (error || !data.user) return { success: false, error: error?.message || 'Login failed' }
 
     const profile = await fetchProfile(data.user.id)
@@ -120,7 +132,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const register = useCallback(async (username: string, password: string, role: UserRole) => {
-    const cleanUsername = username.trim()
+    const cleanUsername = username
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "")
+
     if (!cleanUsername) return { success: false, error: 'Username is required' }
     if (!password.trim()) return { success: false, error: 'Password is required' }
     if (password.length < 3) return { success: false, error: 'Password must be at least 3 characters' }
@@ -163,10 +179,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     if (user) {
-      try { await setOffline(user.id) } catch {}
+      try {
+        await setOffline(user.id)
+      } catch {}
     }
+
     await supabase.auth.signOut()
     setUser(null)
+    window.location.reload()
   }, [user])
 
   const getAllUsers = useCallback(async () => {
