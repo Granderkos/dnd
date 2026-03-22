@@ -25,7 +25,15 @@ async function fetchProfile(userId: string): Promise<User | null> {
     .eq('id', userId)
     .single()
 
-  if (error || !data) return null
+  if (error) {
+    console.error('Failed to fetch profile', error)
+    return null
+  }
+
+  if (!data) {
+    console.error('Profile not found for user', userId)
+    return null
+  }
 
   return {
     id: data.id,
@@ -44,32 +52,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true
 
     const loadSession = async () => {
-      const { data } = await supabase.auth.getSession()
-      const sessionUser = data.session?.user
-      if (sessionUser && isMounted) {
-        const profile = await fetchProfile(sessionUser.id)
-        if (profile && isMounted) {
-          setUser(profile)
-          await updateActivityStatus(profile.id, currentPageRef.current, true)
+      try {
+        const { data } = await supabase.auth.getSession()
+        const sessionUser = data.session?.user
+
+        if (sessionUser && isMounted) {
+          const profile = await fetchProfile(sessionUser.id)
+
+          if (profile && isMounted) {
+            setUser(profile)
+
+            try {
+              await updateActivityStatus(profile.id, currentPageRef.current, true)
+            } catch (e) {
+              console.error('Failed to update activity during session load', e)
+            }
+          }
         }
+      } catch (e) {
+        console.error('Failed to load session', e)
+      } finally {
+        if (isMounted) setIsLoading(false)
       }
-      if (isMounted) setIsLoading(false)
     }
 
     loadSession()
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const sessionUser = session?.user
-      if (sessionUser) {
-        const profile = await fetchProfile(sessionUser.id)
-        if (profile && isMounted) {
-          setUser(profile)
-          await updateActivityStatus(profile.id, currentPageRef.current, true)
+      try {
+        const sessionUser = session?.user
+
+        if (sessionUser) {
+          const profile = await fetchProfile(sessionUser.id)
+
+          if (profile && isMounted) {
+            setUser(profile)
+
+            try {
+              await updateActivityStatus(profile.id, currentPageRef.current, true)
+            } catch (e) {
+              console.error('Failed to update activity during auth change', e)
+            }
+          }
+        } else if (isMounted) {
+          setUser(null)
         }
-      } else if (isMounted) {
-        setUser(null)
+      } catch (e) {
+        console.error('Auth state change failed', e)
+      } finally {
+        if (isMounted) setIsLoading(false)
       }
-      if (isMounted) setIsLoading(false)
     })
 
     return () => {
