@@ -5,7 +5,6 @@ import { createContext, ReactNode, useContext, useEffect, useMemo, useState } fr
 export type Language = 'en' | 'cs'
 
 type TranslationValue = string | ((params: Record<string, string | number>) => string)
-
 type TranslationMap = Record<string, TranslationValue>
 
 const translations: Record<Language, TranslationMap> = {
@@ -70,19 +69,39 @@ const translations: Record<Language, TranslationMap> = {
     'character.skills': 'Skills',
     'character.passivePerception': ({ value }) => `Passive Perception: ${value}`,
     'character.combat.ac': 'AC',
-    'character.combat.init': 'Init',
+    'character.combat.init': 'Initiative',
     'character.combat.speed': 'Speed',
     'character.combat.max': 'Max',
     'character.combat.temp': 'Temp',
     'character.combat.hitDice': 'Hit Dice',
-    'character.combat.actions': 'Actions',
+    'character.combat.actions': 'Attacks & Spellcasting',
     'character.combat.featuresTraits': 'Features & Traits',
+    'character.combat.raceFeatures': 'Race Features',
+    'character.combat.classFeatures': 'Class Features',
+    'character.combat.backgroundFeatures': 'Background Features',
+    'character.proficienciesLanguages': 'Other Proficiencies & Languages',
     'character.toggleSaveTitle': 'Toggle Save Proficiency',
     'character.toggleSaveDescription': ({ action, ability }) => `Are you sure you want to ${action} proficiency for ${ability} saving throw?`,
     'character.toggleSkillTitle': 'Toggle Skill Proficiency',
     'character.toggleSkillDescription': ({ action, skill }) => `Are you sure you want to ${action} proficiency for ${skill}?`,
     'character.deleteAttackTitle': 'Delete Attack',
     'character.deleteAttackDescription': ({ name }) => `Are you sure you want to delete "${name}"?`,
+
+    'inventory.addItem': 'Add Item',
+    'inventory.editItem': 'Edit Item',
+    'inventory.saveChanges': 'Save Changes',
+    'inventory.name': 'Name',
+    'inventory.quantity': 'Quantity',
+    'inventory.category': 'Category',
+    'inventory.description': 'Description',
+    'inventory.treasureTotal': 'Treasure Total',
+    'inventory.weapons': 'Weapons',
+    'inventory.armor': 'Armor',
+    'inventory.equipment': 'Equipment',
+    'inventory.consumables': 'Consumables',
+    'inventory.supplies': 'Supplies',
+    'inventory.treasure': 'Treasure',
+    'inventory.other': 'Other',
 
     'notes.session': 'Session',
     'notes.quest': 'Quest',
@@ -120,7 +139,7 @@ const translations: Record<Language, TranslationMap> = {
     'auth.role': 'Role',
     'auth.player': 'Hráč',
     'auth.dm': 'Dungeon Master',
-    'auth.playerHint': 'Hráči spravují svůj vlastní character sheet',
+    'auth.playerHint': 'Hráči spravují svůj vlastní sheet',
     'auth.dmHint': 'DM vidí všechny hráče a spravuje mapy',
     'auth.createAccount': 'Vytvořit účet',
     'auth.loginFailed': 'Přihlášení selhalo',
@@ -158,19 +177,39 @@ const translations: Record<Language, TranslationMap> = {
     'character.skills': 'Dovednosti',
     'character.passivePerception': ({ value }) => `Pasivní vnímání: ${value}`,
     'character.combat.ac': 'AC',
-    'character.combat.init': 'Init',
+    'character.combat.init': 'Iniciativa',
     'character.combat.speed': 'Rychlost',
     'character.combat.max': 'Max',
     'character.combat.temp': 'Temp',
     'character.combat.hitDice': 'Hit dice',
-    'character.combat.actions': 'Akce',
+    'character.combat.actions': 'Attacks & Spellcasting',
     'character.combat.featuresTraits': 'Schopnosti a vlastnosti',
+    'character.combat.raceFeatures': 'Rasové schopnosti',
+    'character.combat.classFeatures': 'Class Features',
+    'character.combat.backgroundFeatures': 'Background Features',
+    'character.proficienciesLanguages': 'Other Proficiencies & Languages',
     'character.toggleSaveTitle': 'Přepnout proficiency záchrany',
     'character.toggleSaveDescription': ({ action, ability }) => `Opravdu chceš ${action} proficiency pro záchranný hod ${ability}?`,
     'character.toggleSkillTitle': 'Přepnout proficiency dovednosti',
     'character.toggleSkillDescription': ({ action, skill }) => `Opravdu chceš ${action} proficiency pro ${skill}?`,
     'character.deleteAttackTitle': 'Smazat útok',
     'character.deleteAttackDescription': ({ name }) => `Opravdu chceš smazat „${name}“?`,
+
+    'inventory.addItem': 'Přidat předmět',
+    'inventory.editItem': 'Upravit předmět',
+    'inventory.saveChanges': 'Uložit změny',
+    'inventory.name': 'Název',
+    'inventory.quantity': 'Počet',
+    'inventory.category': 'Kategorie',
+    'inventory.description': 'Popis',
+    'inventory.treasureTotal': 'Celková hodnota',
+    'inventory.weapons': 'Zbraně',
+    'inventory.armor': 'Zbroj',
+    'inventory.equipment': 'Vybavení',
+    'inventory.consumables': 'Spotřební věci',
+    'inventory.supplies': 'Zásoby',
+    'inventory.treasure': 'Poklady',
+    'inventory.other': 'Ostatní',
 
     'notes.session': 'Session',
     'notes.quest': 'Quest',
@@ -198,6 +237,11 @@ const STORAGE_KEY = 'dnd-language'
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>('en')
+
+  useEffect(() => {
+    document.documentElement.lang = language
+    document.documentElement.setAttribute('translate', 'no')
+  }, [language])
 
   useEffect(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY) as Language | null

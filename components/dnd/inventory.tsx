@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, memo, useCallback, useMemo } from 'react'
+import { useState, memo, useCallback, useMemo, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -31,17 +31,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Plus, X, Minus, Package } from 'lucide-react'
+import { Plus, X, Minus, Package, Sword, Shield, Backpack, FlaskConical, ScrollText, Gem, Boxes } from 'lucide-react'
 import { Inventory as InventoryType, InventoryItem, Currency } from '@/lib/dnd-types'
+import { useI18n } from '@/lib/i18n'
+import { PageShell } from '@/components/app/page-shell'
 
 interface InventoryProps {
   inventory: InventoryType
   onChange: (inventory: InventoryType) => void
 }
 
-const CATEGORIES = ['Weapons', 'Armor', 'Equipment', 'Consumables', 'Supplies', 'Treasure', 'Other']
+const CATEGORIES = ['Weapons', 'Armor', 'Equipment', 'Consumables', 'Supplies', 'Treasure', 'Other'] as const
+
+const CATEGORY_META = {
+  Weapons: { icon: Sword, labelKey: 'inventory.weapons' },
+  Armor: { icon: Shield, labelKey: 'inventory.armor' },
+  Equipment: { icon: Backpack, labelKey: 'inventory.equipment' },
+  Consumables: { icon: FlaskConical, labelKey: 'inventory.consumables' },
+  Supplies: { icon: ScrollText, labelKey: 'inventory.supplies' },
+  Treasure: { icon: Gem, labelKey: 'inventory.treasure' },
+  Other: { icon: Boxes, labelKey: 'inventory.other' },
+} as const
 
 export function Inventory({ inventory, onChange }: InventoryProps) {
+  const { t } = useI18n()
   const [isAddingItem, setIsAddingItem] = useState(false)
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -135,7 +148,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
 
   return (
     <ScrollArea className="h-[calc(100vh-4rem)]">
-      <div className="flex flex-col gap-3 p-3">
+      <div className="px-3 py-4"><PageShell><div className="flex flex-col gap-4 pb-24">
         {/* Currency */}
         <Card>
           <CardContent className="pt-4">
@@ -158,7 +171,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
               ))}
             </div>
             <p className="mt-2 text-center text-xs text-muted-foreground">
-              Treasure Total: {totalGP} GP
+              {t('inventory.treasureTotal')}: {totalGP} GP
             </p>
           </CardContent>
         </Card>
@@ -166,7 +179,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         {/* Add Item Button */}
         <Button onClick={() => setIsAddingItem(true)} className="w-full h-10">
           <Plus className="mr-2 size-5" />
-          Add Item
+          {t('inventory.addItem')}
         </Button>
 
         {/* Item Categories */}
@@ -178,8 +191,8 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
             <Card key={category}>
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-[0.08em]">
-                  <Package className="size-5" />
-                  {category}
+                  {(() => { const Icon = CATEGORY_META[category].icon; return <Icon className="size-5" /> })()}
+                  {t(CATEGORY_META[category].labelKey)}
                   <Badge variant="secondary" className="ml-auto text-xs">
                     {items.length}
                   </Badge>
@@ -201,7 +214,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
             </Card>
           )
         })}
-      </div>
+      </div></PageShell></div>
 
       {/* Add Item Dialog */}
       <ItemDialog
@@ -230,8 +243,8 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDialog.onConfirm}>Confirm</AlertDialogAction>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDialog.onConfirm}>{t('common.confirm')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -303,6 +316,7 @@ interface ItemDialogProps {
 }
 
 function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
+  const { t } = useI18n()
   const [formData, setFormData] = useState<Partial<InventoryItem>>(
     item || {
       name: '',
@@ -311,6 +325,15 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
       category: 'Equipment',
     }
   )
+
+  useEffect(() => {
+    setFormData(item || {
+      name: '',
+      quantity: 1,
+      description: '',
+      category: 'Equipment',
+    })
+  }, [item, open])
 
   const handleSubmit = () => {
     if (formData.name) {
@@ -336,22 +359,22 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{item ? 'Edit Item' : 'Add Item'}</DialogTitle>
+          <DialogTitle>{item ? t('inventory.editItem') : t('inventory.addItem')}</DialogTitle>
           <DialogDescription className="sr-only">Enter item details</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">Name</label>
+            <label className="text-sm text-muted-foreground">{t('inventory.name')}</label>
             <Input
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="Item name"
+              placeholder={t('inventory.name')}
               className="h-10"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">Quantity</label>
+              <label className="text-sm text-muted-foreground">{t('inventory.quantity')}</label>
               <Input
                 type="number"
                 min={0}
@@ -363,7 +386,7 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">Category</label>
+              <label className="text-sm text-muted-foreground">{t('inventory.category')}</label>
               <Select
                 value={formData.category}
                 onValueChange={(v) => setFormData({ ...formData, category: v })}
@@ -374,7 +397,7 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
                 <SelectContent>
                   {CATEGORIES.map((cat) => (
                     <SelectItem key={cat} value={cat}>
-                      {cat}
+                      {t(CATEGORY_META[cat].labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -382,16 +405,16 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
             </div>
           </div>
           <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">Description</label>
+            <label className="text-sm text-muted-foreground">{t('inventory.description')}</label>
             <Textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Item description..."
+              placeholder={t('inventory.description') + '...'}
               className="min-h-20"
             />
           </div>
           <Button onClick={handleSubmit} className="w-full h-10">
-            {item ? 'Save Changes' : 'Add Item'}
+            {item ? t('inventory.saveChanges') : t('inventory.addItem')}
           </Button>
         </div>
       </DialogContent>

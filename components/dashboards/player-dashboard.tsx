@@ -1,13 +1,10 @@
 'use client'
 
 import { useState, useEffect, useRef, memo, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { CharacterSheet } from '@/components/dnd/character-sheet'
-import { Spellbook } from '@/components/dnd/spellbook'
-import { Inventory } from '@/components/dnd/inventory'
-import { Notes, Note } from '@/components/dnd/notes'
-import { PlayerMapViewer } from '@/components/dnd/player-map-viewer'
+import type { Note } from '@/components/dnd/notes'
 import { useAuth } from '@/lib/auth-context'
 import { emptyCharacter, emptyInventory, emptySpellbook } from '@/lib/auth-types'
 import { loadCurrentPlayerData, saveCurrentPlayerData } from '@/lib/supabase-data'
@@ -21,6 +18,12 @@ import { User, BookOpen, Package, FileText, Map, LogOut } from 'lucide-react'
 import { AppControls } from '@/components/app/app-controls'
 import { APP_VERSION } from '@/lib/app-config'
 import { useI18n } from '@/lib/i18n'
+
+const CharacterSheet = dynamic(() => import('@/components/dnd/character-sheet').then((m) => m.CharacterSheet), { ssr: false })
+const Spellbook = dynamic(() => import('@/components/dnd/spellbook').then((m) => m.Spellbook), { ssr: false })
+const Inventory = dynamic(() => import('@/components/dnd/inventory').then((m) => m.Inventory), { ssr: false })
+const Notes = dynamic(() => import('@/components/dnd/notes').then((m) => m.Notes), { ssr: false })
+const PlayerMapViewer = dynamic(() => import('@/components/dnd/player-map-viewer').then((m) => m.PlayerMapViewer), { ssr: false })
 
 function useDebouncedRemoteSave<T>(value: T, delay: number, enabled: boolean, saveFn: (value: T) => Promise<void>) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -172,7 +175,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
               </Button>
             </div>
           </div>
-          <TabsList className="w-full justify-between">
+          <TabsList className="w-full justify-between overflow-x-auto scrollbar-hidden">
             <TabsTrigger value="character" className="flex-1 gap-1 px-2">
               <User className="size-4" />
               <span className="hidden sm:inline text-xs">{t('nav.character')}</span>
@@ -197,19 +200,19 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         </header>
 
         <TabsContent value="character" className="mt-0 flex-1 overflow-hidden">
-          <CharacterSheet character={character} onChange={setCharacter} />
+          {activeTab === 'character' && <CharacterSheet character={character} onChange={setCharacter} />}
         </TabsContent>
         <TabsContent value="inventory" className="mt-0 flex-1 overflow-hidden">
-          <Inventory inventory={inventory} onChange={setInventory} />
+          {activeTab === 'inventory' && <Inventory inventory={inventory} onChange={setInventory} />}
         </TabsContent>
         <TabsContent value="spellbook" className="mt-0 flex-1 overflow-hidden">
-          <Spellbook spellbook={spellbook} proficiencyBonus={character.proficiencyBonus} abilityScores={character.abilities} onChange={setSpellbook} />
+          {activeTab === 'spellbook' && <Spellbook spellbook={spellbook} proficiencyBonus={character.proficiencyBonus} abilityScores={character.abilities} onChange={setSpellbook} />}
         </TabsContent>
         <TabsContent value="notes" className="mt-0 flex-1 overflow-hidden">
-          <Notes notes={notes} onChange={setNotes} />
+          {activeTab === 'notes' && <Notes notes={notes} onChange={setNotes} />}
         </TabsContent>
         <TabsContent value="map" className="mt-0 flex-1 overflow-hidden">
-          <PlayerMapViewer settings={mapSettings} onSettingsChange={setMapSettings} />
+          {activeTab === 'map' && <PlayerMapViewer settings={mapSettings} onSettingsChange={setMapSettings} />}
         </TabsContent>
       </Tabs>
     </main>

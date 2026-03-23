@@ -171,3 +171,18 @@ input[type="text"], input:not([type]) {
   gap: 0.75rem;
   text-align: center;
 }
+
+
+.scrollbar-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+*::selection {
+  background: color-mix(in srgb, var(--primary) 35%, white);
+  color: var(--foreground);
+}

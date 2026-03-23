@@ -345,15 +345,11 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
 
   const abilities: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']
   const speedInSquares = Math.floor(character.combat.speed / 5)
-  const combinedFeatures = [character.raceFeatures, character.classFeatures, character.backgroundFeatures]
-    .filter(Boolean)
-    .join('\n\n')
-
   return (
     <ScrollArea className="h-[calc(100vh-4rem)]">
       <div className="px-3 py-4">
-        <PageShell width="max-w-4xl">
-          <div className="space-y-4">
+        <PageShell>
+          <div className="space-y-4 pb-24">
         {/* Character Info - Portrait ABOVE inputs */}
         <Card>
           <CardContent className="pt-4">
@@ -368,7 +364,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
               />
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex size-40 items-center justify-center rounded-xl border-2 border-dashed border-muted-foreground/30 bg-muted/30 transition-colors hover:border-primary hover:bg-muted/50"
+                className="flex size-48 items-center justify-center rounded-xl border-2 border-dashed border-muted-foreground/30 bg-muted/30 transition-colors hover:border-primary hover:bg-muted/50"
               >
                 {character.info.portraitUrl ? (
                   <img
@@ -389,7 +385,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
             <DebouncedInput
               value={character.info.name}
               onChange={(value) => updateInfo('name', value)}
-              className="h-10 text-base font-bold text-center mb-3"
+              className="mb-3 h-10 text-base font-bold text-center"
               placeholder={t('character.name')}
             />
             
@@ -568,13 +564,11 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 <Zap className="mb-1 size-5 text-muted-foreground" />
                 <span className="text-xs uppercase text-muted-foreground">{t('character.combat.init')}</span>
                 <Input
-                  type="number"
-                  inputMode="decimal"
-                  min={-99}
-                  max={99}
-                  step={1}
-                  value={character.combat.initiative}
-                  onChange={(e) => updateCombat('initiative', parseSignedInteger(e.target.value, 0))}
+                  type="text"
+                  inputMode="text"
+                  pattern="[+-]?[0-9]*"
+                  value={String(character.combat.initiative)}
+                  onChange={(e) => updateCombat('initiative', parseSignedInteger(e.target.value, character.combat.initiative))}
                   className="mt-1 h-10 w-full text-center text-xl font-bold"
                 />
               </div>
@@ -720,26 +714,51 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
             <CardTitle className="text-base">{t('character.combat.featuresTraits')}</CardTitle>
           </CardHeader>
           <CardContent>
-            <DebouncedTextarea
-              value={combinedFeatures}
-              onChange={(value) => onChange({ ...character, raceFeatures: '', backgroundFeatures: '', classFeatures: value })}
-              placeholder="Class features, racial traits, feats..."
-              className="min-h-24 text-sm break-words overflow-wrap-anywhere"
-              style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
-            />
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">{t('character.combat.raceFeatures')}</p>
+                <DebouncedTextarea
+                  value={character.raceFeatures}
+                  onChange={(value) => onChange({ ...character, raceFeatures: value })}
+                  placeholder={t('character.combat.raceFeatures')}
+                  className="min-h-20 text-sm break-words overflow-wrap-anywhere"
+                  style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">{t('character.combat.classFeatures')}</p>
+                <DebouncedTextarea
+                  value={character.classFeatures}
+                  onChange={(value) => onChange({ ...character, classFeatures: value })}
+                  placeholder={t('character.combat.classFeatures')}
+                  className="min-h-20 text-sm break-words overflow-wrap-anywhere"
+                  style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">{t('character.combat.backgroundFeatures')}</p>
+                <DebouncedTextarea
+                  value={character.backgroundFeatures}
+                  onChange={(value) => onChange({ ...character, backgroundFeatures: value })}
+                  placeholder={t('character.combat.backgroundFeatures')}
+                  className="min-h-20 text-sm break-words overflow-wrap-anywhere"
+                  style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                />
+              </div>
+            </div>
           </CardContent>
         </Card>
 
           {/* Proficiencies & Languages */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">{t('character.languages')}</CardTitle>
+            <CardTitle className="text-base">{t('character.proficienciesLanguages')}</CardTitle>
           </CardHeader>
           <CardContent>
             <DebouncedTextarea
               value={character.languages}
               onChange={(value) => onChange({ ...character, languages: value })}
-              placeholder="Armor, weapons, tools, languages..."
+              placeholder={t('character.proficienciesLanguages')}
               className="min-h-24 text-sm break-words overflow-wrap-anywhere"
               style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
             />

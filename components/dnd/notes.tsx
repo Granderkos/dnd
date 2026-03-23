@@ -96,7 +96,7 @@ export function Notes({ notes, onChange }: NotesProps) {
   if (selectedNote) {
     return (
       <div className="flex h-[calc(100vh-4rem)] flex-col px-3 py-4">
-        <PageShell width="max-w-4xl">
+        <PageShell>
           <Card className="flex flex-1 flex-col">
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
@@ -134,7 +134,7 @@ export function Notes({ notes, onChange }: NotesProps) {
                 value={selectedNote.content}
                 onChange={(e) => updateNote({ ...selectedNote, content: e.target.value })}
                 placeholder={t('notes.contentPlaceholder')}
-                className="h-full min-h-[200px] resize-none text-sm"
+                className="h-full min-h-[200px] resize-none overflow-y-auto text-sm scrollbar-hidden"
               />
             </CardContent>
           </Card>
@@ -159,8 +159,8 @@ export function Notes({ notes, onChange }: NotesProps) {
   return (
     <ScrollArea className="h-[calc(100vh-4rem)]">
       <div className="px-3 py-4">
-        <PageShell width="max-w-4xl">
-          <div className="flex flex-wrap gap-2">
+        <PageShell>
+          <div className="-mx-1 overflow-x-auto px-1 scrollbar-hidden"><div className="flex w-max gap-2">
               <Button
                 size="sm"
                 variant={selectedCategory === 'all' ? 'default' : 'outline'}
@@ -180,11 +180,11 @@ export function Notes({ notes, onChange }: NotesProps) {
                   {t(labelKey)}
                 </Button>
               ))}
-            </div>
+            </div></div>
 
           <Card className="mt-4">
             <CardContent className="pb-3 pt-3">
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+              <div className="-mx-1 overflow-x-auto px-1 scrollbar-hidden"><div className="flex w-max gap-2">
                 {NOTE_CATEGORIES.map(({ id, icon: Icon, labelKey }) => (
                   <Button
                     key={id}
@@ -198,7 +198,7 @@ export function Notes({ notes, onChange }: NotesProps) {
                     <span className="hidden sm:inline text-sm">{t(labelKey)}</span>
                   </Button>
                 ))}
-              </div>
+              </div></div>
             </CardContent>
           </Card>
 

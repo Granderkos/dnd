@@ -26,6 +26,9 @@ interface CharacterNotesBlob {
   attacks?: Character['attacks']
   portraitUrl?: string
   featuresText?: string
+  raceFeatures?: string
+  classFeatures?: string
+  backgroundFeatures?: string
 }
 
 const emptyBlob = (): CharacterNotesBlob => ({
@@ -46,6 +49,9 @@ const emptyBlob = (): CharacterNotesBlob => ({
   attacks: emptyCharacter.attacks,
   portraitUrl: '',
   featuresText: '',
+  raceFeatures: '',
+  classFeatures: '',
+  backgroundFeatures: '',
 })
 
 function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
@@ -246,9 +252,9 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       damageType: '',
     })) : fallbackAttacks),
     attackNotes: '',
-    raceFeatures: blob.featuresText ?? row.features ?? '',
-    classFeatures: '',
-    backgroundFeatures: '',
+    raceFeatures: blob.raceFeatures ?? '',
+    classFeatures: blob.classFeatures ?? blob.featuresText ?? row.features ?? '',
+    backgroundFeatures: blob.backgroundFeatures ?? '',
     languages: row.languages ?? '',
     passivePerception: 10,
   }
@@ -291,13 +297,16 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
   }
 
   const inventory: Inventory = {
-    items: (inventoryData?.length ? (inventoryData ?? []).map((item) => ({
-      id: item.id,
-      name: item.title,
-      quantity: item.quantity,
-      description: item.description,
-      category: 'Other',
-    })) : fallbackInventoryItems),
+    items: (inventoryData?.length ? (inventoryData ?? []).map((item, index) => {
+      const fallbackMatch = fallbackInventoryItems.find((blobItem) => blobItem.name === item.title && blobItem.description === (item.description ?? '') && blobItem.quantity === item.quantity) ?? fallbackInventoryItems[index]
+      return {
+        id: item.id,
+        name: item.title,
+        quantity: item.quantity,
+        description: item.description,
+        category: fallbackMatch?.category || 'Other',
+      }
+    }) : fallbackInventoryItems),
     currency: blob.inventoryCurrency || emptyInventory.currency,
   }
 
@@ -392,6 +401,9 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
     attacks: character.attacks,
     portraitUrl: character.info.portraitUrl,
     featuresText: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n\n'),
+    raceFeatures: character.raceFeatures,
+    classFeatures: character.classFeatures,
+    backgroundFeatures: character.backgroundFeatures,
   })
 
   try {
@@ -520,9 +532,9 @@ export async function listPlayerCharacters() {
       },
       attacks: attacksData?.length ? attacksData.map((attack: any) => ({ id: attack.id, name: attack.name, attackBonus: attack.attack_bonus, damage: attack.damage, damageType: '' })) : (blob.attacks ?? emptyCharacter.attacks),
       attackNotes: '',
-      raceFeatures: blob.featuresText ?? row.features ?? '',
-      classFeatures: '',
-      backgroundFeatures: '',
+      raceFeatures: blob.raceFeatures ?? '',
+      classFeatures: blob.classFeatures ?? blob.featuresText ?? row.features ?? '',
+      backgroundFeatures: blob.backgroundFeatures ?? '',
       languages: row.languages ?? '',
       passivePerception: 10,
     }
