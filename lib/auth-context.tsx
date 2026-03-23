@@ -55,139 +55,97 @@ async function fetchProfile(userId: string): Promise<User | null> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-
   const currentPageRef = useRef('app')
-  const lastHydratedUserIdRef = useRef<string | null>(null)
-  const presenceStartedForRef = useRef<string | null>(null)
-
-  const hydrateUserFromSession = useCallback(async (userId: string) => {
-    const profile = await fetchProfile(userId)
-    if (!profile) {
-      setUser(null)
-      return null
-    }
-
-    setUser(profile)
-    lastHydratedUserIdRef.current = profile.id
-    return profile
-  }, [])
 
   useEffect(() => {
     let isMounted = true
 
-    const loadInitialSession = async () => {
+    const loadSession = async () => {
       try {
-        const { data, error } = await supabase.auth.getSession()
-
-        if (error) {
-          console.error('Failed to get session', error)
-          return
-        }
-
+        const { data } = await supabase.auth.getSession()
         const sessionUser = data.session?.user
-        if (!sessionUser || !isMounted) {
-          setUser(null)
-          return
-        }
 
-        await hydrateUserFromSession(sessionUser.id)
+        if (sessionUser && isMounted) {
+          const profile = await fetchProfile(sessionUser.id)
+
+          if (profile && isMounted) {
+            setUser(profile)
+
+            try {
+              await updateActivityStatus(profile.id, currentPageRef.current, true)
+            } catch (e) {
+              console.error('Failed to update activity during session load', e)
+            }
+          }
+        }
       } catch (e) {
         console.error('Failed to load session', e)
-        if (isMounted) setUser(null)
       } finally {
         if (isMounted) setIsLoading(false)
       }
     }
 
-    loadInitialSession()
+    loadSession()
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      const sessionUser = session?.user ?? null
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      try {
+        const sessionUser = session?.user
 
-      setTimeout(() => {
-        if (!isMounted) return
+        if (sessionUser) {
+          const profile = await fetchProfile(sessionUser.id)
 
-        if (!sessionUser) {
-          lastHydratedUserIdRef.current = null
-          presenceStartedForRef.current = null
-          setUser(null)
-          setIsLoading(false)
-          return
-        }
+          if (profile && isMounted) {
+            setUser(profile)
 
-        if (
-          (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN' || event === 'INITIAL_SESSION') &&
-          lastHydratedUserIdRef.current === sessionUser.id
-        ) {
-          setIsLoading(false)
-          return
-        }
-
-        void (async () => {
-          try {
-            await hydrateUserFromSession(sessionUser.id)
-          } catch (e) {
-            console.error('Auth state change failed', e)
-          } finally {
-            if (isMounted) setIsLoading(false)
+            try {
+              await updateActivityStatus(profile.id, currentPageRef.current, true)
+            } catch (e) {
+              console.error('Failed to update activity during auth change', e)
+            }
           }
-        })()
-      }, 0)
+        } else if (isMounted) {
+          setUser(null)
+        }
+      } catch (e) {
+        console.error('Auth state change failed', e)
+      } finally {
+        if (isMounted) setIsLoading(false)
+      }
     })
 
     return () => {
       isMounted = false
-      subscription.unsubscribe()
+      authListener.subscription.unsubscribe()
     }
-  }, [hydrateUserFromSession])
+  }, [])
 
   useEffect(() => {
-    if (!user?.id) return
-    if (presenceStartedForRef.current === user.id) return
-
-    presenceStartedForRef.current = user.id
-
+    if (!user) return
     let cancelled = false
 
-    const heartbeat = async () => {
+    const beat = async () => {
       try {
         await updateActivityStatus(user.id, currentPageRef.current, true)
       } catch (e) {
-        if (!cancelled) {
-          console.error('Failed to update activity', e)
-        }
+        if (!cancelled) console.error('Failed to update activity', e)
       }
     }
 
-    void heartbeat()
-    const interval = setInterval(() => {
-      void heartbeat()
-    }, 30000)
+    beat()
+    const interval = setInterval(beat, 30000)
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        void heartbeat()
-      }
-    }
-
-    const handleBeforeUnload = () => {
-      // nejlepší effort, ne 100% garance
+    const beforeUnload = () => {
       void setOffline(user.id)
     }
 
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('beforeunload', beforeUnload)
 
     return () => {
       cancelled = true
       clearInterval(interval)
-      window.removeEventListener('beforeunload', handleBeforeUnload)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      presenceStartedForRef.current = null
+      window.removeEventListener('beforeunload', beforeUnload)
     }
-  }, [user?.id])
+  }, [user])
 
   const login = useCallback(async (username: string, password: string) => {
     const normalizedUsername = normalizeUsername(username)
@@ -213,7 +171,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setUser(profile)
-    lastHydratedUserIdRef.current = profile.id
+
+    try {
+      await updateActivityStatus(profile.id, currentPageRef.current, true)
+    } catch (e) {
+      console.error('Failed to update activity after login', e)
+    }
 
     return { success: true }
   }, [])
@@ -299,7 +262,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setUser(profile)
-    lastHydratedUserIdRef.current = profile.id
+
+    try {
+      await updateActivityStatus(profile.id, currentPageRef.current, true)
+    } catch (e) {
+      console.error('Failed to update activity after register', e)
+    }
 
     return { success: true }
   }, [])
@@ -314,9 +282,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     await supabase.auth.signOut()
-    lastHydratedUserIdRef.current = null
-    presenceStartedForRef.current = null
     setUser(null)
+    window.location.reload()
   }, [user])
 
   const getAllUsers = useCallback(async () => {
@@ -349,7 +316,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateCurrentPage = useCallback(async (page: string) => {
     currentPageRef.current = page
-
     if (user) {
       try {
         await updateActivityStatus(user.id, page, true)

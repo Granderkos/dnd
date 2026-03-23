@@ -4,9 +4,11 @@ import { useAuth } from '@/lib/auth-context'
 import { WelcomePage } from '@/components/auth/welcome-page'
 import { PlayerDashboard } from '@/components/dashboards/player-dashboard'
 import { DMDashboard } from '@/components/dashboards/dm-dashboard'
+import { useI18n } from '@/lib/i18n'
 
 export default function DnDApp() {
   const { user, isLoading } = useAuth()
+  const { t } = useI18n()
 
   // Loading state
   if (isLoading) {
@@ -14,7 +16,7 @@ export default function DnDApp() {
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="text-center">
           <div className="mb-4 size-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
-          <p className="text-muted-foreground">Loading...</p>
+          <p className="text-muted-foreground">{t('common.loading')}</p>
         </div>
       </div>
     )

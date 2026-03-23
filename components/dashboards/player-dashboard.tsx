@@ -18,6 +18,9 @@ import {
   MapSettings,
 } from '@/lib/dnd-types'
 import { User, BookOpen, Package, FileText, Map, LogOut } from 'lucide-react'
+import { AppControls } from '@/components/app/app-controls'
+import { APP_VERSION } from '@/lib/app-config'
+import { useI18n } from '@/lib/i18n'
 
 function useDebouncedRemoteSave<T>(value: T, delay: number, enabled: boolean, saveFn: (value: T) => Promise<void>) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -45,6 +48,7 @@ const defaultMapSettings: MapSettings = {
 
 export const PlayerDashboard = memo(function PlayerDashboard() {
   const { user, logout, updateCurrentPage } = useAuth()
+  const { t } = useI18n()
   const [isLoaded, setIsLoaded] = useState(false)
   const [activeTab, setActiveTab] = useState('character')
   const [character, setCharacter] = useState<Character>(emptyCharacter)
@@ -98,7 +102,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       <div className="flex h-screen items-center justify-center">
         <div className="text-center">
           <div className="mb-4 size-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
-          <p className="text-muted-foreground">Loading character data...</p>
+          <p className="text-muted-foreground">{t('dashboard.loadingCharacter')}</p>
         </div>
       </div>
     )
@@ -114,8 +118,9 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
                 {character.info.name || user?.username || 'Character'}
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">v2.3</span>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{APP_VERSION}</span>
+              <AppControls />
               <Button variant="ghost" size="icon" className="size-7" onClick={() => void logout()}>
                 <LogOut className="size-4" />
               </Button>
@@ -124,23 +129,23 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
           <TabsList className="w-full justify-between">
             <TabsTrigger value="character" className="flex-1 gap-1 px-2">
               <User className="size-4" />
-              <span className="hidden sm:inline text-xs">Character</span>
+              <span className="hidden sm:inline text-xs">{t('nav.character')}</span>
             </TabsTrigger>
             <TabsTrigger value="inventory" className="flex-1 gap-1 px-2">
               <Package className="size-4" />
-              <span className="hidden sm:inline text-xs">Inventory</span>
+              <span className="hidden sm:inline text-xs">{t('nav.inventory')}</span>
             </TabsTrigger>
             <TabsTrigger value="spellbook" className="flex-1 gap-1 px-2">
               <BookOpen className="size-4" />
-              <span className="hidden sm:inline text-xs">Spells</span>
+              <span className="hidden sm:inline text-xs">{t('nav.spells')}</span>
             </TabsTrigger>
             <TabsTrigger value="notes" className="flex-1 gap-1 px-2">
               <FileText className="size-4" />
-              <span className="hidden sm:inline text-xs">Notes</span>
+              <span className="hidden sm:inline text-xs">{t('nav.notes')}</span>
             </TabsTrigger>
             <TabsTrigger value="map" className="flex-1 gap-1 px-2">
               <Map className="size-4" />
-              <span className="hidden sm:inline text-xs">Map</span>
+              <span className="hidden sm:inline text-xs">{t('nav.map')}</span>
             </TabsTrigger>
           </TabsList>
         </header>

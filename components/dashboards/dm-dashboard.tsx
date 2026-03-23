@@ -12,6 +12,9 @@ import { useAuth } from '@/lib/auth-context'
 import { loadDmNotes, saveDmNotes, listPlayerCharacters } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { Character, calculateModifier, formatModifier } from '@/lib/dnd-types'
+import { AppControls } from '@/components/app/app-controls'
+import { APP_VERSION } from '@/lib/app-config'
+import { useI18n } from '@/lib/i18n'
 
 interface PlayerCharacterData {
   username: string
@@ -41,6 +44,7 @@ function isRecentlyActive(activity?: PlayerCharacterData['activity']) {
 
 export const DMDashboard = memo(function DMDashboard() {
   const { logout, getAllPlayerCharacters, updateCurrentPage, user } = useAuth()
+  const { t } = useI18n()
   const [isLoaded, setIsLoaded] = useState(false)
   const [dmNotes, setDmNotes] = useState('')
   const [players, setPlayers] = useState<PlayerCharacterData[]>([])
@@ -95,7 +99,7 @@ export const DMDashboard = memo(function DMDashboard() {
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="text-center">
           <div className="mb-4 size-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
-          <p className="text-muted-foreground">Loading DM Dashboard...</p>
+          <p className="text-muted-foreground">{t('dashboard.loadingDm')}</p>
         </div>
       </div>
     )
@@ -106,34 +110,35 @@ export const DMDashboard = memo(function DMDashboard() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-screen flex-col">
         <header className="border-b border-border bg-card px-3 py-3">
           <div className="mb-2 flex items-center justify-between">
-            <div className="text-sm font-bold uppercase tracking-[0.12em] text-primary">DM Dashboard</div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">v2.3</span>
+            <div className="text-sm font-bold uppercase tracking-[0.12em] text-primary">{t('dashboard.dmTitle')}</div>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{APP_VERSION}</span>
+              <AppControls />
               <Button variant="ghost" size="icon" className="size-8" onClick={() => void logout()}>
                 <LogOut className="size-4" />
               </Button>
             </div>
           </div>
           <TabsList className="w-full justify-between">
-            <TabsTrigger value="players" className="flex-1 gap-1 px-2"><Users className="size-4" /><span className="hidden sm:inline text-xs">Players</span></TabsTrigger>
-            <TabsTrigger value="maps" className="flex-1 gap-1 px-2"><Map className="size-4" /><span className="hidden sm:inline text-xs">Maps</span></TabsTrigger>
-            <TabsTrigger value="notes" className="flex-1 gap-1 px-2"><FileText className="size-4" /><span className="hidden sm:inline text-xs">Notes</span></TabsTrigger>
+            <TabsTrigger value="players" className="flex-1 gap-1 px-2"><Users className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.players')}</span></TabsTrigger>
+            <TabsTrigger value="maps" className="flex-1 gap-1 px-2"><Map className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.maps')}</span></TabsTrigger>
+            <TabsTrigger value="notes" className="flex-1 gap-1 px-2"><FileText className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.notes')}</span></TabsTrigger>
           </TabsList>
         </header>
 
         <TabsContent value="players" className="mt-0 flex-1 overflow-hidden">
           <ScrollArea className="h-full">
             <div className="p-3 space-y-3">
-              <div className="text-base font-bold uppercase tracking-[0.08em] text-primary">Active Players</div>
+              <div className="text-base font-bold uppercase tracking-[0.08em] text-primary">{t('dashboard.activePlayers')}</div>
               {activePlayers.length === 0 ? (
-                <Card><CardContent className="py-6 text-sm text-muted-foreground">No active players right now.</CardContent></Card>
+                <Card><CardContent className="py-6 text-sm text-muted-foreground">{t('dashboard.noActivePlayers')}</CardContent></Card>
               ) : (
                 <div className="space-y-3">{activePlayers.map((player) => <PlayerCard key={`active-${player.username}`} data={player} onOpen={() => setSelectedPlayer(player)} active />)}</div>
               )}
 
-              <div className="pt-2 text-base font-bold uppercase tracking-[0.08em] text-primary">All Players</div>
+              <div className="pt-2 text-base font-bold uppercase tracking-[0.08em] text-primary">{t('dashboard.allPlayers')}</div>
               {players.length === 0 ? (
-                <Card><CardContent className="py-8 text-center"><Users className="size-12 text-muted-foreground mx-auto mb-3" /><p className="text-muted-foreground">No players registered yet</p></CardContent></Card>
+                <Card><CardContent className="py-8 text-center"><Users className="size-12 text-muted-foreground mx-auto mb-3" /><p className="text-muted-foreground">{t('dashboard.noPlayers')}</p></CardContent></Card>
               ) : (
                 <div className="space-y-3">{players.map((player) => <PlayerCard key={player.username} data={player} onOpen={() => setSelectedPlayer(player)} active={isRecentlyActive(player.activity)} />)}</div>
               )}
@@ -145,9 +150,9 @@ export const DMDashboard = memo(function DMDashboard() {
 
         <TabsContent value="notes" className="mt-0 flex-1 overflow-hidden">
           <div className="h-full flex flex-col p-3">
-            <div className="mb-3 text-base font-bold uppercase tracking-[0.08em] text-primary">DM Notes</div>
-            <Textarea value={dmNotes} onChange={(e) => setDmNotes(e.target.value)} placeholder="NPC names, quest notes, boss info, story details..." className="flex-1 min-h-[300px] resize-none" />
-            <p className="mt-2 text-xs text-muted-foreground">Auto-saves as you type</p>
+            <div className="mb-3 text-base font-bold uppercase tracking-[0.08em] text-primary">{t('dashboard.dmNotes')}</div>
+            <Textarea value={dmNotes} onChange={(e) => setDmNotes(e.target.value)} placeholder={t('dashboard.dmNotesPlaceholder')} className="flex-1 min-h-[300px] resize-none" />
+            <p className="mt-2 text-xs text-muted-foreground">{t('dashboard.autoSaves')}</p>
           </div>
         </TabsContent>
       </Tabs>
@@ -162,6 +167,7 @@ export const DMDashboard = memo(function DMDashboard() {
 })
 
 const PlayerCard = memo(function PlayerCard({ data, onOpen, active }: { data: PlayerCharacterData; onOpen: () => void; active?: boolean }) {
+  const { t } = useI18n()
   const { username, character } = data
   const info = character.info
   const combat = character.combat
@@ -172,7 +178,7 @@ const PlayerCard = memo(function PlayerCard({ data, onOpen, active }: { data: Pl
           <div className="flex items-center justify-between gap-4">
             <div>
               <div className="text-lg font-bold uppercase tracking-wide flex items-center gap-2">{info.name || `(${username})`}{active ? <span className="inline-block size-2 rounded-full bg-green-400" /> : null}</div>
-              <div className="text-xs italic opacity-90">{[info.class, info.subclass].filter(Boolean).join(' ') || 'Unassigned Character'}</div>
+              <div className="text-xs italic opacity-90">{[info.class, info.subclass].filter(Boolean).join(' ') || t('dashboard.unassignedCharacter')}</div>
             </div>
             <Eye className="size-4 shrink-0 opacity-80" />
           </div>

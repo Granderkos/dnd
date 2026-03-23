@@ -25,6 +25,8 @@ import {
   calculateModifier,
   formatModifier,
 } from '@/lib/dnd-types'
+import { useI18n } from '@/lib/i18n'
+import { PageShell } from '@/components/app/page-shell'
 
 // Debounced input for better typing performance - uses uncontrolled input with ref
 interface DebouncedInputProps extends Omit<React.ComponentProps<typeof Input>, 'onChange' | 'defaultValue'> {
@@ -185,12 +187,20 @@ const AttackRow = memo(function AttackRow({ attack, onUpdate, onRemove }: Attack
   )
 })
 
+function parseSignedInteger(value: string, fallback: number) {
+  const normalized = value.trim()
+  if (normalized === '' || normalized === '-' || normalized === '+') return fallback
+  const parsed = Number.parseInt(normalized, 10)
+  return Number.isNaN(parsed) ? fallback : parsed
+}
+
 interface CharacterSheetProps {
   character: Character
   onChange: (character: Character) => void
 }
 
 export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
+  const { t } = useI18n()
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
     title: string
@@ -220,8 +230,8 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
   const toggleSaveProficiency = useCallback((ability: AbilityName) => {
     setConfirmDialog({
       open: true,
-      title: 'Toggle Save Proficiency',
-      description: `Are you sure you want to ${character.abilities[ability].proficient ? 'remove' : 'add'} proficiency for ${ability} saving throw?`,
+      title: t('character.toggleSaveTitle'),
+      description: t('character.toggleSaveDescription', { action: character.abilities[ability].proficient ? 'remove' : 'add', ability }),
       onConfirm: () => {
         onChange({
           ...character,
@@ -241,8 +251,8 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
     const skill = character.skills[index]
     setConfirmDialog({
       open: true,
-      title: 'Toggle Skill Proficiency',
-      description: `Are you sure you want to ${skill.proficient ? 'remove' : 'add'} proficiency for ${skill.name}?`,
+      title: t('character.toggleSkillTitle'),
+      description: t('character.toggleSkillDescription', { action: skill.proficient ? 'remove' : 'add', skill: skill.name }),
       onConfirm: () => {
         const newSkills = [...character.skills]
         newSkills[index] = { ...newSkills[index], proficient: !newSkills[index].proficient }
@@ -311,8 +321,8 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
   const removeAttack = useCallback((id: string, name: string) => {
     setConfirmDialog({
       open: true,
-      title: 'Delete Attack',
-      description: `Are you sure you want to delete "${name}"?`,
+      title: t('character.deleteAttackTitle'),
+      description: t('character.deleteAttackDescription', { name }),
       onConfirm: () => {
         onChange({ ...character, attacks: character.attacks.filter((a) => a.id !== id) })
       },
@@ -335,10 +345,14 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
 
   const abilities: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']
   const speedInSquares = Math.floor(character.combat.speed / 5)
+  const combinedFeatures = [character.raceFeatures, character.classFeatures, character.backgroundFeatures]
+    .filter(Boolean)
+    .join('\n\n')
 
   return (
     <ScrollArea className="h-[calc(100vh-4rem)]">
       <div className="flex flex-col gap-3 p-3">
+        <PageShell width="max-w-4xl">
         {/* Character Info - Portrait ABOVE inputs */}
         <Card>
           <CardContent className="pt-4">
@@ -375,13 +389,13 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
               value={character.info.name}
               onChange={(value) => updateInfo('name', value)}
               className="h-10 text-base font-bold text-center mb-3"
-              placeholder="Character Name"
+              placeholder={t('character.name')}
             />
             
             {/* Character details grid */}
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <label className="text-xs uppercase text-muted-foreground">Class</label>
+                <label className="text-xs uppercase text-muted-foreground">{t('character.class')}</label>
                 <DebouncedInput
                   value={character.info.class}
                   onChange={(value) => updateInfo('class', value)}
@@ -389,7 +403,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs uppercase text-muted-foreground">Level</label>
+                <label className="text-xs uppercase text-muted-foreground">{t('character.level')}</label>
                 <DebouncedInput
                   type="number"
                   min={1}
@@ -400,7 +414,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs uppercase text-muted-foreground">Subclass</label>
+                <label className="text-xs uppercase text-muted-foreground">{t('character.subclass')}</label>
                 <DebouncedInput
                   value={character.info.subclass}
                   onChange={(value) => updateInfo('subclass', value)}
@@ -408,7 +422,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs uppercase text-muted-foreground">Race</label>
+                <label className="text-xs uppercase text-muted-foreground">{t('character.race')}</label>
                 <DebouncedInput
                   value={character.info.race}
                   onChange={(value) => updateInfo('race', value)}
@@ -416,7 +430,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs uppercase text-muted-foreground">Background</label>
+                <label className="text-xs uppercase text-muted-foreground">{t('character.background')}</label>
                 <DebouncedInput
                   value={character.info.background}
                   onChange={(value) => updateInfo('background', value)}
@@ -424,7 +438,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs uppercase text-muted-foreground">Alignment</label>
+                <label className="text-xs uppercase text-muted-foreground">{t('character.alignment')}</label>
                 <DebouncedInput
                   value={character.info.alignment}
                   onChange={(value) => updateInfo('alignment', value)}
@@ -438,12 +452,12 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
         {/* Ability Scores, Saves & Skills */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Abilities, Saves & Skills</CardTitle>
+            <CardTitle className="text-base">{t('character.abilitiesSection')}</CardTitle>
           </CardHeader>
           <CardContent>
             {/* Proficiency Bonus */}
             <div className="mb-3 flex items-center justify-center gap-2 rounded border bg-primary/10 p-2">
-              <span className="text-sm font-medium">Proficiency Bonus</span>
+              <span className="text-sm font-medium">{t('character.proficiencyBonus')}</span>
               <Input
                 type="number"
                 min={1}
@@ -498,12 +512,12 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
             {/* Skills List */}
             <div className="mt-3 border-t pt-3">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-medium text-muted-foreground">Skills</span>
+                <span className="text-sm font-medium text-muted-foreground">{t('character.skills')}</span>
                 <span className="rounded bg-muted px-2 py-1 text-xs">
-                  Passive Perception: {10 + calculateModifier(character.abilities.WIS.value) +
+                  {t('character.passivePerception', { value: 10 + calculateModifier(character.abilities.WIS.value) +
                     (character.skills.find((s) => s.name === 'Perception')?.proficient
                       ? character.proficiencyBonus
-                      : 0)}
+                      : 0) })}
                 </span>
               </div>
               <div className="grid grid-cols-1 gap-y-1.5 sm:grid-cols-2 sm:gap-x-4">
@@ -541,7 +555,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
             <div className="grid grid-cols-4 gap-2">
               <div className="flex flex-col items-center rounded-lg border border-border bg-background/80 p-3">
                 <Shield className="mb-1 size-5 text-muted-foreground" />
-                <span className="text-xs uppercase text-muted-foreground">AC</span>
+                <span className="text-xs uppercase text-muted-foreground">{t('character.combat.ac')}</span>
                 <Input
                   type="number"
                   value={character.combat.armorClass}
@@ -551,17 +565,19 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
               </div>
               <div className="flex flex-col items-center rounded-lg border border-border bg-background/80 p-3">
                 <Zap className="mb-1 size-5 text-muted-foreground" />
-                <span className="text-xs uppercase text-muted-foreground">Init</span>
+                <span className="text-xs uppercase text-muted-foreground">{t('character.combat.init')}</span>
                 <Input
-                  type="number"
+                  type="text"
+                  inputMode="text"
+                  pattern="[+-]?[0-9]*"
                   value={character.combat.initiative}
-                  onChange={(e) => updateCombat('initiative', parseInt(e.target.value) || 0)}
+                  onChange={(e) => updateCombat('initiative', parseSignedInteger(e.target.value, 0))}
                   className="mt-1 h-10 w-full text-center text-xl font-bold"
                 />
               </div>
               <div className="col-span-2 flex flex-col items-center rounded-lg border border-border bg-background/80 p-3">
                 <Footprints className="mb-1 size-5 text-muted-foreground" />
-                <span className="text-xs uppercase text-muted-foreground">Speed</span>
+                <span className="text-xs uppercase text-muted-foreground">{t('character.combat.speed')}</span>
                 <div className="mt-1 flex items-center gap-1">
                   <Input
                     type="number"
@@ -579,7 +595,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
             <div className="mt-3 rounded-lg border border-border bg-background/70 p-4">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex flex-col items-center">
-                  <span className="text-xs uppercase text-muted-foreground">Max</span>
+                  <span className="text-xs uppercase text-muted-foreground">{t('character.combat.max')}</span>
                   <Input
                     type="number"
                     value={character.combat.maxHp}
@@ -615,7 +631,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                   </div>
                 </div>
                 <div className="flex flex-col items-center">
-                  <span className="text-xs uppercase text-muted-foreground">Temp</span>
+                  <span className="text-xs uppercase text-muted-foreground">{t('character.combat.temp')}</span>
                   <Input
                     type="number"
                     min={0}
@@ -629,7 +645,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
               {/* Hit Dice & Death Saves */}
               <div className="mt-3 flex items-center justify-between border-t pt-3">
                 <div className="flex flex-col items-center gap-1">
-                  <span className="text-xs uppercase text-muted-foreground">Hit Dice</span>
+                  <span className="text-xs uppercase text-muted-foreground">{t('character.combat.hitDice')}</span>
                   <DebouncedInput
                     value={character.combat.hitDice}
                     onChange={(value) => updateCombat('hitDice', value)}
@@ -675,7 +691,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
         <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Actions</CardTitle>
+              <CardTitle className="text-base">{t('character.combat.actions')}</CardTitle>
               <Button size="sm" variant="outline" onClick={addAttack} className="h-8">
                 <Plus className="size-4" />
               </Button>
@@ -698,12 +714,12 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
         {/* Features & Traits */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Features & Traits</CardTitle>
+            <CardTitle className="text-base">{t('character.combat.featuresTraits')}</CardTitle>
           </CardHeader>
           <CardContent>
             <DebouncedTextarea
-              value={character.features}
-              onChange={(value) => onChange({ ...character, features: value })}
+              value={combinedFeatures}
+              onChange={(value) => onChange({ ...character, raceFeatures: '', backgroundFeatures: '', classFeatures: value })}
               placeholder="Class features, racial traits, feats..."
               className="min-h-24 text-sm break-words overflow-wrap-anywhere"
               style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
@@ -718,14 +734,15 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
           </CardHeader>
           <CardContent>
             <DebouncedTextarea
-              value={character.proficiencies}
-              onChange={(value) => onChange({ ...character, proficiencies: value })}
+              value={character.languages}
+              onChange={(value) => onChange({ ...character, languages: value })}
               placeholder="Armor, weapons, tools, languages..."
               className="min-h-24 text-sm break-words overflow-wrap-anywhere"
               style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
             />
           </CardContent>
         </Card>
+        </PageShell>
       </div>
 
       {/* Confirmation Dialog */}
@@ -738,8 +755,8 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDialog.onConfirm}>Confirm</AlertDialogAction>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDialog.onConfirm}>{t('common.confirm')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
