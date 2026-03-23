@@ -721,7 +721,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                   value={character.raceFeatures}
                   onChange={(value) => onChange({ ...character, raceFeatures: value })}
                   placeholder={t('character.combat.raceFeatures')}
-                  className="min-h-20 text-sm break-words overflow-wrap-anywhere"
+                  className="min-h-20 resize-none overflow-y-auto text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
                   style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                 />
               </div>
@@ -731,7 +731,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                   value={character.classFeatures}
                   onChange={(value) => onChange({ ...character, classFeatures: value })}
                   placeholder={t('character.combat.classFeatures')}
-                  className="min-h-20 text-sm break-words overflow-wrap-anywhere"
+                  className="min-h-20 resize-none overflow-y-auto text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
                   style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                 />
               </div>
@@ -741,7 +741,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                   value={character.backgroundFeatures}
                   onChange={(value) => onChange({ ...character, backgroundFeatures: value })}
                   placeholder={t('character.combat.backgroundFeatures')}
-                  className="min-h-20 text-sm break-words overflow-wrap-anywhere"
+                  className="min-h-20 resize-none overflow-y-auto text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
                   style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                 />
               </div>
@@ -759,7 +759,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
               value={character.languages}
               onChange={(value) => onChange({ ...character, languages: value })}
               placeholder={t('character.proficienciesLanguages')}
-              className="min-h-24 text-sm break-words overflow-wrap-anywhere"
+              className="min-h-24 resize-none overflow-y-auto text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
               style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
             />
           </CardContent>
