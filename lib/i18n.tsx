@@ -77,9 +77,9 @@ const translations: Record<Language, TranslationMap> = {
     'character.combat.actions': 'Attacks & Spellcasting',
     'character.combat.featuresTraits': 'Features & Traits',
     'character.combat.raceFeatures': 'Race Features',
-    'character.combat.classFeatures': 'Schopnosti povolání',
-    'character.combat.backgroundFeatures': 'Schopnosti původu',
-    'character.proficienciesLanguages': 'Další odbornosti a jazyky',
+    'character.combat.classFeatures': 'Class Features',
+    'character.combat.backgroundFeatures': 'Background Features',
+    'character.proficienciesLanguages': 'Other Proficiencies & Languages',
     'character.toggleSaveTitle': 'Toggle Save Proficiency',
     'character.toggleSaveDescription': ({ action, ability }) => `Are you sure you want to ${action} proficiency for ${ability} saving throw?`,
     'character.toggleSkillTitle': 'Toggle Skill Proficiency',
@@ -103,10 +103,10 @@ const translations: Record<Language, TranslationMap> = {
     'inventory.treasure': 'Treasure',
     'inventory.other': 'Other',
 
-    'notes.session': 'Sezení',
-    'notes.quest': 'Úkoly',
+    'notes.session': 'Session',
+    'notes.quest': 'Quest',
     'notes.npcs': 'NPCs',
-    'notes.combat': 'Boj',
+    'notes.combat': 'Combat',
     'notes.general': 'General',
     'notes.newNote': 'New Note',
     'notes.titlePlaceholder': 'Note title',
@@ -115,6 +115,37 @@ const translations: Record<Language, TranslationMap> = {
     'notes.emptyNote': 'Empty note',
     'notes.deleteTitle': 'Delete Note',
     'notes.deleteDescription': ({ title }) => `Delete "${title}"?`,
+
+    'spellbook.ability': 'Ability',
+    'spellbook.spellDc': 'Spell DC',
+    'spellbook.attack': 'Attack',
+    'spellbook.cantrips': 'Cantrips',
+    'spellbook.level': ({ level }) => `Level ${level}`,
+    'spellbook.noSpells': 'No spells',
+    'spellbook.slots': 'Slots:',
+    'spellbook.prepared': 'Prepared',
+    'spellbook.unprepareTitle': 'Unprepare Spell',
+    'spellbook.prepareTitle': 'Prepare Spell',
+    'spellbook.unprepareDescription': ({ name }) => `Unprepare "${name}"?`,
+    'spellbook.prepareDescription': ({ name }) => `Prepare "${name}"?`,
+    'spellbook.deleteTitle': 'Delete Spell',
+    'spellbook.deleteDescription': ({ name }) => `Delete "${name}"?`,
+    'spellbook.spellDetails': 'Spell details',
+    'spellbook.ritual': 'Ritual',
+    'spellbook.concentration': 'Concentration',
+    'spellbook.reaction': 'Reaction',
+    'spellbook.castingTime': 'Casting Time',
+    'spellbook.range': 'Range',
+    'spellbook.duration': 'Duration',
+    'spellbook.damage': 'Damage',
+    'spellbook.addCantrip': 'Add Cantrip',
+    'spellbook.addSpell': ({ level }) => `Add Level ${level} Spell`,
+    'spellbook.enterSpellDetails': 'Enter spell details',
+    'spellbook.name': 'Name',
+    'spellbook.spellName': 'Spell name',
+    'spellbook.description': 'Description',
+    'spellbook.descriptionPlaceholder': 'Spell description...',
+    'spellbook.addSpellButton': 'Add Spell',
   },
   cs: {
     'common.loading': 'Načítání...',
@@ -182,12 +213,12 @@ const translations: Record<Language, TranslationMap> = {
     'character.combat.max': 'Max',
     'character.combat.temp': 'Temp',
     'character.combat.hitDice': 'Hit dice',
-    'character.combat.actions': 'Attacks & Spellcasting',
+    'character.combat.actions': 'Útoky a sesílání kouzel',
     'character.combat.featuresTraits': 'Schopnosti a vlastnosti',
     'character.combat.raceFeatures': 'Rasové schopnosti',
     'character.combat.classFeatures': 'Schopnosti povolání',
     'character.combat.backgroundFeatures': 'Schopnosti původu',
-    'character.proficienciesLanguages': 'Další odbornosti a jazyky',
+    'character.proficienciesLanguages': 'Další zběhlosti a jazyky',
     'character.toggleSaveTitle': 'Přepnout proficiency záchrany',
     'character.toggleSaveDescription': ({ action, ability }) => `Opravdu chceš ${action} proficiency pro záchranný hod ${ability}?`,
     'character.toggleSkillTitle': 'Přepnout proficiency dovednosti',
@@ -213,7 +244,7 @@ const translations: Record<Language, TranslationMap> = {
 
     'notes.session': 'Sezení',
     'notes.quest': 'Úkoly',
-    'notes.npcs': 'NPC',
+    'notes.npcs': 'NPCs',
     'notes.combat': 'Boj',
     'notes.general': 'Obecné',
     'notes.newNote': 'Nová poznámka',
@@ -223,6 +254,37 @@ const translations: Record<Language, TranslationMap> = {
     'notes.emptyNote': 'Prázdná poznámka',
     'notes.deleteTitle': 'Smazat poznámku',
     'notes.deleteDescription': ({ title }) => `Smazat „${title}“?`,
+
+    'spellbook.ability': 'Atribut',
+    'spellbook.spellDc': 'DC kouzla',
+    'spellbook.attack': 'Útok',
+    'spellbook.cantrips': 'Triky',
+    'spellbook.level': ({ level }) => `Úroveň ${level}`,
+    'spellbook.noSpells': 'Žádná kouzla',
+    'spellbook.slots': 'Sloty:',
+    'spellbook.prepared': 'Připraveno',
+    'spellbook.unprepareTitle': 'Zrušit přípravu kouzla',
+    'spellbook.prepareTitle': 'Připravit kouzlo',
+    'spellbook.unprepareDescription': ({ name }) => `Zrušit přípravu „${name}“?`,
+    'spellbook.prepareDescription': ({ name }) => `Připravit „${name}“?`,
+    'spellbook.deleteTitle': 'Smazat kouzlo',
+    'spellbook.deleteDescription': ({ name }) => `Smazat „${name}“?`,
+    'spellbook.spellDetails': 'Detail kouzla',
+    'spellbook.ritual': 'Rituál',
+    'spellbook.concentration': 'Koncentrace',
+    'spellbook.reaction': 'Reakce',
+    'spellbook.castingTime': 'Doba seslání',
+    'spellbook.range': 'Dosah',
+    'spellbook.duration': 'Trvání',
+    'spellbook.damage': 'Zranění',
+    'spellbook.addCantrip': 'Přidat trik',
+    'spellbook.addSpell': ({ level }) => `Přidat kouzlo ${level}. úrovně`,
+    'spellbook.enterSpellDetails': 'Vyplň detaily kouzla',
+    'spellbook.name': 'Název',
+    'spellbook.spellName': 'Název kouzla',
+    'spellbook.description': 'Popis',
+    'spellbook.descriptionPlaceholder': 'Popis kouzla...',
+    'spellbook.addSpellButton': 'Přidat kouzlo',
   },
 }
 
@@ -240,22 +302,21 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.documentElement.lang = language
-    document.documentElement.setAttribute('translate', 'no')
-  }, [language])
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY) as Language | null
+    document.documentElement.translate = false
+    const stored = window.localStorage.getItem(STORAGE_KEY)
     if (stored === 'en' || stored === 'cs') {
       setLanguageState(stored)
-      return
     }
-    const browserLanguage = navigator.language.toLowerCase()
-    setLanguageState(browserLanguage.startsWith('cs') ? 'cs' : 'en')
   }, [])
+
+  useEffect(() => {
+    document.documentElement.lang = language
+    document.documentElement.translate = false
+    window.localStorage.setItem(STORAGE_KEY, language)
+  }, [language])
 
   const setLanguage = (nextLanguage: Language) => {
     setLanguageState(nextLanguage)
-    window.localStorage.setItem(STORAGE_KEY, nextLanguage)
   }
 
   const value = useMemo<I18nContextType>(() => ({
