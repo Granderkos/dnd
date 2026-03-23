@@ -351,8 +351,9 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
 
   return (
     <ScrollArea className="h-[calc(100vh-4rem)]">
-      <div className="flex flex-col gap-3 p-3">
+      <div className="px-3 py-4">
         <PageShell width="max-w-4xl">
+          <div className="space-y-4">
         {/* Character Info - Portrait ABOVE inputs */}
         <Card>
           <CardContent className="pt-4">
@@ -449,14 +450,14 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
           </CardContent>
         </Card>
 
-        {/* Ability Scores, Saves & Skills */}
+          {/* Ability Scores, Saves & Skills */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">{t('character.abilitiesSection')}</CardTitle>
           </CardHeader>
           <CardContent>
             {/* Proficiency Bonus */}
-            <div className="mb-3 flex items-center justify-center gap-2 rounded border bg-primary/10 p-2">
+            <div className="mb-3 flex flex-wrap items-center justify-center gap-2 rounded border bg-primary/10 p-2 text-center">
               <span className="text-sm font-medium">{t('character.proficiencyBonus')}</span>
               <Input
                 type="number"
@@ -474,7 +475,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
             </div>
 
             {/* Ability Scores Grid */}
-            <div className="grid grid-cols-6 gap-1.5">
+            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
               {abilities.map((ability) => {
                 const score = character.abilities[ability].value
                 const mod = calculateModifier(score)
@@ -548,7 +549,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
           </CardContent>
         </Card>
 
-        {/* Combat Section */}
+          {/* Combat Section */}
         <Card>
           <CardContent className="pt-4">
             {/* AC, Initiative, Speed row */}
@@ -567,9 +568,11 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 <Zap className="mb-1 size-5 text-muted-foreground" />
                 <span className="text-xs uppercase text-muted-foreground">{t('character.combat.init')}</span>
                 <Input
-                  type="text"
-                  inputMode="text"
-                  pattern="[+-]?[0-9]*"
+                  type="number"
+                  inputMode="decimal"
+                  min={-99}
+                  max={99}
+                  step={1}
                   value={character.combat.initiative}
                   onChange={(e) => updateCombat('initiative', parseSignedInteger(e.target.value, 0))}
                   className="mt-1 h-10 w-full text-center text-xl font-bold"
@@ -687,7 +690,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
           </CardContent>
         </Card>
 
-        {/* Attacks */}
+          {/* Attacks */}
         <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -711,7 +714,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
           </CardContent>
         </Card>
 
-        {/* Features & Traits */}
+          {/* Features & Traits */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">{t('character.combat.featuresTraits')}</CardTitle>
@@ -727,10 +730,10 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
           </CardContent>
         </Card>
 
-        {/* Proficiencies & Languages */}
+          {/* Proficiencies & Languages */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Languages</CardTitle>
+            <CardTitle className="text-base">{t('character.languages')}</CardTitle>
           </CardHeader>
           <CardContent>
             <DebouncedTextarea
@@ -742,6 +745,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
             />
           </CardContent>
         </Card>
+          </div>
         </PageShell>
       </div>
 

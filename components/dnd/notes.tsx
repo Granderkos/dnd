@@ -95,7 +95,7 @@ export function Notes({ notes, onChange }: NotesProps) {
 
   if (selectedNote) {
     return (
-      <div className="flex h-[calc(100vh-4rem)] flex-col p-3">
+      <div className="flex h-[calc(100vh-4rem)] flex-col px-3 py-4">
         <PageShell width="max-w-4xl">
           <Card className="flex flex-1 flex-col">
             <CardHeader className="pb-2">
@@ -158,10 +158,9 @@ export function Notes({ notes, onChange }: NotesProps) {
 
   return (
     <ScrollArea className="h-[calc(100vh-4rem)]">
-      <div className="flex flex-col gap-3 p-3">
+      <div className="px-3 py-4">
         <PageShell width="max-w-4xl">
-          <div className="overflow-x-auto px-1 pb-1">
-            <div className="flex w-max gap-1.5">
+          <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
                 variant={selectedCategory === 'all' ? 'default' : 'outline'}
@@ -182,11 +181,10 @@ export function Notes({ notes, onChange }: NotesProps) {
                 </Button>
               ))}
             </div>
-          </div>
 
-          <Card className="mt-3">
+          <Card className="mt-4">
             <CardContent className="pb-3 pt-3">
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
                 {NOTE_CATEGORIES.map(({ id, icon: Icon, labelKey }) => (
                   <Button
                     key={id}
@@ -204,7 +202,7 @@ export function Notes({ notes, onChange }: NotesProps) {
             </CardContent>
           </Card>
 
-          <div className="mt-3 space-y-3">
+          <div className="mt-4 space-y-3">
             {sortedNotes.length === 0 ? (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">

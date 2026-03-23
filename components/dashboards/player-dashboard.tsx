@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, memo } from 'react'
+import { useState, useEffect, useRef, memo, useCallback } from 'react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { CharacterSheet } from '@/components/dnd/character-sheet'
@@ -24,17 +24,58 @@ import { useI18n } from '@/lib/i18n'
 
 function useDebouncedRemoteSave<T>(value: T, delay: number, enabled: boolean, saveFn: (value: T) => Promise<void>) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latestValueRef = useRef(value)
+  const latestSaveFnRef = useRef(saveFn)
+  const dirtyRef = useRef(false)
+
+  useEffect(() => {
+    latestValueRef.current = value
+  }, [value])
+
+  useEffect(() => {
+    latestSaveFnRef.current = saveFn
+  }, [saveFn])
+
+  const flush = useCallback(() => {
+    if (!enabled || !dirtyRef.current) return
+    dirtyRef.current = false
+    void latestSaveFnRef.current(latestValueRef.current)
+  }, [enabled])
 
   useEffect(() => {
     if (!enabled) return
+    dirtyRef.current = true
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     timeoutRef.current = setTimeout(() => {
-      void saveFn(value)
+      flush()
     }, delay)
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
     }
-  }, [value, delay, enabled, saveFn])
+  }, [value, delay, enabled, flush])
+
+  useEffect(() => {
+    if (!enabled) return
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flush()
+    }
+
+    const handlePageHide = () => {
+      flush()
+    }
+
+    window.addEventListener('pagehide', handlePageHide)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      flush()
+    }
+  }, [enabled, flush])
+
+  return flush
 }
 
 const defaultMapSettings: MapSettings = {
@@ -83,7 +124,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     void updateCurrentPage(activeTab)
   }, [activeTab, updateCurrentPage])
 
-  useDebouncedRemoteSave(
+  const flushSave = useDebouncedRemoteSave(
     { character, spellbook, inventory, notes },
     500,
     isLoaded && !!user?.id,
@@ -96,6 +137,11 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       }
     }
   )
+
+  useEffect(() => {
+    if (!isLoaded) return
+    flushSave()
+  }, [activeTab, isLoaded, flushSave])
 
   if (!isLoaded) {
     return (

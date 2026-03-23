@@ -1,5 +1,5 @@
 import { ReactNode } from 'react'
 
-export function PageShell({ children, width = 'max-w-4xl' }: { children: ReactNode; width?: string }) {
-  return <div className={`mx-auto w-full ${width}`}>{children}</div>
+export function PageShell({ children, width = 'max-w-4xl', className = '' }: { children: ReactNode; width?: string; className?: string }) {
+  return <div className={`mx-auto w-full ${width} ${className}`.trim()}>{children}</div>
 }
