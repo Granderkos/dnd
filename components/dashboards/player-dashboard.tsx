@@ -89,6 +89,7 @@ const defaultMapSettings: MapSettings = {
   panX: 0,
   panY: 0,
 }
+const PLAYER_TAB_STORAGE_KEY = 'dnd:player-active-tab'
 
 export const PlayerDashboard = memo(function PlayerDashboard() {
   const { user, logout, updateCurrentPage } = useAuth()
@@ -100,6 +101,15 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [inventory, setInventory] = useState<InventoryType>(emptyInventory)
   const [notes, setNotes] = useState<Note[]>([])
   const [mapSettings, setMapSettings] = useState<MapSettings>(defaultMapSettings)
+
+  useEffect(() => {
+    const storedTab = window.localStorage.getItem(PLAYER_TAB_STORAGE_KEY)
+    if (storedTab) setActiveTab(storedTab)
+  }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem(PLAYER_TAB_STORAGE_KEY, activeTab)
+  }, [activeTab])
 
   useEffect(() => {
     if (!user?.id) return
@@ -129,7 +139,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
 
   const flushSave = useDebouncedRemoteSave(
     { character, spellbook, inventory, notes },
-    500,
+    800,
     isLoaded && !!user?.id,
     async (payload) => {
       if (!user?.id) return
@@ -144,7 +154,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   useEffect(() => {
     if (!isLoaded) return
     flushSave()
-  }, [activeTab, isLoaded, flushSave])
+  }, [isLoaded, flushSave])
 
   if (!isLoaded) {
     return (

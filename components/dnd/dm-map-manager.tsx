@@ -40,7 +40,7 @@ export const DMMapManager = memo(function DMMapManager() {
   const [activeMapId, setActiveMapId] = useState<string | null>(null)
   const [viewingMap, setViewingMap] = useState<StoredMap | null>(null)
   const [viewSettings, setViewSettings] = useState<MapViewSettings>(defaultViewSettings)
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false)
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const [deleteConfirmMap, setDeleteConfirmMap] = useState<StoredMap | null>(null)
   const [newMapName, setNewMapName] = useState('')
@@ -51,6 +51,8 @@ export const DMMapManager = memo(function DMMapManager() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isDragging = useRef(false)
   const lastPos = useRef({ x: 0, y: 0 })
+  const pinchStartDistance = useRef(0)
+  const pinchStartZoom = useRef(1)
 
   const refreshMaps = useCallback(async () => {
     try {
@@ -145,34 +147,65 @@ export const DMMapManager = memo(function DMMapManager() {
     setViewSettings((prev) => ({ ...prev, panX: prev.panX + dx, panY: prev.panY + dy }))
   }, [])
   const handleMouseUp = useCallback(() => { isDragging.current = false }, [])
-  const handleTouchStart = useCallback((e: React.TouchEvent) => { if (e.touches.length === 1) { isDragging.current = true; lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY } } }, [])
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const a = e.touches[0]
+      const b = e.touches[1]
+      pinchStartDistance.current = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+      pinchStartZoom.current = viewSettings.zoom
+      isDragging.current = false
+      return
+    }
+    if (e.touches.length === 1) {
+      isDragging.current = true
+      lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+    }
+  }, [viewSettings.zoom])
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const a = e.touches[0]
+      const b = e.touches[1]
+      const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+      if (pinchStartDistance.current > 0) {
+        const nextZoom = pinchStartZoom.current * (distance / pinchStartDistance.current)
+        setViewSettings((prev) => ({ ...prev, zoom: Math.max(0.1, Math.min(5, nextZoom)) }))
+      }
+      return
+    }
     if (!isDragging.current || e.touches.length !== 1) return
     const dx = e.touches[0].clientX - lastPos.current.x
     const dy = e.touches[0].clientY - lastPos.current.y
     lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
     setViewSettings((prev) => ({ ...prev, panX: prev.panX + dx, panY: prev.panY + dy }))
   }, [])
-  const handleTouchEnd = useCallback(() => { isDragging.current = false }, [])
+  const handleTouchEnd = useCallback(() => {
+    isDragging.current = false
+    pinchStartDistance.current = 0
+  }, [])
   const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen()
-      setIsFullscreen(true)
+    if (!document.fullscreenElement && containerRef.current?.requestFullscreen) {
+      void containerRef.current.requestFullscreen()
     } else {
-      document.exitFullscreen()
-      setIsFullscreen(false)
+      if (document.fullscreenElement) {
+        void document.exitFullscreen()
+      } else {
+        setIsPseudoFullscreen((prev) => !prev)
+      }
     }
   }, [])
 
   useEffect(() => {
-    const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement)
+    const handleFullscreenChange = () => {
+      const active = !!document.fullscreenElement
+      if (active) setIsPseudoFullscreen(false)
+    }
     document.addEventListener('fullscreenchange', handleFullscreenChange)
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
 
   if (viewingMap) {
     return (
-      <div ref={containerRef} className="h-full flex flex-col bg-background">
+      <div ref={containerRef} className={`${isPseudoFullscreen ? 'fixed inset-0 z-50 h-dvh' : 'h-full'} flex flex-col bg-background`}>
         <div className="flex flex-wrap items-center gap-2 p-2 border-b bg-card">
           <Button variant="ghost" size="sm" onClick={() => setViewingMap(null)}><X className="size-4 mr-1" />{t('common.close')}</Button>
           <div className="flex items-center gap-1">

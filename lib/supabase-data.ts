@@ -211,6 +211,8 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
   const fallbackSpellEntries = blob.spellbookEntries ?? emptyBlob().spellbookEntries!
   const fallbackInventoryItems = blob.inventoryItems ?? emptyInventory.items
   const fallbackAttacks = blob.attacks ?? emptyCharacter.attacks
+  const hasNormalizedSpells = Boolean(spellsData?.length)
+  const hasNormalizedInventory = Boolean(inventoryData?.length)
 
   const character: Character = {
     info: {
@@ -268,7 +270,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
     spellcastingAbility: spellMeta.spellcastingAbility || 'INT',
     spellSaveDC: spellMeta.spellSaveDC || 0,
     spellAttackBonus: spellMeta.spellAttackBonus || 0,
-    cantrips: (spellsData?.length ? (spellsData ?? []).filter((s) => s.is_cantrip).map((s) => ({
+    cantrips: (hasNormalizedSpells ? (spellsData ?? []).filter((s) => s.is_cantrip).map((s) => ({
       id: s.client_id ?? s.id,
       name: s.title,
       level: 0,
@@ -282,7 +284,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       damage: s.dice,
       prepared: true,
     })) : fallbackSpellEntries.cantrips),
-    spells: (spellsData?.length ? (spellsData ?? []).filter((s) => !s.is_cantrip).map((s) => ({
+    spells: (hasNormalizedSpells ? (spellsData ?? []).filter((s) => !s.is_cantrip).map((s) => ({
       id: s.client_id ?? s.id,
       name: s.title,
       level: Number(s.spell_level || 1),
@@ -300,7 +302,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
   }
 
   const inventory: Inventory = {
-    items: (inventoryData?.length ? (inventoryData ?? []).map((item, index) => {
+    items: (hasNormalizedInventory ? (inventoryData ?? []).map((item, index) => {
       const fallbackMatch = fallbackInventoryItems.find((blobItem) => blobItem.name === item.title && blobItem.description === (item.description ?? '') && blobItem.quantity === item.quantity) ?? fallbackInventoryItems[index]
       return {
         id: item.client_id ?? item.id,
@@ -313,17 +315,17 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
     currency: blob.inventoryCurrency || emptyInventory.currency,
   }
 
-  if (inventoryData?.length) {
-    console.info('[inventory:load] loaded inventory_items rows', {
-      count: inventoryData.length,
-      sample: inventoryData.slice(0, 5).map((item) => ({
+  if (hasNormalizedInventory) {
+    console.info('[inventory:load] source=normalized', {
+      count: inventoryData?.length ?? 0,
+      sample: (inventoryData ?? []).slice(0, 5).map((item) => ({
         client_id: item.client_id ?? item.id,
         title: item.title,
         quantity: item.quantity,
       })),
     })
   } else {
-    console.info('[inventory:load] no inventory_items rows, using blob fallback', {
+    console.info('[inventory:load] source=blob-fallback', {
       fallbackCount: fallbackInventoryItems.length,
       fallbackSample: fallbackInventoryItems.slice(0, 5).map((item) => ({
         client_id: item.id,
@@ -416,29 +418,6 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       }))
     )
 
-    await upsertCharacterBlob(characterId, {
-      notes,
-      inventoryCurrency: inventory.currency,
-      spellbookMeta: {
-        spellcastingClass: spellbook.spellcastingClass,
-        spellcastingAbility: spellbook.spellcastingAbility,
-        spellSaveDC: spellbook.spellSaveDC,
-        spellAttackBonus: spellbook.spellAttackBonus,
-        slots: spellbook.slots,
-      },
-      spellbookEntries: {
-        cantrips: allSpells.filter((s) => s.level === 0),
-        spells: allSpells.filter((s) => s.level > 0),
-      },
-      inventoryItems: normalizedInventory,
-      attacks: character.attacks,
-      portraitUrl: character.info.portraitUrl,
-      featuresText: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n\n'),
-      raceFeatures: character.raceFeatures,
-      classFeatures: character.classFeatures,
-      backgroundFeatures: character.backgroundFeatures,
-    })
-
     console.info('[inventory:save] payload snapshot', {
       characterId,
       rowCount: normalizedInventory.length,
@@ -467,6 +446,30 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
 
     await syncInventoryRows(characterId, normalizedInventory)
     await syncSpellRows(characterId, allSpells)
+
+    // Blob is an explicit mirror/backup written only after normalized sync succeeds.
+    await upsertCharacterBlob(characterId, {
+      notes,
+      inventoryCurrency: inventory.currency,
+      spellbookMeta: {
+        spellcastingClass: spellbook.spellcastingClass,
+        spellcastingAbility: spellbook.spellcastingAbility,
+        spellSaveDC: spellbook.spellSaveDC,
+        spellAttackBonus: spellbook.spellAttackBonus,
+        slots: spellbook.slots,
+      },
+      spellbookEntries: {
+        cantrips: allSpells.filter((s) => s.level === 0),
+        spells: allSpells.filter((s) => s.level > 0),
+      },
+      inventoryItems: normalizedInventory,
+      attacks: character.attacks,
+      portraitUrl: character.info.portraitUrl,
+      featuresText: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n\n'),
+      raceFeatures: character.raceFeatures,
+      classFeatures: character.classFeatures,
+      backgroundFeatures: character.backgroundFeatures,
+    })
   })
 
   const chained = saveTask.catch(() => {})
@@ -525,15 +528,7 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
     })),
   })
 
-  const { error: deleteMissingError } = await supabase
-    .from('inventory_items')
-    .delete()
-    .eq('character_id', characterId)
-    .not('client_id', 'in', buildInFilter(items.map((item) => item.id)))
-  if (deleteMissingError) {
-    console.error('[inventory:save] delete missing rows failed', { characterId, error: deleteMissingError })
-    throw deleteMissingError
-  }
+  await deleteMissingInventoryRows(characterId, items.map((item) => item.id))
   console.info('[inventory:save] delete missing rows success', { characterId })
 }
 
@@ -569,15 +564,7 @@ async function syncSpellRows(characterId: string, spells: Spellbook['spells'][nu
     throw upsertError
   }
 
-  const { error: deleteMissingError } = await supabase
-    .from('spells')
-    .delete()
-    .eq('character_id', characterId)
-    .not('client_id', 'in', buildInFilter(spells.map((spell) => spell.id)))
-  if (deleteMissingError) {
-    console.error('[spells:save] delete missing rows failed', { characterId, error: deleteMissingError })
-    throw deleteMissingError
-  }
+  await deleteMissingSpellRows(characterId, spells.map((spell) => spell.id))
 }
 
 function dedupeByClientId<T extends { id: string }>(rows: T[]): T[] {
@@ -588,8 +575,44 @@ function dedupeByClientId<T extends { id: string }>(rows: T[]): T[] {
   return Array.from(map.values())
 }
 
-function buildInFilter(values: string[]) {
-  return `(${values.map((value) => `"${value.replace(/"/g, '\\"')}"`).join(',')})`
+async function deleteMissingInventoryRows(characterId: string, keepClientIds: string[]) {
+  const keepSet = new Set(keepClientIds)
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select('client_id')
+    .eq('character_id', characterId)
+  if (error) throw error
+  const stale = (data ?? []).map((row) => row.client_id as string).filter((id) => !keepSet.has(id))
+  if (!stale.length) return
+  const { error: deleteError } = await supabase
+    .from('inventory_items')
+    .delete()
+    .eq('character_id', characterId)
+    .in('client_id', stale)
+  if (deleteError) {
+    console.error('[inventory:save] delete missing rows failed', { characterId, staleCount: stale.length, error: deleteError })
+    throw deleteError
+  }
+}
+
+async function deleteMissingSpellRows(characterId: string, keepClientIds: string[]) {
+  const keepSet = new Set(keepClientIds)
+  const { data, error } = await supabase
+    .from('spells')
+    .select('client_id')
+    .eq('character_id', characterId)
+  if (error) throw error
+  const stale = (data ?? []).map((row) => row.client_id as string).filter((id) => !keepSet.has(id))
+  if (!stale.length) return
+  const { error: deleteError } = await supabase
+    .from('spells')
+    .delete()
+    .eq('character_id', characterId)
+    .in('client_id', stale)
+  if (deleteError) {
+    console.error('[spells:save] delete missing rows failed', { characterId, staleCount: stale.length, error: deleteError })
+    throw deleteError
+  }
 }
 
 export async function listPlayerCharacters() {

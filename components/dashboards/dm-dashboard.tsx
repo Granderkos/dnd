@@ -20,6 +20,7 @@ interface PlayerCharacterData {
   character: Character
   activity?: { last_seen?: string; current_page?: string; is_online?: boolean } | null
 }
+const DM_TAB_STORAGE_KEY = 'dnd:dm-active-tab'
 
 function useDebouncedRemoteText(value: string, delay: number, enabled: boolean, saveFn: (value: string) => Promise<void>) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -51,6 +52,15 @@ export const DMDashboard = memo(function DMDashboard() {
   const [activeTab, setActiveTab] = useState('players')
 
   useEffect(() => {
+    const storedTab = window.localStorage.getItem(DM_TAB_STORAGE_KEY)
+    if (storedTab) setActiveTab(storedTab)
+  }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem(DM_TAB_STORAGE_KEY, activeTab)
+  }, [activeTab])
+
+  useEffect(() => {
     void updateCurrentPage(`dm:${activeTab}`)
   }, [activeTab, updateCurrentPage])
 
@@ -72,14 +82,19 @@ export const DMDashboard = memo(function DMDashboard() {
       }
     }
     void load()
+    let polling = false
     const interval = setInterval(async () => {
+      if (polling) return
+      polling = true
       try {
         const playersData = await listPlayerCharacters()
         if (mounted) setPlayers(playersData as PlayerCharacterData[])
       } catch (e) {
         console.error('Failed to refresh players', e)
+      } finally {
+        polling = false
       }
-    }, 5000)
+    }, 10000)
     return () => {
       mounted = false
       clearInterval(interval)
