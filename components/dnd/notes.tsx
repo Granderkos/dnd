@@ -95,50 +95,52 @@ export function Notes({ notes, onChange }: NotesProps) {
 
   if (selectedNote) {
     return (
-      <div className="flex h-[calc(100vh-4rem)] flex-col px-3 py-4">
-        <PageShell>
-          <Card className="flex flex-1 flex-col">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-2">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setSelectedNote(null)}
-                  className="shrink-0 size-9"
-                >
-                  <ArrowLeft className="size-5" />
-                </Button>
-                <Input
-                  value={selectedNote.title}
-                  onChange={(e) => updateNote({ ...selectedNote, title: e.target.value })}
-                  className="h-10 min-w-0 flex-1 text-base font-semibold"
-                  placeholder={t('notes.titlePlaceholder')}
+      <ScrollArea className="h-[calc(100vh-4rem)]">
+        <div className="px-3 py-4 pb-24">
+          <PageShell>
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setSelectedNote(null)}
+                    className="shrink-0 size-9"
+                  >
+                    <ArrowLeft className="size-5" />
+                  </Button>
+                  <Input
+                    value={selectedNote.title}
+                    onChange={(e) => updateNote({ ...selectedNote, title: e.target.value })}
+                    className="h-10 min-w-0 flex-1 text-base font-semibold"
+                    placeholder={t('notes.titlePlaceholder')}
+                  />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => deleteNote(selectedNote.id, selectedNote.title)}
+                    className="size-9 shrink-0 text-destructive hover:text-destructive"
+                  >
+                    <X className="size-5" />
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>{t(NOTE_CATEGORIES.find((c) => c.id === selectedNote.category)?.labelKey ?? 'notes.general')}</span>
+                  <span>|</span>
+                  <span>{new Date(selectedNote.updatedAt).toLocaleString()}</span>
+                </div>
+              </CardHeader>
+              <CardContent className="pb-3">
+                <Textarea
+                  value={selectedNote.content}
+                  onChange={(e) => updateNote({ ...selectedNote, content: e.target.value })}
+                  placeholder={t('notes.contentPlaceholder')}
+                  className="min-h-[55vh] resize-none overflow-y-auto overscroll-contain text-sm scrollbar-hidden"
                 />
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => deleteNote(selectedNote.id, selectedNote.title)}
-                  className="size-9 shrink-0 text-destructive hover:text-destructive"
-                >
-                  <X className="size-5" />
-                </Button>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>{t(NOTE_CATEGORIES.find((c) => c.id === selectedNote.category)?.labelKey ?? 'notes.general')}</span>
-                <span>|</span>
-                <span>{new Date(selectedNote.updatedAt).toLocaleString()}</span>
-              </div>
-            </CardHeader>
-            <CardContent className="flex-1 pb-3">
-              <Textarea
-                value={selectedNote.content}
-                onChange={(e) => updateNote({ ...selectedNote, content: e.target.value })}
-                placeholder={t('notes.contentPlaceholder')}
-                className="h-full min-h-[200px] resize-none overflow-y-auto text-sm scrollbar-hidden"
-              />
-            </CardContent>
-          </Card>
-        </PageShell>
+              </CardContent>
+            </Card>
+          </PageShell>
+        </div>
 
         <AlertDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog({ ...confirmDialog, open })}>
           <AlertDialogContent>
@@ -152,7 +154,7 @@ export function Notes({ notes, onChange }: NotesProps) {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </div>
+      </ScrollArea>
     )
   }
 
