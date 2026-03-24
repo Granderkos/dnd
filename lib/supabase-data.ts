@@ -4,6 +4,9 @@ import { emptyCharacter, emptyInventory, emptySpellbook } from './auth-types'
 import type { Character, Inventory, Spellbook } from './dnd-types'
 import type { Note } from '@/components/dnd/notes'
 import { supabase } from './supabase'
+import { generateClientId } from './client-id'
+
+const characterSaveQueue = new Map<string, Promise<void>>()
 
 export interface StoredMap {
   id: string
@@ -266,7 +269,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
     spellSaveDC: spellMeta.spellSaveDC || 0,
     spellAttackBonus: spellMeta.spellAttackBonus || 0,
     cantrips: (spellsData?.length ? (spellsData ?? []).filter((s) => s.is_cantrip).map((s) => ({
-      id: s.id,
+      id: s.client_id ?? s.id,
       name: s.title,
       level: 0,
       ritual: s.is_ritual,
@@ -280,7 +283,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       prepared: true,
     })) : fallbackSpellEntries.cantrips),
     spells: (spellsData?.length ? (spellsData ?? []).filter((s) => !s.is_cantrip).map((s) => ({
-      id: s.id,
+      id: s.client_id ?? s.id,
       name: s.title,
       level: Number(s.spell_level || 1),
       ritual: s.is_ritual,
@@ -300,7 +303,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
     items: (inventoryData?.length ? (inventoryData ?? []).map((item, index) => {
       const fallbackMatch = fallbackInventoryItems.find((blobItem) => blobItem.name === item.title && blobItem.description === (item.description ?? '') && blobItem.quantity === item.quantity) ?? fallbackInventoryItems[index]
       return {
-        id: item.id,
+        id: item.client_id ?? item.id,
         name: item.title,
         quantity: item.quantity,
         description: item.description,
@@ -320,156 +323,216 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
 
 export async function saveCurrentPlayerData(userId: string, payload: { character: Character; spellbook: Spellbook; inventory: Inventory; notes: Note[] }) {
   const characterId = await ensureCharacterRecord(userId)
-  const { character, spellbook, inventory, notes } = payload
+  const previous = characterSaveQueue.get(characterId) ?? Promise.resolve()
+  const saveTask = previous.then(async () => {
+    const { character, spellbook, inventory, notes } = payload
 
-  const row = {
-    id: characterId,
-    user_id: userId,
-    name: character.info.name,
-    class_name: character.info.class,
-    subclass: character.info.subclass,
-    race: character.info.race,
-    background: character.info.background,
-    alignment: character.info.alignment,
-    level: character.info.level,
-    xp: character.info.xp,
-    proficiency_bonus: character.proficiencyBonus,
-    armor_class: character.combat.armorClass,
-    initiative: character.combat.initiative,
-    speed: character.combat.speed,
-    hp_max: character.combat.maxHp,
-    hp_current: character.combat.currentHp,
-    hp_temp: character.combat.tempHp,
-    hit_dice_type: character.combat.hitDice,
-    hit_dice_total: 0,
-    death_successes: character.combat.deathSaves.successes.filter(Boolean).length,
-    death_failures: character.combat.deathSaves.failures.filter(Boolean).length,
-    str_score: character.abilities.STR.value,
-    dex_score: character.abilities.DEX.value,
-    con_score: character.abilities.CON.value,
-    int_score: character.abilities.INT.value,
-    wis_score: character.abilities.WIS.value,
-    cha_score: character.abilities.CHA.value,
-    save_str_prof: character.abilities.STR.proficient,
-    save_dex_prof: character.abilities.DEX.proficient,
-    save_con_prof: character.abilities.CON.proficient,
-    save_int_prof: character.abilities.INT.proficient,
-    save_wis_prof: character.abilities.WIS.proficient,
-    save_cha_prof: character.abilities.CHA.proficient,
-    skill_acrobatics_prof: findSkill(character, 'Acrobatics'),
-    skill_animal_handling_prof: findSkill(character, 'Animal Handling'),
-    skill_arcana_prof: findSkill(character, 'Arcana'),
-    skill_athletics_prof: findSkill(character, 'Athletics'),
-    skill_deception_prof: findSkill(character, 'Deception'),
-    skill_history_prof: findSkill(character, 'History'),
-    skill_insight_prof: findSkill(character, 'Insight'),
-    skill_intimidation_prof: findSkill(character, 'Intimidation'),
-    skill_investigation_prof: findSkill(character, 'Investigation'),
-    skill_medicine_prof: findSkill(character, 'Medicine'),
-    skill_nature_prof: findSkill(character, 'Nature'),
-    skill_perception_prof: findSkill(character, 'Perception'),
-    skill_performance_prof: findSkill(character, 'Performance'),
-    skill_persuasion_prof: findSkill(character, 'Persuasion'),
-    skill_religion_prof: findSkill(character, 'Religion'),
-    skill_sleight_of_hand_prof: findSkill(character, 'Sleight of Hand'),
-    skill_stealth_prof: findSkill(character, 'Stealth'),
-    skill_survival_prof: findSkill(character, 'Survival'),
-    features: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n'),
-    languages: character.languages,
-  }
+    const row = {
+      id: characterId,
+      user_id: userId,
+      name: character.info.name,
+      class_name: character.info.class,
+      subclass: character.info.subclass,
+      race: character.info.race,
+      background: character.info.background,
+      alignment: character.info.alignment,
+      level: character.info.level,
+      xp: character.info.xp,
+      proficiency_bonus: character.proficiencyBonus,
+      armor_class: character.combat.armorClass,
+      initiative: character.combat.initiative,
+      speed: character.combat.speed,
+      hp_max: character.combat.maxHp,
+      hp_current: character.combat.currentHp,
+      hp_temp: character.combat.tempHp,
+      hit_dice_type: character.combat.hitDice,
+      hit_dice_total: 0,
+      death_successes: character.combat.deathSaves.successes.filter(Boolean).length,
+      death_failures: character.combat.deathSaves.failures.filter(Boolean).length,
+      str_score: character.abilities.STR.value,
+      dex_score: character.abilities.DEX.value,
+      con_score: character.abilities.CON.value,
+      int_score: character.abilities.INT.value,
+      wis_score: character.abilities.WIS.value,
+      cha_score: character.abilities.CHA.value,
+      save_str_prof: character.abilities.STR.proficient,
+      save_dex_prof: character.abilities.DEX.proficient,
+      save_con_prof: character.abilities.CON.proficient,
+      save_int_prof: character.abilities.INT.proficient,
+      save_wis_prof: character.abilities.WIS.proficient,
+      save_cha_prof: character.abilities.CHA.proficient,
+      skill_acrobatics_prof: findSkill(character, 'Acrobatics'),
+      skill_animal_handling_prof: findSkill(character, 'Animal Handling'),
+      skill_arcana_prof: findSkill(character, 'Arcana'),
+      skill_athletics_prof: findSkill(character, 'Athletics'),
+      skill_deception_prof: findSkill(character, 'Deception'),
+      skill_history_prof: findSkill(character, 'History'),
+      skill_insight_prof: findSkill(character, 'Insight'),
+      skill_intimidation_prof: findSkill(character, 'Intimidation'),
+      skill_investigation_prof: findSkill(character, 'Investigation'),
+      skill_medicine_prof: findSkill(character, 'Medicine'),
+      skill_nature_prof: findSkill(character, 'Nature'),
+      skill_perception_prof: findSkill(character, 'Perception'),
+      skill_performance_prof: findSkill(character, 'Performance'),
+      skill_persuasion_prof: findSkill(character, 'Persuasion'),
+      skill_religion_prof: findSkill(character, 'Religion'),
+      skill_sleight_of_hand_prof: findSkill(character, 'Sleight of Hand'),
+      skill_stealth_prof: findSkill(character, 'Stealth'),
+      skill_survival_prof: findSkill(character, 'Survival'),
+      features: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n'),
+      languages: character.languages,
+    }
 
-  const { error: charError } = await supabase.from('characters').upsert(row)
-  if (charError) throw charError
+    const { error: charError } = await supabase.from('characters').upsert(row)
+    if (charError) throw charError
 
-  const allSpells = [...spellbook.cantrips.map((s) => ({ ...s, level: 0 })), ...spellbook.spells]
+    const normalizedInventory = dedupeByClientId(
+      inventory.items.map((item) => ({ ...item, id: item.id || generateClientId() }))
+    )
+    const allSpells = dedupeByClientId(
+      [...spellbook.cantrips.map((s) => ({ ...s, level: 0 })), ...spellbook.spells].map((spell) => ({
+        ...spell,
+        id: spell.id || generateClientId(),
+      }))
+    )
 
-  await upsertCharacterBlob(characterId, {
-    notes,
-    inventoryCurrency: inventory.currency,
-    spellbookMeta: {
-      spellcastingClass: spellbook.spellcastingClass,
-      spellcastingAbility: spellbook.spellcastingAbility,
-      spellSaveDC: spellbook.spellSaveDC,
-      spellAttackBonus: spellbook.spellAttackBonus,
-      slots: spellbook.slots,
-    },
-    spellbookEntries: {
-      cantrips: spellbook.cantrips,
-      spells: spellbook.spells,
-    },
-    inventoryItems: inventory.items,
-    attacks: character.attacks,
-    portraitUrl: character.info.portraitUrl,
-    featuresText: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n\n'),
-    raceFeatures: character.raceFeatures,
-    classFeatures: character.classFeatures,
-    backgroundFeatures: character.backgroundFeatures,
+    await upsertCharacterBlob(characterId, {
+      notes,
+      inventoryCurrency: inventory.currency,
+      spellbookMeta: {
+        spellcastingClass: spellbook.spellcastingClass,
+        spellcastingAbility: spellbook.spellcastingAbility,
+        spellSaveDC: spellbook.spellSaveDC,
+        spellAttackBonus: spellbook.spellAttackBonus,
+        slots: spellbook.slots,
+      },
+      spellbookEntries: {
+        cantrips: allSpells.filter((s) => s.level === 0),
+        spells: allSpells.filter((s) => s.level > 0),
+      },
+      inventoryItems: normalizedInventory,
+      attacks: character.attacks,
+      portraitUrl: character.info.portraitUrl,
+      featuresText: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n\n'),
+      raceFeatures: character.raceFeatures,
+      classFeatures: character.classFeatures,
+      backgroundFeatures: character.backgroundFeatures,
+    })
+
+    try {
+      const { error: attacksDeleteError } = await supabase.from('attacks').delete().eq('character_id', characterId)
+      if (attacksDeleteError) throw attacksDeleteError
+
+      if (character.attacks.length) {
+        const { error } = await supabase.from('attacks').insert(
+          character.attacks.map((attack, index) => ({
+            character_id: characterId,
+            sort_order: index,
+            name: attack.name,
+            attack_bonus: attack.attackBonus,
+            damage: [attack.damage, attack.damageType].filter(Boolean).join(' '),
+          }))
+        )
+        if (error) throw error
+      }
+
+      await syncInventoryRows(characterId, normalizedInventory)
+      await syncSpellRows(characterId, allSpells)
+    } catch (error) {
+      console.error('Normalized child-table sync failed, using blob fallback', error)
+    }
   })
 
+  const chained = saveTask.catch(() => {})
+  characterSaveQueue.set(characterId, chained)
   try {
-    const [{ error: attacksDeleteError }, { error: invDeleteError }, { error: spellsDeleteError }] = await Promise.all([
-      supabase.from('attacks').delete().eq('character_id', characterId),
-      supabase.from('inventory_items').delete().eq('character_id', characterId),
-      supabase.from('spells').delete().eq('character_id', characterId),
-    ])
-    if (attacksDeleteError) throw attacksDeleteError
-    if (invDeleteError) throw invDeleteError
-    if (spellsDeleteError) throw spellsDeleteError
-
-    if (character.attacks.length) {
-      const { error } = await supabase.from('attacks').insert(
-        character.attacks.map((attack, index) => ({
-          character_id: characterId,
-          sort_order: index,
-          name: attack.name,
-          attack_bonus: attack.attackBonus,
-          damage: [attack.damage, attack.damageType].filter(Boolean).join(' '),
-        }))
-      )
-      if (error) throw error
+    await saveTask
+  } finally {
+    if (characterSaveQueue.get(characterId) === chained) {
+      characterSaveQueue.delete(characterId)
     }
-
-    if (inventory.items.length) {
-      const { error } = await supabase.from('inventory_items').insert(
-        inventory.items.map((item, index) => ({
-          character_id: characterId,
-          sort_order: index,
-          title: item.name,
-          description: item.description,
-          quantity: item.quantity,
-        }))
-      )
-      if (error) throw error
-    }
-
-    if (allSpells.length) {
-      const { error } = await supabase.from('spells').insert(
-        allSpells.map((spell, index) => ({
-          character_id: characterId,
-          sort_order: index,
-          title: spell.name,
-          spell_level: String(spell.level),
-          casting_time: spell.castingTime,
-          range_text: spell.range,
-          components: '',
-          duration_text: spell.duration,
-          dice: spell.damage,
-          description: spell.description,
-          is_cantrip: spell.level === 0,
-          is_ritual: spell.ritual,
-          is_concentration: spell.concentration,
-          is_reaction: spell.reaction,
-        }))
-      )
-      if (error) throw error
-    }
-  } catch (error) {
-    console.error('Normalized child-table sync failed, using blob fallback', error)
   }
 }
 
 function findSkill(character: Character, name: string) {
   return character.skills.find((skill) => skill.name === name)?.proficient ?? false
+}
+
+async function syncInventoryRows(characterId: string, items: Inventory['items']) {
+  if (!items.length) {
+    const { error } = await supabase.from('inventory_items').delete().eq('character_id', characterId)
+    if (error) throw error
+    return
+  }
+
+  const rows = items.map((item, index) => ({
+    character_id: characterId,
+    client_id: item.id,
+    sort_order: index,
+    title: item.name,
+    description: item.description,
+    quantity: item.quantity,
+  }))
+  const { error: upsertError } = await supabase
+    .from('inventory_items')
+    .upsert(rows, { onConflict: 'character_id,client_id' })
+  if (upsertError) throw upsertError
+
+  const { error: deleteMissingError } = await supabase
+    .from('inventory_items')
+    .delete()
+    .eq('character_id', characterId)
+    .not('client_id', 'in', buildInFilter(items.map((item) => item.id)))
+  if (deleteMissingError) throw deleteMissingError
+}
+
+async function syncSpellRows(characterId: string, spells: Spellbook['spells'][number][]) {
+  if (!spells.length) {
+    const { error } = await supabase.from('spells').delete().eq('character_id', characterId)
+    if (error) throw error
+    return
+  }
+
+  const rows = spells.map((spell, index) => ({
+    character_id: characterId,
+    client_id: spell.id,
+    sort_order: index,
+    title: spell.name,
+    spell_level: String(spell.level),
+    casting_time: spell.castingTime,
+    range_text: spell.range,
+    components: '',
+    duration_text: spell.duration,
+    dice: spell.damage,
+    description: spell.description,
+    is_cantrip: spell.level === 0,
+    is_ritual: spell.ritual,
+    is_concentration: spell.concentration,
+    is_reaction: spell.reaction,
+  }))
+  const { error: upsertError } = await supabase
+    .from('spells')
+    .upsert(rows, { onConflict: 'character_id,client_id' })
+  if (upsertError) throw upsertError
+
+  const { error: deleteMissingError } = await supabase
+    .from('spells')
+    .delete()
+    .eq('character_id', characterId)
+    .not('client_id', 'in', buildInFilter(spells.map((spell) => spell.id)))
+  if (deleteMissingError) throw deleteMissingError
+}
+
+function dedupeByClientId<T extends { id: string }>(rows: T[]): T[] {
+  const map = new Map<string, T>()
+  for (const row of rows) {
+    map.set(row.id, row)
+  }
+  return Array.from(map.values())
+}
+
+function buildInFilter(values: string[]) {
+  return `(${values.map((value) => `"${value.replace(/"/g, '\\"')}"`).join(',')})`
 }
 
 export async function listPlayerCharacters() {
