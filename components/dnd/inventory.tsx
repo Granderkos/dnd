@@ -34,6 +34,7 @@ import { Plus, X, Minus, Package, Sword, Shield, Backpack, FlaskConical, ScrollT
 import { Inventory as InventoryType, InventoryItem, Currency } from '@/lib/dnd-types'
 import { useI18n } from '@/lib/i18n'
 import { PageShell } from '@/components/app/page-shell'
+import { generateClientId } from '@/lib/client-id'
 
 interface InventoryProps {
   inventory: InventoryType
@@ -337,7 +338,7 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
   const handleSubmit = () => {
     if (formData.name) {
       onSave({
-        id: item?.id || Date.now().toString(),
+        id: item?.id || generateClientId(),
         name: formData.name,
         quantity: formData.quantity || 1,
         description: formData.description || '',

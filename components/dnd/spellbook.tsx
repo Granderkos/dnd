@@ -41,6 +41,7 @@ import {
   formatFeetWithSquares,
 } from '@/lib/dnd-types'
 import { useI18n } from '@/lib/i18n'
+import { generateClientId } from '@/lib/client-id'
 
 interface SpellbookProps {
   spellbook: SpellbookType
@@ -366,7 +367,7 @@ function AddSpellDialog({ open, onOpenChange, level, onAdd }: AddSpellDialogProp
 
   const handleSubmit = () => {
     if (spell.name) {
-      onAdd({ ...spell, id: Date.now().toString(), level } as Spell)
+      onAdd({ ...spell, id: generateClientId(), level } as Spell)
       setSpell(initialSpell())
     }
   }
