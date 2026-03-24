@@ -313,6 +313,26 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
     currency: blob.inventoryCurrency || emptyInventory.currency,
   }
 
+  if (inventoryData?.length) {
+    console.info('[inventory:load] loaded inventory_items rows', {
+      count: inventoryData.length,
+      sample: inventoryData.slice(0, 5).map((item) => ({
+        client_id: item.client_id ?? item.id,
+        title: item.title,
+        quantity: item.quantity,
+      })),
+    })
+  } else {
+    console.info('[inventory:load] no inventory_items rows, using blob fallback', {
+      fallbackCount: fallbackInventoryItems.length,
+      fallbackSample: fallbackInventoryItems.slice(0, 5).map((item) => ({
+        client_id: item.id,
+        name: item.name,
+        quantity: item.quantity,
+      })),
+    })
+  }
+
   return {
     character,
     spellbook,
@@ -419,28 +439,34 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       backgroundFeatures: character.backgroundFeatures,
     })
 
-    try {
-      const { error: attacksDeleteError } = await supabase.from('attacks').delete().eq('character_id', characterId)
-      if (attacksDeleteError) throw attacksDeleteError
+    console.info('[inventory:save] payload snapshot', {
+      characterId,
+      rowCount: normalizedInventory.length,
+      sample: normalizedInventory.slice(0, 5).map((item) => ({
+        client_id: item.id,
+        name: item.name,
+        quantity: item.quantity,
+      })),
+    })
 
-      if (character.attacks.length) {
-        const { error } = await supabase.from('attacks').insert(
-          character.attacks.map((attack, index) => ({
-            character_id: characterId,
-            sort_order: index,
-            name: attack.name,
-            attack_bonus: attack.attackBonus,
-            damage: [attack.damage, attack.damageType].filter(Boolean).join(' '),
-          }))
-        )
-        if (error) throw error
-      }
+    const { error: attacksDeleteError } = await supabase.from('attacks').delete().eq('character_id', characterId)
+    if (attacksDeleteError) throw attacksDeleteError
 
-      await syncInventoryRows(characterId, normalizedInventory)
-      await syncSpellRows(characterId, allSpells)
-    } catch (error) {
-      console.error('Normalized child-table sync failed, using blob fallback', error)
+    if (character.attacks.length) {
+      const { error } = await supabase.from('attacks').insert(
+        character.attacks.map((attack, index) => ({
+          character_id: characterId,
+          sort_order: index,
+          name: attack.name,
+          attack_bonus: attack.attackBonus,
+          damage: [attack.damage, attack.damageType].filter(Boolean).join(' '),
+        }))
+      )
+      if (error) throw error
     }
+
+    await syncInventoryRows(characterId, normalizedInventory)
+    await syncSpellRows(characterId, allSpells)
   })
 
   const chained = saveTask.catch(() => {})
@@ -476,14 +502,39 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
   const { error: upsertError } = await supabase
     .from('inventory_items')
     .upsert(rows, { onConflict: 'character_id,client_id' })
-  if (upsertError) throw upsertError
+  if (upsertError) {
+    console.error('[inventory:save] upsert failed', {
+      characterId,
+      rowCount: rows.length,
+      sample: rows.slice(0, 5).map((row) => ({
+        client_id: row.client_id,
+        title: row.title,
+        quantity: row.quantity,
+      })),
+      error: upsertError,
+    })
+    throw upsertError
+  }
+  console.info('[inventory:save] upsert success', {
+    characterId,
+    rowCount: rows.length,
+    sample: rows.slice(0, 5).map((row) => ({
+      client_id: row.client_id,
+      title: row.title,
+      quantity: row.quantity,
+    })),
+  })
 
   const { error: deleteMissingError } = await supabase
     .from('inventory_items')
     .delete()
     .eq('character_id', characterId)
     .not('client_id', 'in', buildInFilter(items.map((item) => item.id)))
-  if (deleteMissingError) throw deleteMissingError
+  if (deleteMissingError) {
+    console.error('[inventory:save] delete missing rows failed', { characterId, error: deleteMissingError })
+    throw deleteMissingError
+  }
+  console.info('[inventory:save] delete missing rows success', { characterId })
 }
 
 async function syncSpellRows(characterId: string, spells: Spellbook['spells'][number][]) {
@@ -513,14 +564,20 @@ async function syncSpellRows(characterId: string, spells: Spellbook['spells'][nu
   const { error: upsertError } = await supabase
     .from('spells')
     .upsert(rows, { onConflict: 'character_id,client_id' })
-  if (upsertError) throw upsertError
+  if (upsertError) {
+    console.error('[spells:save] upsert failed', { characterId, rowCount: rows.length, error: upsertError })
+    throw upsertError
+  }
 
   const { error: deleteMissingError } = await supabase
     .from('spells')
     .delete()
     .eq('character_id', characterId)
     .not('client_id', 'in', buildInFilter(spells.map((spell) => spell.id)))
-  if (deleteMissingError) throw deleteMissingError
+  if (deleteMissingError) {
+    console.error('[spells:save] delete missing rows failed', { characterId, error: deleteMissingError })
+    throw deleteMissingError
+  }
 }
 
 function dedupeByClientId<T extends { id: string }>(rows: T[]): T[] {
