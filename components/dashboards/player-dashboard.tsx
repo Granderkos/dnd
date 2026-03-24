@@ -89,6 +89,7 @@ const defaultMapSettings: MapSettings = {
   panX: 0,
   panY: 0,
 }
+const PLAYER_TAB_STORAGE_KEY = 'dnd:player-active-tab'
 
 export const PlayerDashboard = memo(function PlayerDashboard() {
   const { user, logout, updateCurrentPage } = useAuth()
@@ -100,6 +101,15 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [inventory, setInventory] = useState<InventoryType>(emptyInventory)
   const [notes, setNotes] = useState<Note[]>([])
   const [mapSettings, setMapSettings] = useState<MapSettings>(defaultMapSettings)
+
+  useEffect(() => {
+    const storedTab = window.localStorage.getItem(PLAYER_TAB_STORAGE_KEY)
+    if (storedTab) setActiveTab(storedTab)
+  }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem(PLAYER_TAB_STORAGE_KEY, activeTab)
+  }, [activeTab])
 
   useEffect(() => {
     if (!user?.id) return
@@ -129,7 +139,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
 
   const flushSave = useDebouncedRemoteSave(
     { character, spellbook, inventory, notes },
-    500,
+    800,
     isLoaded && !!user?.id,
     async (payload) => {
       if (!user?.id) return
@@ -144,11 +154,11 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   useEffect(() => {
     if (!isLoaded) return
     flushSave()
-  }, [activeTab, isLoaded, flushSave])
+  }, [isLoaded, flushSave])
 
   if (!isLoaded) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex min-h-dvh items-center justify-center">
         <div className="text-center">
           <div className="mb-4 size-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
           <p className="text-muted-foreground">{t('dashboard.loadingCharacter')}</p>
@@ -158,13 +168,13 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   }
 
   return (
-    <main className="min-h-screen bg-background">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-screen flex-col">
+    <main className="min-h-dvh bg-background">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-dvh flex-col">
         <header className="border-b border-border bg-card px-3 py-3">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold uppercase tracking-[0.08em] text-primary truncate max-w-[180px]">
-                {character.info.name || user?.username || 'Character'}
+                {character.info.name || user?.username || t('character.name')}
               </span>
             </div>
             <div className="flex items-center gap-1">

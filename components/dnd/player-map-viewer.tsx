@@ -7,6 +7,7 @@ import { ZoomIn, ZoomOut, Maximize2, RotateCcw, MapIcon } from 'lucide-react'
 import { MapSettings } from '@/lib/dnd-types'
 import { getActiveMap } from '@/lib/supabase-data'
 import type { StoredMap } from '@/lib/supabase-data'
+import { useI18n } from '@/lib/i18n'
 
 interface PlayerMapViewerProps {
   settings: MapSettings
@@ -14,24 +15,31 @@ interface PlayerMapViewerProps {
 }
 
 export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSettingsChange }: PlayerMapViewerProps) {
+  const { t } = useI18n()
   const [activeMap, setActiveMap] = useState<StoredMap | null>(null)
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const isDragging = useRef(false)
   const lastPos = useRef({ x: 0, y: 0 })
+  const pinchStartDistance = useRef(0)
+  const pinchStartZoom = useRef(1)
 
   useEffect(() => {
     const loadActiveMap = async () => {
       try {
         const map = await getActiveMap()
-        if (map) setActiveMap(map)
-        else setActiveMap(null)
+        setActiveMap((prev) => {
+          const next = map ?? null
+          if (!prev && !next) return prev
+          if (prev && next && prev.id === next.id && prev.imageData === next.imageData && prev.name === next.name) return prev
+          return next
+        })
       } catch (e) {
         console.error('Failed to load active map', e)
       }
     }
     void loadActiveMap()
-    const interval = setInterval(() => void loadActiveMap(), 5000)
+    const interval = setInterval(() => void loadActiveMap(), 10000)
     return () => clearInterval(interval)
   }, [])
 
@@ -46,27 +54,58 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
     onSettingsChange({ ...settings, panX: settings.panX + dx, panY: settings.panY + dy })
   }, [settings, onSettingsChange])
   const handleMouseUp = useCallback(() => { isDragging.current = false }, [])
-  const handleTouchStart = useCallback((e: React.TouchEvent) => { if (e.touches.length === 1) { isDragging.current = true; lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY } } }, [])
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const a = e.touches[0]
+      const b = e.touches[1]
+      pinchStartDistance.current = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+      pinchStartZoom.current = settings.zoom
+      isDragging.current = false
+      return
+    }
+    if (e.touches.length === 1) {
+      isDragging.current = true
+      lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+    }
+  }, [settings.zoom])
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const a = e.touches[0]
+      const b = e.touches[1]
+      const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+      if (pinchStartDistance.current > 0) {
+        const nextZoom = pinchStartZoom.current * (distance / pinchStartDistance.current)
+        onSettingsChange({ ...settings, zoom: Math.max(0.25, Math.min(4, nextZoom)) })
+      }
+      return
+    }
     if (!isDragging.current || e.touches.length !== 1) return
     const dx = e.touches[0].clientX - lastPos.current.x
     const dy = e.touches[0].clientY - lastPos.current.y
     lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
     onSettingsChange({ ...settings, panX: settings.panX + dx, panY: settings.panY + dy })
   }, [settings, onSettingsChange])
-  const handleTouchEnd = useCallback(() => { isDragging.current = false }, [])
+  const handleTouchEnd = useCallback(() => {
+    isDragging.current = false
+    pinchStartDistance.current = 0
+  }, [])
   const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen()
-      setIsFullscreen(true)
+    if (!document.fullscreenElement && containerRef.current?.requestFullscreen) {
+      void containerRef.current.requestFullscreen()
     } else {
-      document.exitFullscreen()
-      setIsFullscreen(false)
+      if (document.fullscreenElement) {
+        void document.exitFullscreen()
+      } else {
+        setIsPseudoFullscreen((prev) => !prev)
+      }
     }
   }, [])
 
   useEffect(() => {
-    const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement)
+    const handleFullscreenChange = () => {
+      const active = !!document.fullscreenElement
+      if (active) setIsPseudoFullscreen(false)
+    }
     document.addEventListener('fullscreenchange', handleFullscreenChange)
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
@@ -76,15 +115,15 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
       <ScrollArea className="h-full">
         <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-4">
           <MapIcon className="size-16 text-muted-foreground mb-4" />
-          <p className="text-muted-foreground text-center">No map selected by DM</p>
-          <p className="text-sm text-muted-foreground text-center mt-2">Wait for the DM to select a map</p>
+          <p className="text-muted-foreground text-center">{t('map.noMapSelected')}</p>
+          <p className="text-sm text-muted-foreground text-center mt-2">{t('map.waitForDm')}</p>
         </div>
       </ScrollArea>
     )
   }
 
   return (
-    <div ref={containerRef} className="h-full flex flex-col bg-background">
+    <div ref={containerRef} className={`${isPseudoFullscreen ? 'fixed inset-0 z-50 h-dvh' : 'h-full'} flex flex-col bg-background`}>
       <div className="flex items-center justify-between p-2 border-b bg-card">
         <span className="text-sm font-medium truncate max-w-[150px]">{activeMap.name}</span>
         <div className="flex items-center gap-1">

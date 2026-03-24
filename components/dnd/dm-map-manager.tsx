@@ -7,13 +7,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { ZoomIn, ZoomOut, Maximize2, RotateCcw, Upload, Trash2, Eye, MapIcon, Check, X } from 'lucide-react'
 import { createMap, deleteMap, loadMaps, setActiveMap as setActiveMapRemote } from '@/lib/supabase-data'
 import type { StoredMap } from '@/lib/supabase-data'
 import { useAuth } from '@/lib/auth-context'
+import { useI18n } from '@/lib/i18n'
 
 interface MapViewSettings {
   zoom: number
@@ -35,11 +35,12 @@ const defaultViewSettings: MapViewSettings = {
 
 export const DMMapManager = memo(function DMMapManager() {
   const { user } = useAuth()
+  const { t } = useI18n()
   const [maps, setMaps] = useState<StoredMap[]>([])
   const [activeMapId, setActiveMapId] = useState<string | null>(null)
   const [viewingMap, setViewingMap] = useState<StoredMap | null>(null)
   const [viewSettings, setViewSettings] = useState<MapViewSettings>(defaultViewSettings)
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false)
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const [deleteConfirmMap, setDeleteConfirmMap] = useState<StoredMap | null>(null)
   const [newMapName, setNewMapName] = useState('')
@@ -50,6 +51,8 @@ export const DMMapManager = memo(function DMMapManager() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isDragging = useRef(false)
   const lastPos = useRef({ x: 0, y: 0 })
+  const pinchStartDistance = useRef(0)
+  const pinchStartZoom = useRef(1)
 
   const refreshMaps = useCallback(async () => {
     try {
@@ -144,36 +147,67 @@ export const DMMapManager = memo(function DMMapManager() {
     setViewSettings((prev) => ({ ...prev, panX: prev.panX + dx, panY: prev.panY + dy }))
   }, [])
   const handleMouseUp = useCallback(() => { isDragging.current = false }, [])
-  const handleTouchStart = useCallback((e: React.TouchEvent) => { if (e.touches.length === 1) { isDragging.current = true; lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY } } }, [])
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const a = e.touches[0]
+      const b = e.touches[1]
+      pinchStartDistance.current = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+      pinchStartZoom.current = viewSettings.zoom
+      isDragging.current = false
+      return
+    }
+    if (e.touches.length === 1) {
+      isDragging.current = true
+      lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+    }
+  }, [viewSettings.zoom])
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const a = e.touches[0]
+      const b = e.touches[1]
+      const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+      if (pinchStartDistance.current > 0) {
+        const nextZoom = pinchStartZoom.current * (distance / pinchStartDistance.current)
+        setViewSettings((prev) => ({ ...prev, zoom: Math.max(0.1, Math.min(5, nextZoom)) }))
+      }
+      return
+    }
     if (!isDragging.current || e.touches.length !== 1) return
     const dx = e.touches[0].clientX - lastPos.current.x
     const dy = e.touches[0].clientY - lastPos.current.y
     lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
     setViewSettings((prev) => ({ ...prev, panX: prev.panX + dx, panY: prev.panY + dy }))
   }, [])
-  const handleTouchEnd = useCallback(() => { isDragging.current = false }, [])
+  const handleTouchEnd = useCallback(() => {
+    isDragging.current = false
+    pinchStartDistance.current = 0
+  }, [])
   const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen()
-      setIsFullscreen(true)
+    if (!document.fullscreenElement && containerRef.current?.requestFullscreen) {
+      void containerRef.current.requestFullscreen()
     } else {
-      document.exitFullscreen()
-      setIsFullscreen(false)
+      if (document.fullscreenElement) {
+        void document.exitFullscreen()
+      } else {
+        setIsPseudoFullscreen((prev) => !prev)
+      }
     }
   }, [])
 
   useEffect(() => {
-    const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement)
+    const handleFullscreenChange = () => {
+      const active = !!document.fullscreenElement
+      if (active) setIsPseudoFullscreen(false)
+    }
     document.addEventListener('fullscreenchange', handleFullscreenChange)
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
 
   if (viewingMap) {
     return (
-      <div ref={containerRef} className="h-full flex flex-col bg-background">
+      <div ref={containerRef} className={`${isPseudoFullscreen ? 'fixed inset-0 z-50 h-dvh' : 'h-full'} flex flex-col bg-background`}>
         <div className="flex flex-wrap items-center gap-2 p-2 border-b bg-card">
-          <Button variant="ghost" size="sm" onClick={() => setViewingMap(null)}><X className="size-4 mr-1" />Close</Button>
+          <Button variant="ghost" size="sm" onClick={() => setViewingMap(null)}><X className="size-4 mr-1" />{t('common.close')}</Button>
           <div className="flex items-center gap-1">
             <Button size="icon" variant="ghost" className="size-8" onClick={() => handleZoom(-0.25)}><ZoomOut className="size-4" /></Button>
             <span className="text-xs w-12 text-center">{Math.round(viewSettings.zoom * 100)}%</span>
@@ -183,7 +217,7 @@ export const DMMapManager = memo(function DMMapManager() {
           </div>
           <div className="flex items-center gap-2 ml-auto">
             <Switch checked={viewSettings.gridEnabled} onCheckedChange={(checked) => setViewSettings((prev) => ({ ...prev, gridEnabled: checked }))} />
-            <Label className="text-xs">Grid</Label>
+            <Label className="text-xs">{t('map.grid')}</Label>
             {viewSettings.gridEnabled && (
               <>
                 <Input type="number" value={viewSettings.gridSize} onChange={(e) => setViewSettings((prev) => ({ ...prev, gridSize: parseInt(e.target.value) || 50 }))} className="w-16 h-7 text-xs" min={10} max={200} />
@@ -207,24 +241,23 @@ export const DMMapManager = memo(function DMMapManager() {
   }
 
   return (
-    <ScrollArea className="h-full">
-      <div className="p-3 space-y-3">
+    <div className="h-full min-h-0 overflow-y-auto p-3 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Maps</h2>
+          <h2 className="text-lg font-semibold">{t('nav.maps')}</h2>
           <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-            <DialogTrigger asChild><Button size="sm"><Upload className="size-4 mr-1" />Upload</Button></DialogTrigger>
+            <DialogTrigger asChild><Button size="sm"><Upload className="size-4 mr-1" />{t('map.upload')}</Button></DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Upload New Map</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t('map.uploadNewMap')}</DialogTitle></DialogHeader>
               <div className="space-y-4">
-                <div className="space-y-2"><Label>Map Name</Label><Input value={newMapName} onChange={(e) => setNewMapName(e.target.value)} placeholder="Enter map name" /></div>
-                <div className="space-y-2"><Label>Image File</Label><Input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} /></div>
-                <Button onClick={() => void handleUpload()} disabled={!newMapFile || !newMapName.trim() || isUploading} className="w-full">{isUploading ? 'Uploading...' : 'Upload Map'}</Button>
+                <div className="space-y-2"><Label>{t('map.mapName')}</Label><Input value={newMapName} onChange={(e) => setNewMapName(e.target.value)} placeholder={t('map.enterMapName')} /></div>
+                <div className="space-y-2"><Label>{t('map.imageFile')}</Label><Input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} /></div>
+                <Button onClick={() => void handleUpload()} disabled={!newMapFile || !newMapName.trim() || isUploading} className="w-full">{isUploading ? t('map.uploading') : t('map.uploadMap')}</Button>
               </div>
             </DialogContent>
           </Dialog>
         </div>
         {maps.length === 0 ? (
-          <Card><CardContent className="py-8 text-center"><MapIcon className="size-12 text-muted-foreground mx-auto mb-3" /><p className="text-muted-foreground">No maps uploaded yet</p><p className="text-sm text-muted-foreground mt-1">Upload a map to get started</p></CardContent></Card>
+          <Card><CardContent className="py-8 text-center"><MapIcon className="size-12 text-muted-foreground mx-auto mb-3" /><p className="text-muted-foreground">{t('map.noMapsYet')}</p><p className="text-sm text-muted-foreground mt-1">{t('map.uploadToStart')}</p></CardContent></Card>
         ) : (
           <div className="space-y-2">
             {maps.map((map) => (
@@ -234,9 +267,9 @@ export const DMMapManager = memo(function DMMapManager() {
                     <div className="size-12 rounded bg-muted overflow-hidden shrink-0">{map.imageData ? <img src={map.imageData} alt={map.name} className="size-full object-cover" /> : null}</div>
                     <div className="flex-1 min-w-0"><p className="font-medium truncate">{map.name}</p><p className="text-xs text-muted-foreground">{new Date(map.createdAt).toLocaleDateString()}</p></div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <Button size="icon" variant={activeMapId === map.id ? 'default' : 'outline'} className="size-8" onClick={() => void setActiveMap(activeMapId === map.id ? null : map.id)} title={activeMapId === map.id ? 'Active for players' : 'Set active for players'}><Check className="size-4" /></Button>
-                      <Button size="icon" variant="ghost" className="size-8" onClick={() => handleViewMap(map)} title="View map"><Eye className="size-4" /></Button>
-                      <Button size="icon" variant="ghost" className="size-8 text-destructive hover:text-destructive" onClick={() => setDeleteConfirmMap(map)} title="Delete map"><Trash2 className="size-4" /></Button>
+                      <Button size="icon" variant={activeMapId === map.id ? 'default' : 'outline'} className="size-8" onClick={() => void setActiveMap(activeMapId === map.id ? null : map.id)} title={activeMapId === map.id ? t('map.activeForPlayers') : t('map.setActiveForPlayers')}><Check className="size-4" /></Button>
+                      <Button size="icon" variant="ghost" className="size-8" onClick={() => handleViewMap(map)} title={t('map.viewMap')}><Eye className="size-4" /></Button>
+                      <Button size="icon" variant="ghost" className="size-8 text-destructive hover:text-destructive" onClick={() => setDeleteConfirmMap(map)} title={t('map.deleteMap')}><Trash2 className="size-4" /></Button>
                     </div>
                   </div>
                 </CardContent>
@@ -244,14 +277,13 @@ export const DMMapManager = memo(function DMMapManager() {
             ))}
           </div>
         )}
-        {activeMapId && <p className="text-xs text-muted-foreground text-center">Active map is visible to all players</p>}
-      </div>
-      <AlertDialog open={!!deleteConfirmMap} onOpenChange={() => setDeleteConfirmMap(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Delete Map</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete "{deleteConfirmMap?.name}"? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => deleteConfirmMap && void handleDelete(deleteConfirmMap)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </ScrollArea>
+        {activeMapId && <p className="text-xs text-muted-foreground text-center">{t('map.activeVisibleToPlayers')}</p>}
+        <AlertDialog open={!!deleteConfirmMap} onOpenChange={() => setDeleteConfirmMap(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader><AlertDialogTitle>{t('map.deleteMap')}</AlertDialogTitle><AlertDialogDescription>{t('map.deleteMapDescription', { name: deleteConfirmMap?.name || '' })}</AlertDialogDescription></AlertDialogHeader>
+            <AlertDialogFooter><AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel><AlertDialogAction onClick={() => deleteConfirmMap && void handleDelete(deleteConfirmMap)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">{t('common.delete')}</AlertDialogAction></AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+    </div>
   )
 })
