@@ -4,7 +4,6 @@ import { useState, memo, useCallback, useMemo, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
@@ -85,8 +84,8 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
   const updateItem = useCallback((item: InventoryItem) => {
     setConfirmDialog({
       open: true,
-      title: 'Save Changes',
-      description: `Save changes to "${item.name}"?`,
+      title: t('inventory.saveChanges'),
+      description: t('inventory.saveChangesDescription', { name: item.name }),
       onConfirm: () => {
         onChange({
           ...inventory,
@@ -95,13 +94,13 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         setEditingItem(null)
       },
     })
-  }, [inventory, onChange])
+  }, [inventory, onChange, t])
 
   const deleteItem = useCallback((id: string, name: string) => {
     setConfirmDialog({
       open: true,
-      title: 'Delete Item',
-      description: `Delete "${name}"?`,
+      title: t('inventory.deleteItem'),
+      description: t('inventory.deleteItemDescription', { name }),
       onConfirm: () => {
         onChange({
           ...inventory,
@@ -109,7 +108,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         })
       },
     })
-  }, [inventory, onChange])
+  }, [inventory, onChange, t])
 
   const adjustQuantity = useCallback((id: string, amount: number) => {
     onChange({
@@ -147,7 +146,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
   ).toFixed(2), [inventory.currency])
 
   return (
-    <ScrollArea className="h-[calc(100vh-4rem)]">
+    <div className="h-full min-h-0 overflow-y-auto">
       <div className="px-3 py-4"><PageShell><div className="flex flex-col gap-4 pb-24">
         {/* Currency */}
         <Card>
@@ -248,7 +247,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </ScrollArea>
+    </div>
   )
 }
 
@@ -360,7 +359,7 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
       <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{item ? t('inventory.editItem') : t('inventory.addItem')}</DialogTitle>
-          <DialogDescription className="sr-only">Enter item details</DialogDescription>
+          <DialogDescription className="sr-only">{t('inventory.enterItemDetails')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
