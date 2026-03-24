@@ -7,6 +7,7 @@ import { ZoomIn, ZoomOut, Maximize2, RotateCcw, MapIcon } from 'lucide-react'
 import { MapSettings } from '@/lib/dnd-types'
 import { getActiveMap } from '@/lib/supabase-data'
 import type { StoredMap } from '@/lib/supabase-data'
+import { useI18n } from '@/lib/i18n'
 
 interface PlayerMapViewerProps {
   settings: MapSettings
@@ -14,6 +15,7 @@ interface PlayerMapViewerProps {
 }
 
 export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSettingsChange }: PlayerMapViewerProps) {
+  const { t } = useI18n()
   const [activeMap, setActiveMap] = useState<StoredMap | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -76,8 +78,8 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
       <ScrollArea className="h-full">
         <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-4">
           <MapIcon className="size-16 text-muted-foreground mb-4" />
-          <p className="text-muted-foreground text-center">No map selected by DM</p>
-          <p className="text-sm text-muted-foreground text-center mt-2">Wait for the DM to select a map</p>
+          <p className="text-muted-foreground text-center">{t('map.noMapSelected')}</p>
+          <p className="text-sm text-muted-foreground text-center mt-2">{t('map.waitForDm')}</p>
         </div>
       </ScrollArea>
     )
