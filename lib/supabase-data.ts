@@ -370,9 +370,9 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
     const spellcastingScore = character.abilities[spellbook.spellcastingAbility]?.value ?? 10
     const derivedSpellSaveDC = calculateSpellSaveDC(character.proficiencyBonus, spellcastingScore)
     const derivedSpellAttackBonus = calculateSpellAttackBonus(character.proficiencyBonus, spellcastingScore)
-    const derivedInitiativeBase = calculateModifier(character.abilities.DEX.value)
-    const derivedInitiativeRoll = character.combat.initiativeRoll ?? 0
-    const derivedInitiativeTotal = derivedInitiativeBase + derivedInitiativeRoll
+    const initiativeModifier = calculateModifier(character.abilities.DEX.value)
+    const initiativeRoll = character.combat.initiativeRoll ?? 0
+    const initiativeTotal = initiativeModifier + initiativeRoll
 
     const row = {
       id: characterId,
@@ -387,7 +387,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       xp: character.info.xp,
       proficiency_bonus: character.proficiencyBonus,
       armor_class: character.combat.armorClass,
-      initiative: derivedInitiativeTotal,
+      initiative: initiativeTotal,
       speed: character.combat.speed,
       hp_max: character.combat.maxHp,
       hp_current: character.combat.currentHp,
