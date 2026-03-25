@@ -594,17 +594,17 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
 
             {/* HP Section */}
             <div className="mt-3 rounded-lg border border-border bg-background/70 p-4">
-              <div className="grid grid-cols-3 items-end gap-3">
-                <div className="flex w-full flex-col items-center justify-end">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:items-end">
+                <div className="order-2 flex w-full flex-col items-center justify-end sm:order-1">
                   <span className="text-xs uppercase text-muted-foreground">{t('character.combat.max')}</span>
                   <Input
                     type="number"
                     value={character.combat.maxHp}
                     onChange={(e) => updateCombat('maxHp', parseInt(e.target.value) || 1)}
-                    className="h-9 w-full max-w-24 text-center text-base font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    className="h-9 w-full max-w-20 text-center text-base font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none sm:max-w-24"
                   />
                 </div>
-                <div className="flex w-full flex-col items-center justify-end">
+                <div className="order-1 col-span-2 flex w-full flex-col items-center justify-end sm:order-2 sm:col-span-1">
                   <Heart className="mb-1 size-6 text-red-500" />
                   <div className="flex items-center gap-1">
                     <Button
@@ -631,14 +631,14 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                     </Button>
                   </div>
                 </div>
-                <div className="flex w-full flex-col items-center justify-end">
+                <div className="order-3 flex w-full flex-col items-center justify-end">
                   <span className="text-xs uppercase text-muted-foreground">{t('character.combat.temp')}</span>
                     <Input
                       type="number"
                       min={0}
                       value={character.combat.tempHp}
                       onChange={(e) => updateCombat('tempHp', parseInt(e.target.value) || 0)}
-                      className="h-9 w-full max-w-24 text-center text-base font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      className="h-9 w-full max-w-20 text-center text-base font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none sm:max-w-24"
                     />
                 </div>
               </div>
