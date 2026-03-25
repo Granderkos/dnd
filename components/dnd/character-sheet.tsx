@@ -341,6 +341,10 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
   const initiativeModifier = calculateModifier(character.abilities.DEX.value)
   const initiativeRoll = character.combat.initiativeRoll ?? 0
   const initiativeTotal = initiativeModifier + initiativeRoll
+  // Compatibility aliases during rollout to avoid ReferenceError from stale refs.
+  const derivedInitiativeBase = initiativeModifier
+  const derivedInitiativeRoll = initiativeRoll
+  const derivedInitiativeTotal = initiativeTotal
   const speedValueText = language === 'cs'
     ? `${(character.combat.speed * 0.3048).toFixed(1)} m (${speedInSquares} polí)`
     : `${character.combat.speed} ft (${speedInSquares} sq)`
