@@ -484,7 +484,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 return (
                   <div
                     key={ability}
-                    className="flex w-[104px] md:w-[120px] flex-col items-center rounded border bg-muted/30 p-1.5 md:p-2"
+                    className="flex w-[104px] md:w-[120px] flex-col items-center rounded border bg-muted/30 p-1.5 text-center md:p-2"
                   >
                     <span className="text-xs font-medium text-muted-foreground">{ability}</span>
                     <span className="text-xl font-bold md:text-2xl">{formatModifier(mod)}</span>
@@ -533,7 +533,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                         onCheckedChange={() => toggleSkillProficiency(index)}
                         className="size-5"
                       />
-                      <span className="w-8 text-right font-mono text-sm font-medium">
+                      <span className="w-10 text-center font-mono text-sm font-medium">
                         {formatModifier(total)}
                       </span>
                       <span className="text-sm">
@@ -595,16 +595,16 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
             {/* HP Section */}
             <div className="mt-3 rounded-lg border border-border bg-background/70 p-4">
               <div className="grid grid-cols-3 items-end gap-3">
-                <div className="flex flex-col items-center justify-end">
+                <div className="flex w-full flex-col items-center justify-end">
                   <span className="text-xs uppercase text-muted-foreground">{t('character.combat.max')}</span>
                   <Input
                     type="number"
                     value={character.combat.maxHp}
                     onChange={(e) => updateCombat('maxHp', parseInt(e.target.value) || 1)}
-                    className="h-9 w-20 text-center text-base font-semibold"
+                    className="h-9 w-full max-w-24 text-center text-base font-semibold"
                   />
                 </div>
-                <div className="flex flex-col items-center justify-end">
+                <div className="flex w-full flex-col items-center justify-end">
                   <Heart className="mb-1 size-6 text-red-500" />
                   <div className="flex items-center gap-1">
                     <Button
@@ -631,14 +631,14 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                     </Button>
                   </div>
                 </div>
-                <div className="flex flex-col items-center justify-end">
+                <div className="flex w-full flex-col items-center justify-end">
                   <span className="text-xs uppercase text-muted-foreground">{t('character.combat.temp')}</span>
                     <Input
                       type="number"
                       min={0}
                       value={character.combat.tempHp}
                       onChange={(e) => updateCombat('tempHp', parseInt(e.target.value) || 0)}
-                      className="h-9 w-20 text-center text-base font-semibold"
+                      className="h-9 w-full max-w-24 text-center text-base font-semibold"
                     />
                 </div>
               </div>
