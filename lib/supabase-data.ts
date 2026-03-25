@@ -1,9 +1,13 @@
 'use client'
 
 import { emptyCharacter, emptyInventory, emptySpellbook } from './auth-types'
+import { calculateModifier, calculateSpellAttackBonus, calculateSpellSaveDC } from './dnd-types'
 import type { Character, Inventory, Spellbook } from './dnd-types'
 import type { Note } from '@/components/dnd/notes'
 import { supabase } from './supabase'
+import { generateClientId } from './client-id'
+
+const characterSaveQueue = new Map<string, Promise<void>>()
 
 export interface StoredMap {
   id: string
@@ -152,6 +156,12 @@ function notesBlobToText(blob: CharacterNotesBlob) {
   return JSON.stringify(blob)
 }
 
+function getPerceptionModifier(character: Character): number {
+  const wisMod = calculateModifier(character.abilities.WIS.value)
+  const perceptionSkill = character.skills.find((skill) => skill.name === 'Perception')
+  return wisMod + (perceptionSkill?.proficient ? character.proficiencyBonus : 0)
+}
+
 async function getCharacterBlob(characterId: string): Promise<CharacterNotesBlob> {
   const { data, error } = await supabase
     .from('character_notes')
@@ -208,6 +218,12 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
   const fallbackSpellEntries = blob.spellbookEntries ?? emptyBlob().spellbookEntries!
   const fallbackInventoryItems = blob.inventoryItems ?? emptyInventory.items
   const fallbackAttacks = blob.attacks ?? emptyCharacter.attacks
+  const hasNormalizedSpells = Boolean(spellsData?.length)
+  const hasNormalizedInventory = Boolean(inventoryData?.length)
+  const fallbackPreparedById = new Map(
+    [...fallbackSpellEntries.cantrips, ...fallbackSpellEntries.spells]
+      .map((spell) => [spell.id, spell.prepared] as const)
+  )
 
   const character: Character = {
     info: {
@@ -232,8 +248,11 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
     proficiencyBonus: row.proficiency_bonus ?? 2,
     skills,
     combat: {
+      initiativeBase: calculateModifier(row.dex_score ?? 10),
+      initiativeRoll: 0,
+      initiativeTotal: calculateModifier(row.dex_score ?? 10),
       armorClass: row.armor_class ?? 10,
-      initiative: row.initiative ?? 0,
+      initiative: calculateModifier(row.dex_score ?? 10),
       speed: row.speed ?? 30,
       maxHp: row.hp_max ?? 0,
       currentHp: row.hp_current ?? 0,
@@ -258,15 +277,20 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
     languages: row.languages ?? '',
     passivePerception: 10,
   }
+  character.passivePerception = 10 + getPerceptionModifier(character)
 
   const spellMeta = blob.spellbookMeta ?? emptyBlob().spellbookMeta
+  const spellAbility = spellMeta.spellcastingAbility || 'INT'
+  const spellAbilityScore = row[`${spellAbility.toLowerCase()}_score` as keyof typeof row] as number | null
+  const fallbackSpellSaveDC = calculateSpellSaveDC(row.proficiency_bonus ?? 2, spellAbilityScore ?? 10)
+  const fallbackSpellAttackBonus = calculateSpellAttackBonus(row.proficiency_bonus ?? 2, spellAbilityScore ?? 10)
   const spellbook: Spellbook = {
     spellcastingClass: spellMeta.spellcastingClass || row.class_name || '',
-    spellcastingAbility: spellMeta.spellcastingAbility || 'INT',
-    spellSaveDC: spellMeta.spellSaveDC || 0,
-    spellAttackBonus: spellMeta.spellAttackBonus || 0,
-    cantrips: (spellsData?.length ? (spellsData ?? []).filter((s) => s.is_cantrip).map((s) => ({
-      id: s.id,
+    spellcastingAbility: spellAbility,
+    spellSaveDC: spellMeta.spellSaveDC ?? fallbackSpellSaveDC,
+    spellAttackBonus: spellMeta.spellAttackBonus ?? fallbackSpellAttackBonus,
+    cantrips: (hasNormalizedSpells ? (spellsData ?? []).filter((s) => s.is_cantrip).map((s) => ({
+      id: s.client_id ?? s.id,
       name: s.title,
       level: 0,
       ritual: s.is_ritual,
@@ -277,10 +301,10 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       duration: s.duration_text,
       description: s.description,
       damage: s.dice,
-      prepared: true,
+      prepared: fallbackPreparedById.get(s.client_id ?? s.id) ?? true,
     })) : fallbackSpellEntries.cantrips),
-    spells: (spellsData?.length ? (spellsData ?? []).filter((s) => !s.is_cantrip).map((s) => ({
-      id: s.id,
+    spells: (hasNormalizedSpells ? (spellsData ?? []).filter((s) => !s.is_cantrip).map((s) => ({
+      id: s.client_id ?? s.id,
       name: s.title,
       level: Number(s.spell_level || 1),
       ritual: s.is_ritual,
@@ -291,16 +315,16 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       duration: s.duration_text,
       description: s.description,
       damage: s.dice,
-      prepared: true,
+      prepared: fallbackPreparedById.get(s.client_id ?? s.id) ?? true,
     })) : fallbackSpellEntries.spells),
-    slots: spellMeta.slots || emptySpellbook.slots,
+    slots: spellMeta.slots ?? emptySpellbook.slots,
   }
 
   const inventory: Inventory = {
-    items: (inventoryData?.length ? (inventoryData ?? []).map((item, index) => {
+    items: (hasNormalizedInventory ? (inventoryData ?? []).map((item, index) => {
       const fallbackMatch = fallbackInventoryItems.find((blobItem) => blobItem.name === item.title && blobItem.description === (item.description ?? '') && blobItem.quantity === item.quantity) ?? fallbackInventoryItems[index]
       return {
-        id: item.id,
+        id: item.client_id ?? item.id,
         name: item.title,
         quantity: item.quantity,
         description: item.description,
@@ -308,6 +332,26 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       }
     }) : fallbackInventoryItems),
     currency: blob.inventoryCurrency || emptyInventory.currency,
+  }
+
+  if (hasNormalizedInventory) {
+    console.info('[inventory:load] source=normalized', {
+      count: inventoryData?.length ?? 0,
+      sample: (inventoryData ?? []).slice(0, 5).map((item) => ({
+        client_id: item.client_id ?? item.id,
+        title: item.title,
+        quantity: item.quantity,
+      })),
+    })
+  } else {
+    console.info('[inventory:load] source=blob-fallback', {
+      fallbackCount: fallbackInventoryItems.length,
+      fallbackSample: fallbackInventoryItems.slice(0, 5).map((item) => ({
+        client_id: item.id,
+        name: item.name,
+        quantity: item.quantity,
+      })),
+    })
   }
 
   return {
@@ -320,101 +364,97 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
 
 export async function saveCurrentPlayerData(userId: string, payload: { character: Character; spellbook: Spellbook; inventory: Inventory; notes: Note[] }) {
   const characterId = await ensureCharacterRecord(userId)
-  const { character, spellbook, inventory, notes } = payload
+  const previous = characterSaveQueue.get(characterId) ?? Promise.resolve()
+  const saveTask = previous.then(async () => {
+    const { character, spellbook, inventory, notes } = payload
+    const spellcastingScore = character.abilities[spellbook.spellcastingAbility]?.value ?? 10
+    const derivedSpellSaveDC = calculateSpellSaveDC(character.proficiencyBonus, spellcastingScore)
+    const derivedSpellAttackBonus = calculateSpellAttackBonus(character.proficiencyBonus, spellcastingScore)
+    const initiativeModifier = calculateModifier(character.abilities.DEX.value)
+    const initiativeRoll = character.combat.initiativeRoll ?? 0
+    const initiativeTotal = initiativeModifier + initiativeRoll
 
-  const row = {
-    id: characterId,
-    user_id: userId,
-    name: character.info.name,
-    class_name: character.info.class,
-    subclass: character.info.subclass,
-    race: character.info.race,
-    background: character.info.background,
-    alignment: character.info.alignment,
-    level: character.info.level,
-    xp: character.info.xp,
-    proficiency_bonus: character.proficiencyBonus,
-    armor_class: character.combat.armorClass,
-    initiative: character.combat.initiative,
-    speed: character.combat.speed,
-    hp_max: character.combat.maxHp,
-    hp_current: character.combat.currentHp,
-    hp_temp: character.combat.tempHp,
-    hit_dice_type: character.combat.hitDice,
-    hit_dice_total: 0,
-    death_successes: character.combat.deathSaves.successes.filter(Boolean).length,
-    death_failures: character.combat.deathSaves.failures.filter(Boolean).length,
-    str_score: character.abilities.STR.value,
-    dex_score: character.abilities.DEX.value,
-    con_score: character.abilities.CON.value,
-    int_score: character.abilities.INT.value,
-    wis_score: character.abilities.WIS.value,
-    cha_score: character.abilities.CHA.value,
-    save_str_prof: character.abilities.STR.proficient,
-    save_dex_prof: character.abilities.DEX.proficient,
-    save_con_prof: character.abilities.CON.proficient,
-    save_int_prof: character.abilities.INT.proficient,
-    save_wis_prof: character.abilities.WIS.proficient,
-    save_cha_prof: character.abilities.CHA.proficient,
-    skill_acrobatics_prof: findSkill(character, 'Acrobatics'),
-    skill_animal_handling_prof: findSkill(character, 'Animal Handling'),
-    skill_arcana_prof: findSkill(character, 'Arcana'),
-    skill_athletics_prof: findSkill(character, 'Athletics'),
-    skill_deception_prof: findSkill(character, 'Deception'),
-    skill_history_prof: findSkill(character, 'History'),
-    skill_insight_prof: findSkill(character, 'Insight'),
-    skill_intimidation_prof: findSkill(character, 'Intimidation'),
-    skill_investigation_prof: findSkill(character, 'Investigation'),
-    skill_medicine_prof: findSkill(character, 'Medicine'),
-    skill_nature_prof: findSkill(character, 'Nature'),
-    skill_perception_prof: findSkill(character, 'Perception'),
-    skill_performance_prof: findSkill(character, 'Performance'),
-    skill_persuasion_prof: findSkill(character, 'Persuasion'),
-    skill_religion_prof: findSkill(character, 'Religion'),
-    skill_sleight_of_hand_prof: findSkill(character, 'Sleight of Hand'),
-    skill_stealth_prof: findSkill(character, 'Stealth'),
-    skill_survival_prof: findSkill(character, 'Survival'),
-    features: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n'),
-    languages: character.languages,
-  }
+    const row = {
+      id: characterId,
+      user_id: userId,
+      name: character.info.name,
+      class_name: character.info.class,
+      subclass: character.info.subclass,
+      race: character.info.race,
+      background: character.info.background,
+      alignment: character.info.alignment,
+      level: character.info.level,
+      xp: character.info.xp,
+      proficiency_bonus: character.proficiencyBonus,
+      armor_class: character.combat.armorClass,
+      initiative: initiativeTotal,
+      speed: character.combat.speed,
+      hp_max: character.combat.maxHp,
+      hp_current: character.combat.currentHp,
+      hp_temp: character.combat.tempHp,
+      hit_dice_type: character.combat.hitDice,
+      hit_dice_total: 0,
+      death_successes: character.combat.deathSaves.successes.filter(Boolean).length,
+      death_failures: character.combat.deathSaves.failures.filter(Boolean).length,
+      str_score: character.abilities.STR.value,
+      dex_score: character.abilities.DEX.value,
+      con_score: character.abilities.CON.value,
+      int_score: character.abilities.INT.value,
+      wis_score: character.abilities.WIS.value,
+      cha_score: character.abilities.CHA.value,
+      save_str_prof: character.abilities.STR.proficient,
+      save_dex_prof: character.abilities.DEX.proficient,
+      save_con_prof: character.abilities.CON.proficient,
+      save_int_prof: character.abilities.INT.proficient,
+      save_wis_prof: character.abilities.WIS.proficient,
+      save_cha_prof: character.abilities.CHA.proficient,
+      skill_acrobatics_prof: findSkill(character, 'Acrobatics'),
+      skill_animal_handling_prof: findSkill(character, 'Animal Handling'),
+      skill_arcana_prof: findSkill(character, 'Arcana'),
+      skill_athletics_prof: findSkill(character, 'Athletics'),
+      skill_deception_prof: findSkill(character, 'Deception'),
+      skill_history_prof: findSkill(character, 'History'),
+      skill_insight_prof: findSkill(character, 'Insight'),
+      skill_intimidation_prof: findSkill(character, 'Intimidation'),
+      skill_investigation_prof: findSkill(character, 'Investigation'),
+      skill_medicine_prof: findSkill(character, 'Medicine'),
+      skill_nature_prof: findSkill(character, 'Nature'),
+      skill_perception_prof: findSkill(character, 'Perception'),
+      skill_performance_prof: findSkill(character, 'Performance'),
+      skill_persuasion_prof: findSkill(character, 'Persuasion'),
+      skill_religion_prof: findSkill(character, 'Religion'),
+      skill_sleight_of_hand_prof: findSkill(character, 'Sleight of Hand'),
+      skill_stealth_prof: findSkill(character, 'Stealth'),
+      skill_survival_prof: findSkill(character, 'Survival'),
+      features: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n'),
+      languages: character.languages,
+    }
 
-  const { error: charError } = await supabase.from('characters').upsert(row)
-  if (charError) throw charError
+    const { error: charError } = await supabase.from('characters').upsert(row)
+    if (charError) throw charError
 
-  const allSpells = [...spellbook.cantrips.map((s) => ({ ...s, level: 0 })), ...spellbook.spells]
+    const normalizedInventory = dedupeByClientId(
+      inventory.items.map((item) => ({ ...item, id: item.id || generateClientId() }))
+    )
+    const allSpells = dedupeByClientId(
+      [...spellbook.cantrips.map((s) => ({ ...s, level: 0 })), ...spellbook.spells].map((spell) => ({
+        ...spell,
+        id: spell.id || generateClientId(),
+      }))
+    )
 
-  await upsertCharacterBlob(characterId, {
-    notes,
-    inventoryCurrency: inventory.currency,
-    spellbookMeta: {
-      spellcastingClass: spellbook.spellcastingClass,
-      spellcastingAbility: spellbook.spellcastingAbility,
-      spellSaveDC: spellbook.spellSaveDC,
-      spellAttackBonus: spellbook.spellAttackBonus,
-      slots: spellbook.slots,
-    },
-    spellbookEntries: {
-      cantrips: spellbook.cantrips,
-      spells: spellbook.spells,
-    },
-    inventoryItems: inventory.items,
-    attacks: character.attacks,
-    portraitUrl: character.info.portraitUrl,
-    featuresText: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n\n'),
-    raceFeatures: character.raceFeatures,
-    classFeatures: character.classFeatures,
-    backgroundFeatures: character.backgroundFeatures,
-  })
+    console.info('[inventory:save] payload snapshot', {
+      characterId,
+      rowCount: normalizedInventory.length,
+      sample: normalizedInventory.slice(0, 5).map((item) => ({
+        client_id: item.id,
+        name: item.name,
+        quantity: item.quantity,
+      })),
+    })
 
-  try {
-    const [{ error: attacksDeleteError }, { error: invDeleteError }, { error: spellsDeleteError }] = await Promise.all([
-      supabase.from('attacks').delete().eq('character_id', characterId),
-      supabase.from('inventory_items').delete().eq('character_id', characterId),
-      supabase.from('spells').delete().eq('character_id', characterId),
-    ])
+    const { error: attacksDeleteError } = await supabase.from('attacks').delete().eq('character_id', characterId)
     if (attacksDeleteError) throw attacksDeleteError
-    if (invDeleteError) throw invDeleteError
-    if (spellsDeleteError) throw spellsDeleteError
 
     if (character.attacks.length) {
       const { error } = await supabase.from('attacks').insert(
@@ -429,47 +469,175 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       if (error) throw error
     }
 
-    if (inventory.items.length) {
-      const { error } = await supabase.from('inventory_items').insert(
-        inventory.items.map((item, index) => ({
-          character_id: characterId,
-          sort_order: index,
-          title: item.name,
-          description: item.description,
-          quantity: item.quantity,
-        }))
-      )
-      if (error) throw error
-    }
+    await syncInventoryRows(characterId, normalizedInventory)
+    await syncSpellRows(characterId, allSpells)
 
-    if (allSpells.length) {
-      const { error } = await supabase.from('spells').insert(
-        allSpells.map((spell, index) => ({
-          character_id: characterId,
-          sort_order: index,
-          title: spell.name,
-          spell_level: String(spell.level),
-          casting_time: spell.castingTime,
-          range_text: spell.range,
-          components: '',
-          duration_text: spell.duration,
-          dice: spell.damage,
-          description: spell.description,
-          is_cantrip: spell.level === 0,
-          is_ritual: spell.ritual,
-          is_concentration: spell.concentration,
-          is_reaction: spell.reaction,
-        }))
-      )
-      if (error) throw error
+    // Blob is an explicit mirror/backup written only after normalized sync succeeds.
+    await upsertCharacterBlob(characterId, {
+      notes,
+      inventoryCurrency: inventory.currency,
+      spellbookMeta: {
+        spellcastingClass: spellbook.spellcastingClass,
+        spellcastingAbility: spellbook.spellcastingAbility,
+        spellSaveDC: derivedSpellSaveDC,
+        spellAttackBonus: derivedSpellAttackBonus,
+        slots: spellbook.slots,
+      },
+      spellbookEntries: {
+        cantrips: allSpells.filter((s) => s.level === 0),
+        spells: allSpells.filter((s) => s.level > 0),
+      },
+      inventoryItems: normalizedInventory,
+      attacks: character.attacks,
+      portraitUrl: character.info.portraitUrl,
+      featuresText: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n\n'),
+      raceFeatures: character.raceFeatures,
+      classFeatures: character.classFeatures,
+      backgroundFeatures: character.backgroundFeatures,
+    })
+  })
+
+  const chained = saveTask.catch(() => {})
+  characterSaveQueue.set(characterId, chained)
+  try {
+    await saveTask
+  } finally {
+    if (characterSaveQueue.get(characterId) === chained) {
+      characterSaveQueue.delete(characterId)
     }
-  } catch (error) {
-    console.error('Normalized child-table sync failed, using blob fallback', error)
   }
 }
 
 function findSkill(character: Character, name: string) {
   return character.skills.find((skill) => skill.name === name)?.proficient ?? false
+}
+
+async function syncInventoryRows(characterId: string, items: Inventory['items']) {
+  if (!items.length) {
+    const { error } = await supabase.from('inventory_items').delete().eq('character_id', characterId)
+    if (error) throw error
+    return
+  }
+
+  const rows = items.map((item, index) => ({
+    character_id: characterId,
+    client_id: item.id,
+    sort_order: index,
+    title: item.name,
+    description: item.description,
+    quantity: item.quantity,
+  }))
+  const { error: upsertError } = await supabase
+    .from('inventory_items')
+    .upsert(rows, { onConflict: 'character_id,client_id' })
+  if (upsertError) {
+    console.error('[inventory:save] upsert failed', {
+      characterId,
+      rowCount: rows.length,
+      sample: rows.slice(0, 5).map((row) => ({
+        client_id: row.client_id,
+        title: row.title,
+        quantity: row.quantity,
+      })),
+      error: upsertError,
+    })
+    throw upsertError
+  }
+  console.info('[inventory:save] upsert success', {
+    characterId,
+    rowCount: rows.length,
+    sample: rows.slice(0, 5).map((row) => ({
+      client_id: row.client_id,
+      title: row.title,
+      quantity: row.quantity,
+    })),
+  })
+
+  await deleteMissingInventoryRows(characterId, items.map((item) => item.id))
+  console.info('[inventory:save] delete missing rows success', { characterId })
+}
+
+async function syncSpellRows(characterId: string, spells: Spellbook['spells'][number][]) {
+  if (!spells.length) {
+    const { error } = await supabase.from('spells').delete().eq('character_id', characterId)
+    if (error) throw error
+    return
+  }
+
+  const rows = spells.map((spell, index) => ({
+    character_id: characterId,
+    client_id: spell.id,
+    sort_order: index,
+    title: spell.name,
+    spell_level: String(spell.level),
+    casting_time: spell.castingTime,
+    range_text: spell.range,
+    components: '',
+    duration_text: spell.duration,
+    dice: spell.damage,
+    description: spell.description,
+    is_cantrip: spell.level === 0,
+    is_ritual: spell.ritual,
+    is_concentration: spell.concentration,
+    is_reaction: spell.reaction,
+  }))
+  const { error: upsertError } = await supabase
+    .from('spells')
+    .upsert(rows, { onConflict: 'character_id,client_id' })
+  if (upsertError) {
+    console.error('[spells:save] upsert failed', { characterId, rowCount: rows.length, error: upsertError })
+    throw upsertError
+  }
+
+  await deleteMissingSpellRows(characterId, spells.map((spell) => spell.id))
+}
+
+function dedupeByClientId<T extends { id: string }>(rows: T[]): T[] {
+  const map = new Map<string, T>()
+  for (const row of rows) {
+    map.set(row.id, row)
+  }
+  return Array.from(map.values())
+}
+
+async function deleteMissingInventoryRows(characterId: string, keepClientIds: string[]) {
+  const keepSet = new Set(keepClientIds)
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select('client_id')
+    .eq('character_id', characterId)
+  if (error) throw error
+  const stale = (data ?? []).map((row) => row.client_id as string).filter((id) => !keepSet.has(id))
+  if (!stale.length) return
+  const { error: deleteError } = await supabase
+    .from('inventory_items')
+    .delete()
+    .eq('character_id', characterId)
+    .in('client_id', stale)
+  if (deleteError) {
+    console.error('[inventory:save] delete missing rows failed', { characterId, staleCount: stale.length, error: deleteError })
+    throw deleteError
+  }
+}
+
+async function deleteMissingSpellRows(characterId: string, keepClientIds: string[]) {
+  const keepSet = new Set(keepClientIds)
+  const { data, error } = await supabase
+    .from('spells')
+    .select('client_id')
+    .eq('character_id', characterId)
+  if (error) throw error
+  const stale = (data ?? []).map((row) => row.client_id as string).filter((id) => !keepSet.has(id))
+  if (!stale.length) return
+  const { error: deleteError } = await supabase
+    .from('spells')
+    .delete()
+    .eq('character_id', characterId)
+    .in('client_id', stale)
+  if (deleteError) {
+    console.error('[spells:save] delete missing rows failed', { characterId, staleCount: stale.length, error: deleteError })
+    throw deleteError
+  }
 }
 
 export async function listPlayerCharacters() {
@@ -521,8 +689,11 @@ export async function listPlayerCharacters() {
       proficiencyBonus: row.proficiency_bonus ?? 2,
       skills: emptyCharacter.skills,
       combat: {
+        initiativeBase: calculateModifier(row.dex_score ?? 10),
+        initiativeRoll: 0,
+        initiativeTotal: calculateModifier(row.dex_score ?? 10),
         armorClass: row.armor_class ?? 10,
-        initiative: row.initiative ?? 0,
+        initiative: calculateModifier(row.dex_score ?? 10),
         speed: row.speed ?? 30,
         maxHp: row.hp_max ?? 0,
         currentHp: row.hp_current ?? 0,
@@ -538,6 +709,7 @@ export async function listPlayerCharacters() {
       languages: row.languages ?? '',
       passivePerception: 10,
     }
+    character.passivePerception = 10 + getPerceptionModifier(character)
 
     return {
       username: player.username,
