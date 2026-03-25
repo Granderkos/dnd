@@ -170,6 +170,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
     if (!container) return
 
     const handleNativeWheel = (event: WheelEvent) => {
+      if (event.defaultPrevented) return
       event.preventDefault()
       const current = latestSettingsRef.current
       if (event.ctrlKey || event.metaKey) {
@@ -188,6 +189,29 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
       container.removeEventListener('wheel', handleNativeWheel)
     }
   }, [applyZoomAt, onSettingsChange])
+
+  useEffect(() => {
+    if (!activeMap) return
+
+    const handleGlobalZoomWheel = (event: WheelEvent) => {
+      if (event.defaultPrevented) return
+      if (!event.ctrlKey && !event.metaKey) return
+      event.preventDefault()
+
+      const viewport = viewportRef.current
+      const current = latestSettingsRef.current
+      if (!viewport) return
+      const rect = viewport.getBoundingClientRect()
+      const clampedX = Math.min(Math.max(event.clientX, rect.left), rect.right)
+      const clampedY = Math.min(Math.max(event.clientY, rect.top), rect.bottom)
+      applyZoomAt(current.zoom + (event.deltaY > 0 ? -0.1 : 0.1), clampedX, clampedY)
+    }
+
+    window.addEventListener('wheel', handleGlobalZoomWheel, { passive: false })
+    return () => {
+      window.removeEventListener('wheel', handleGlobalZoomWheel)
+    }
+  }, [activeMap, applyZoomAt])
 
   if (!activeMap) {
     return (

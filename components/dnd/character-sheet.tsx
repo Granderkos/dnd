@@ -484,17 +484,17 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 return (
                   <div
                     key={ability}
-                    className="flex w-[104px] flex-col items-center rounded border bg-muted/30 p-1.5"
+                    className="flex w-[104px] md:w-[120px] flex-col items-center rounded border bg-muted/30 p-1.5 md:p-2"
                   >
                     <span className="text-xs font-medium text-muted-foreground">{ability}</span>
-                    <span className="text-xl font-bold">{formatModifier(mod)}</span>
+                    <span className="text-xl font-bold md:text-2xl">{formatModifier(mod)}</span>
                     <Input
                       type="number"
                       min={1}
                       max={30}
                       value={score}
                       onChange={(e) => updateAbility(ability, parseInt(e.target.value) || 10)}
-                      className="h-7 w-12 text-center text-sm"
+                      className="h-7 w-12 md:h-8 md:w-14 text-center text-sm"
                     />
                     <div className="mt-1.5 flex items-center gap-1 border-t pt-1.5">
                       <Checkbox
@@ -601,7 +601,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                     type="number"
                     value={character.combat.maxHp}
                     onChange={(e) => updateCombat('maxHp', parseInt(e.target.value) || 1)}
-                    className="h-8 w-16 text-center text-sm"
+                    className="h-9 w-20 text-center text-base font-semibold"
                   />
                 </div>
                 <div className="flex flex-col items-center justify-end">
@@ -633,13 +633,13 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 </div>
                 <div className="flex flex-col items-center justify-end">
                   <span className="text-xs uppercase text-muted-foreground">{t('character.combat.temp')}</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={character.combat.tempHp}
-                    onChange={(e) => updateCombat('tempHp', parseInt(e.target.value) || 0)}
-                    className="h-8 w-16 text-center text-sm"
-                  />
+                    <Input
+                      type="number"
+                      min={0}
+                      value={character.combat.tempHp}
+                      onChange={(e) => updateCombat('tempHp', parseInt(e.target.value) || 0)}
+                      className="h-9 w-20 text-center text-base font-semibold"
+                    />
                 </div>
               </div>
 
