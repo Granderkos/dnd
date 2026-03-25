@@ -484,7 +484,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 return (
                   <div
                     key={ability}
-                    className="flex w-full max-w-[112px] flex-col items-center rounded border bg-muted/30 p-1.5"
+                    className="flex w-[104px] flex-col items-center rounded border bg-muted/30 p-1.5"
                   >
                     <span className="text-xs font-medium text-muted-foreground">{ability}</span>
                     <span className="text-xl font-bold">{formatModifier(mod)}</span>
@@ -594,8 +594,8 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
 
             {/* HP Section */}
             <div className="mt-3 rounded-lg border border-border bg-background/70 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex flex-col items-center">
+              <div className="grid grid-cols-3 items-end gap-3">
+                <div className="flex flex-col items-center justify-end">
                   <span className="text-xs uppercase text-muted-foreground">{t('character.combat.max')}</span>
                   <Input
                     type="number"
@@ -604,7 +604,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                     className="h-8 w-16 text-center text-sm"
                   />
                 </div>
-                <div className="flex flex-col items-center">
+                <div className="flex flex-col items-center justify-end">
                   <Heart className="mb-1 size-6 text-red-500" />
                   <div className="flex items-center gap-1">
                     <Button
@@ -631,7 +631,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                     </Button>
                   </div>
                 </div>
-                <div className="flex flex-col items-center">
+                <div className="flex flex-col items-center justify-end">
                   <span className="text-xs uppercase text-muted-foreground">{t('character.combat.temp')}</span>
                   <Input
                     type="number"

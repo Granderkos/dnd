@@ -248,8 +248,8 @@ export const DMMapManager = memo(function DMMapManager() {
   }, [isPseudoFullscreen, isFullscreen, isMapFocused, viewingMap])
 
   useEffect(() => {
-    const viewport = viewportRef.current
-    if (!viewport || !viewingMap) return
+    const container = containerRef.current
+    if (!container || !viewingMap) return
 
     const handleNativeWheel = (event: WheelEvent) => {
       event.preventDefault()
@@ -260,15 +260,23 @@ export const DMMapManager = memo(function DMMapManager() {
       setViewSettings((prev) => ({ ...prev, panX: prev.panX - event.deltaX, panY: prev.panY - event.deltaY }))
     }
 
-    viewport.addEventListener('wheel', handleNativeWheel, { passive: false })
+    container.addEventListener('wheel', handleNativeWheel, { passive: false })
     return () => {
-      viewport.removeEventListener('wheel', handleNativeWheel)
+      container.removeEventListener('wheel', handleNativeWheel)
     }
   }, [applyZoomAt, viewSettings.zoom, viewingMap])
 
   if (viewingMap) {
     return (
-      <div ref={containerRef} className={`${isPseudoFullscreen ? 'fixed inset-0 z-50 h-dvh' : 'h-full'} flex flex-col bg-background`}>
+      <div
+        ref={containerRef}
+        className={`${isPseudoFullscreen ? 'fixed inset-0 z-50 h-dvh' : 'h-full'} flex flex-col bg-background`}
+        onMouseEnter={() => setIsMapFocused(true)}
+        onMouseLeave={() => {
+          handleMouseUp()
+          setIsMapFocused(false)
+        }}
+      >
         <div className="flex flex-wrap items-center gap-2 p-2 border-b bg-card">
           <Button variant="ghost" size="sm" onClick={() => setViewingMap(null)}><X className="size-4 mr-1" />{t('common.close')}</Button>
           <div className="flex items-center gap-1">
@@ -298,14 +306,10 @@ export const DMMapManager = memo(function DMMapManager() {
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
-          onMouseLeave={() => {
-            handleMouseUp()
-            setIsMapFocused(false)
-          }}
+          onMouseLeave={handleMouseUp}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          onMouseEnter={() => setIsMapFocused(true)}
         >
           <div className="w-full h-full flex items-center justify-center" style={{ transform: `translate(${viewSettings.panX}px, ${viewSettings.panY}px) scale(${viewSettings.zoom})`, transformOrigin: 'center' }}>
             <div className="relative">

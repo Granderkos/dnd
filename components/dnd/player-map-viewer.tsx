@@ -166,8 +166,8 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   }, [isPseudoFullscreen, isFullscreen, isMapFocused])
 
   useEffect(() => {
-    const viewport = viewportRef.current
-    if (!viewport) return
+    const container = containerRef.current
+    if (!container) return
 
     const handleNativeWheel = (event: WheelEvent) => {
       event.preventDefault()
@@ -183,9 +183,9 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
       })
     }
 
-    viewport.addEventListener('wheel', handleNativeWheel, { passive: false })
+    container.addEventListener('wheel', handleNativeWheel, { passive: false })
     return () => {
-      viewport.removeEventListener('wheel', handleNativeWheel)
+      container.removeEventListener('wheel', handleNativeWheel)
     }
   }, [applyZoomAt, onSettingsChange])
 
@@ -208,7 +208,15 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   }
 
   return (
-    <div ref={containerRef} className={`${isPseudoFullscreen ? 'fixed inset-0 z-50 h-dvh' : 'h-full'} flex flex-col bg-background`}>
+    <div
+      ref={containerRef}
+      className={`${isPseudoFullscreen ? 'fixed inset-0 z-50 h-dvh' : 'h-full'} flex flex-col bg-background`}
+      onMouseEnter={() => setIsMapFocused(true)}
+      onMouseLeave={() => {
+        handleMouseUp()
+        setIsMapFocused(false)
+      }}
+    >
       <div className="flex items-center justify-between p-2 border-b bg-card">
         <span className="text-sm font-medium truncate max-w-[150px]">{activeMap.name}</span>
         <div className="flex items-center gap-1">
@@ -228,11 +236,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={() => {
-          handleMouseUp()
-          setIsMapFocused(false)
-        }}
-        onMouseEnter={() => setIsMapFocused(true)}
+        onMouseLeave={handleMouseUp}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
