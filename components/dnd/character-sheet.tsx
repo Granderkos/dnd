@@ -338,8 +338,8 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
 
   const abilities: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']
   const speedInSquares = Math.floor(character.combat.speed / 5)
-  const initiativeModifier = calculateModifier(character.abilities.DEX.value)
-  const derivedInitiativeTotal = initiativeModifier + (character.combat.initiativeRoll ?? 0)
+  const derivedInitiativeBase = calculateModifier(character.abilities.DEX.value)
+  const derivedInitiativeTotal = derivedInitiativeBase + (character.combat.initiativeRoll ?? 0)
   const speedValueText = language === 'cs'
     ? `${(character.combat.speed * 0.3048).toFixed(1)} m (${speedInSquares} polí)`
     : `${character.combat.speed} ft (${speedInSquares} sq)`
