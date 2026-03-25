@@ -17,6 +17,7 @@ interface PlayerMapViewerProps {
 export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSettingsChange }: PlayerMapViewerProps) {
   const { t } = useI18n()
   const [activeMap, setActiveMap] = useState<StoredMap | null>(null)
+  const [isLoadingMap, setIsLoadingMap] = useState(true)
   const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -25,13 +26,13 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   const lastPos = useRef({ x: 0, y: 0 })
   const pinchStartDistance = useRef(0)
   const pinchStartZoom = useRef(1)
-  const isLoadingMap = useRef(false)
+  const isFetchingMap = useRef(false)
 
   useEffect(() => {
     const loadActiveMap = async () => {
       if (document.visibilityState === 'hidden') return
-      if (isLoadingMap.current) return
-      isLoadingMap.current = true
+      if (isFetchingMap.current) return
+      isFetchingMap.current = true
       try {
         const map = await getActiveMap()
         setActiveMap((prev) => {
@@ -43,7 +44,8 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
       } catch (e) {
         console.error('Failed to load active map', e)
       } finally {
-        isLoadingMap.current = false
+        isFetchingMap.current = false
+        setIsLoadingMap(false)
       }
     }
     void loadActiveMap()
@@ -171,8 +173,14 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
       <ScrollArea className="h-full">
         <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-4">
           <MapIcon className="size-16 text-muted-foreground mb-4" />
-          <p className="text-muted-foreground text-center">{t('map.noMapSelected')}</p>
-          <p className="text-sm text-muted-foreground text-center mt-2">{t('map.waitForDm')}</p>
+          {isLoadingMap ? (
+            <p className="text-muted-foreground text-center">{t('map.loading')}</p>
+          ) : (
+            <>
+              <p className="text-muted-foreground text-center">{t('map.noMapSelected')}</p>
+              <p className="text-sm text-muted-foreground text-center mt-2">{t('map.waitForDm')}</p>
+            </>
+          )}
         </div>
       </ScrollArea>
     )
@@ -203,6 +211,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        onWheelCapture={handleWheel}
         onWheel={handleWheel}
       >
         <div className="w-full h-full flex items-center justify-center" style={{ transform: `translate(${settings.panX}px, ${settings.panY}px) scale(${settings.zoom})`, transformOrigin: 'center' }}>

@@ -83,6 +83,8 @@ const translations: Record<Language, TranslationMap> = {
     'character.combat.max': 'Max',
     'character.combat.temp': 'Temp',
     'character.combat.hitDice': 'Hit Dice',
+    'character.combat.successes': 'Successes',
+    'character.combat.failures': 'Failures',
     'character.combat.actions': 'Attacks & Spellcasting',
     'character.combat.featuresTraits': 'Features & Traits',
     'character.combat.raceFeatures': 'Race Features',
@@ -167,6 +169,7 @@ const translations: Record<Language, TranslationMap> = {
 
     'map.noMapSelected': 'No map selected by DM',
     'map.waitForDm': 'Wait for the DM to select a map',
+    'map.loading': 'Loading map...',
     'map.grid': 'Grid',
     'map.upload': 'Upload',
     'map.uploadNewMap': 'Upload New Map',
@@ -259,6 +262,8 @@ const translations: Record<Language, TranslationMap> = {
     'character.combat.max': 'Max',
     'character.combat.temp': 'Temp',
     'character.combat.hitDice': 'Hit dice',
+    'character.combat.successes': 'Úspěchy',
+    'character.combat.failures': 'Neúspěchy',
     'character.combat.actions': 'Útoky a sesílání kouzel',
     'character.combat.featuresTraits': 'Schopnosti a vlastnosti',
     'character.combat.raceFeatures': 'Rasové schopnosti',
@@ -343,6 +348,7 @@ const translations: Record<Language, TranslationMap> = {
 
     'map.noMapSelected': 'DM nevybral žádnou mapu',
     'map.waitForDm': 'Počkej, až DM vybere mapu',
+    'map.loading': 'Načítám mapu...',
     'map.grid': 'Mřížka',
     'map.upload': 'Nahrát',
     'map.uploadNewMap': 'Nahrát novou mapu',

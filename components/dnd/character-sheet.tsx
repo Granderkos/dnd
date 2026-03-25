@@ -579,13 +579,13 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
               <div className="flex flex-col items-center rounded-lg border border-border bg-background/80 p-3">
                 <Footprints className="mb-1 size-5 text-muted-foreground" />
                 <span className="text-xs uppercase text-muted-foreground">{t('character.combat.speed')}</span>
-                <div className="mt-1 flex items-center gap-2">
+                <div className="mt-1 w-full">
                   <Input
                     type="number"
                     step={5}
                     value={character.combat.speed}
                     onChange={(e) => updateCombat('speed', parseInt(e.target.value) || 30)}
-                    className="h-10 w-16 text-center text-xl font-bold"
+                    className="h-10 w-full text-center text-xl font-bold"
                   />
                 </div>
                 <span className="mt-1 text-xs text-muted-foreground">{speedValueText}</span>
@@ -653,32 +653,38 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                     className="h-8 w-20 text-sm text-center"
                   />
                 </div>
-                <div className="flex items-center gap-6">
-                  <div className="flex items-center gap-2">
-                    {[0, 1, 2].map((i) => (
-                      <button
-                        key={`success-${i}`}
-                        onClick={() => toggleDeathSave('successes', i)}
-                        className={`size-5 rounded-full border-2 transition-colors ${
-                          character.combat.deathSaves.successes[i]
-                            ? 'border-green-500 bg-green-500'
-                            : 'border-muted-foreground hover:bg-green-500/20'
-                        }`}
-                      />
-                    ))}
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs uppercase text-muted-foreground">{t('character.combat.successes')}</span>
+                    <div className="flex items-center gap-2">
+                      {[0, 1, 2].map((i) => (
+                        <button
+                          key={`success-${i}`}
+                          onClick={() => toggleDeathSave('successes', i)}
+                          className={`size-5 rounded-full border-2 transition-colors ${
+                            character.combat.deathSaves.successes[i]
+                              ? 'border-green-500 bg-green-500'
+                              : 'border-muted-foreground hover:bg-green-500/20'
+                          }`}
+                        />
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {[0, 1, 2].map((i) => (
-                      <button
-                        key={`failure-${i}`}
-                        onClick={() => toggleDeathSave('failures', i)}
-                        className={`size-5 rounded-full border-2 transition-colors ${
-                          character.combat.deathSaves.failures[i]
-                            ? 'border-red-500 bg-red-500'
-                            : 'border-muted-foreground hover:bg-red-500/20'
-                        }`}
-                      />
-                    ))}
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs uppercase text-muted-foreground">{t('character.combat.failures')}</span>
+                    <div className="flex items-center gap-2">
+                      {[0, 1, 2].map((i) => (
+                        <button
+                          key={`failure-${i}`}
+                          onClick={() => toggleDeathSave('failures', i)}
+                          className={`size-5 rounded-full border-2 transition-colors ${
+                            character.combat.deathSaves.failures[i]
+                              ? 'border-red-500 bg-red-500'
+                              : 'border-muted-foreground hover:bg-red-500/20'
+                          }`}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

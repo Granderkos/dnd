@@ -291,6 +291,7 @@ export const DMMapManager = memo(function DMMapManager() {
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
+          onWheelCapture={handleWheel}
           onWheel={handleWheel}
         >
           <div className="w-full h-full flex items-center justify-center" style={{ transform: `translate(${viewSettings.panX}px, ${viewSettings.panY}px) scale(${viewSettings.zoom})`, transformOrigin: 'center' }}>
