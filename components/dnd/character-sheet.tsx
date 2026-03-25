@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -145,6 +144,7 @@ interface AttackRowProps {
 }
 
 const AttackRow = memo(function AttackRow({ attack, onUpdate, onRemove }: AttackRowProps) {
+  const { t } = useI18n()
   return (
     <div className="flex items-start gap-2 rounded-lg border border-border bg-background/80 p-3">
       <div className="min-w-0 flex-1 space-y-1">
@@ -152,26 +152,26 @@ const AttackRow = memo(function AttackRow({ attack, onUpdate, onRemove }: Attack
           value={attack.name}
           onChange={(value) => onUpdate(attack.id, 'name', value)}
           className="h-8 text-sm font-medium"
-          placeholder="Attack name"
+          placeholder={t('character.attackNamePlaceholder')}
         />
         <div className="flex gap-1">
           <DebouncedInput
             value={attack.attackBonus}
             onChange={(value) => onUpdate(attack.id, 'attackBonus', value)}
             className="h-7 w-14 text-center text-xs"
-            placeholder="+0"
+            placeholder={t('character.attackBonusPlaceholder')}
           />
           <DebouncedInput
             value={attack.damage}
             onChange={(value) => onUpdate(attack.id, 'damage', value)}
             className="h-7 flex-1 text-xs"
-            placeholder="1d6"
+            placeholder={t('character.attackDamagePlaceholder')}
           />
           <DebouncedInput
             value={attack.damageType}
             onChange={(value) => onUpdate(attack.id, 'damageType', value)}
             className="h-7 flex-1 text-xs"
-            placeholder="type"
+            placeholder={t('character.attackTypePlaceholder')}
           />
         </div>
       </div>
@@ -186,13 +186,6 @@ const AttackRow = memo(function AttackRow({ attack, onUpdate, onRemove }: Attack
     </div>
   )
 })
-
-function parseSignedInteger(value: string, fallback: number) {
-  const normalized = value.trim()
-  if (normalized === '' || normalized === '-' || normalized === '+') return fallback
-  const parsed = Number.parseInt(normalized, 10)
-  return Number.isNaN(parsed) ? fallback : parsed
-}
 
 interface CharacterSheetProps {
   character: Character
@@ -345,8 +338,11 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
 
   const abilities: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']
   const speedInSquares = Math.floor(character.combat.speed / 5)
+  const derivedInitiativeBase = calculateModifier(character.abilities.DEX.value)
+  const derivedInitiativeRoll = character.combat.initiativeRoll ?? 0
+  const derivedInitiativeTotal = derivedInitiativeBase + derivedInitiativeRoll
   return (
-    <ScrollArea className="h-[calc(100vh-4rem)]">
+    <div className="h-full min-h-0 overflow-y-auto">
       <div className="px-3 py-4">
         <PageShell>
           <div className="space-y-4 pb-24">
@@ -567,10 +563,11 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                   type="text"
                   inputMode="text"
                   pattern="[+-]?[0-9]*"
-                  value={String(character.combat.initiative)}
-                  onChange={(e) => updateCombat('initiative', parseSignedInteger(e.target.value, character.combat.initiative))}
+                  value={String(derivedInitiativeTotal)}
+                  readOnly
                   className="mt-1 h-10 w-full text-center text-xl font-bold"
                 />
+                <span className="mt-1 text-[10px] text-muted-foreground">base {formatModifier(derivedInitiativeBase)} + roll {derivedInitiativeRoll}</span>
               </div>
               <div className="col-span-2 flex flex-col items-center rounded-lg border border-border bg-background/80 p-3">
                 <Footprints className="mb-1 size-5 text-muted-foreground" />
@@ -721,7 +718,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                   value={character.raceFeatures}
                   onChange={(value) => onChange({ ...character, raceFeatures: value })}
                   placeholder={t('character.combat.raceFeatures')}
-                  className="min-h-20 resize-none overflow-y-auto text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
+                  className="min-h-20 resize-none text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
                   style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                 />
               </div>
@@ -731,7 +728,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                   value={character.classFeatures}
                   onChange={(value) => onChange({ ...character, classFeatures: value })}
                   placeholder={t('character.combat.classFeatures')}
-                  className="min-h-20 resize-none overflow-y-auto text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
+                  className="min-h-20 resize-none text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
                   style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                 />
               </div>
@@ -741,7 +738,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                   value={character.backgroundFeatures}
                   onChange={(value) => onChange({ ...character, backgroundFeatures: value })}
                   placeholder={t('character.combat.backgroundFeatures')}
-                  className="min-h-20 resize-none overflow-y-auto text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
+                  className="min-h-20 resize-none text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
                   style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                 />
               </div>
@@ -759,7 +756,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
               value={character.languages}
               onChange={(value) => onChange({ ...character, languages: value })}
               placeholder={t('character.proficienciesLanguages')}
-              className="min-h-24 resize-none overflow-y-auto text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
+              className="min-h-24 resize-none text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
               style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
             />
           </CardContent>
@@ -783,6 +780,6 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </ScrollArea>
+    </div>
   )
 }

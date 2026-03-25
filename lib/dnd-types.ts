@@ -41,6 +41,9 @@ export interface CharacterInfo {
 export interface CombatInfo {
   armorClass: number
   initiative: number
+  initiativeBase: number
+  initiativeRoll: number
+  initiativeTotal: number
   speed: number
   maxHp: number
   currentHp: number
@@ -130,13 +133,16 @@ export function feetToSquares(feet: number): number {
 }
 
 // Utility function to format feet with squares
-export function formatFeetWithSquares(feetStr: string): string {
-  // Extract number from string like "60 feet", "120 ft", "30ft", etc.
-  const match = feetStr.match(/(\d+)\s*(?:feet|ft|foot)/i)
+export function formatFeetWithSquares(feetStr: string, language: 'en' | 'cs' = 'en'): string {
+  // Extract number from string like "60 feet", "120 ft", "30ft", "18 stop", etc.
+  const match = feetStr.match(/(\d+(?:[.,]\d+)?)\s*(?:feet|foot|ft|stop|stopa|stopy)/i)
   if (match) {
-    const feet = parseInt(match[1])
+    const feet = Number.parseFloat(match[1].replace(',', '.'))
+    if (Number.isNaN(feet)) return feetStr
     const squares = feetToSquares(feet)
-    return feetStr.replace(match[0], `${feet} ft (${squares} squares)`)
+    const unitLabel = language === 'cs' ? 'stop' : 'ft'
+    const squaresLabel = language === 'cs' ? 'políček' : 'squares'
+    return feetStr.replace(match[0], `${feet} ${unitLabel} (${squares} ${squaresLabel})`)
   }
   return feetStr
 }
@@ -186,6 +192,9 @@ export const defaultCharacter: Character = {
   combat: {
     armorClass: 12,
     initiative: 0,
+    initiativeBase: 0,
+    initiativeRoll: 0,
+    initiativeTotal: 0,
     speed: 30,
     maxHp: 9,
     currentHp: 9,
@@ -275,6 +284,14 @@ export const defaultInventory: Inventory = {
 // Utility functions
 export function calculateModifier(score: number): number {
   return Math.floor((score - 10) / 2)
+}
+
+export function calculateSpellAttackBonus(proficiencyBonus: number, castingAbilityScore: number): number {
+  return proficiencyBonus + calculateModifier(castingAbilityScore)
+}
+
+export function calculateSpellSaveDC(proficiencyBonus: number, castingAbilityScore: number): number {
+  return 8 + calculateSpellAttackBonus(proficiencyBonus, castingAbilityScore)
 }
 
 export function formatModifier(mod: number): string {
