@@ -193,7 +193,7 @@ interface CharacterSheetProps {
 }
 
 export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
-  const { t } = useI18n()
+  const { t, language } = useI18n()
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
     title: string
@@ -338,9 +338,10 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
 
   const abilities: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']
   const speedInSquares = Math.floor(character.combat.speed / 5)
-  const derivedInitiativeBase = calculateModifier(character.abilities.DEX.value)
-  const derivedInitiativeRoll = character.combat.initiativeRoll ?? 0
-  const derivedInitiativeTotal = derivedInitiativeBase + derivedInitiativeRoll
+  const derivedInitiativeTotal = calculateModifier(character.abilities.DEX.value) + (character.combat.initiativeRoll ?? 0)
+  const speedValueText = language === 'cs'
+    ? `${(character.combat.speed * 0.3048).toFixed(1)} m (${speedInSquares} polí)`
+    : `${character.combat.speed} ft (${speedInSquares} sq)`
   return (
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="px-3 py-4">
@@ -467,7 +468,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
             </div>
 
             {/* Ability Scores Grid */}
-            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
               {abilities.map((ability) => {
                 const score = character.abilities[ability].value
                 const mod = calculateModifier(score)
@@ -545,7 +546,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
         <Card>
           <CardContent className="pt-4">
             {/* AC, Initiative, Speed row */}
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <div className="flex flex-col items-center rounded-lg border border-border bg-background/80 p-3">
                 <Shield className="mb-1 size-5 text-muted-foreground" />
                 <span className="text-xs uppercase text-muted-foreground">{t('character.combat.ac')}</span>
@@ -569,10 +570,10 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 />
                 <span className="mt-1 text-[10px] text-muted-foreground">base {formatModifier(derivedInitiativeBase)} + roll {derivedInitiativeRoll}</span>
               </div>
-              <div className="col-span-2 flex flex-col items-center rounded-lg border border-border bg-background/80 p-3">
+              <div className="flex flex-col items-center rounded-lg border border-border bg-background/80 p-3">
                 <Footprints className="mb-1 size-5 text-muted-foreground" />
                 <span className="text-xs uppercase text-muted-foreground">{t('character.combat.speed')}</span>
-                <div className="mt-1 flex items-center gap-1">
+                <div className="mt-1 flex items-center gap-2">
                   <Input
                     type="number"
                     step={5}
@@ -580,8 +581,8 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                     onChange={(e) => updateCombat('speed', parseInt(e.target.value) || 30)}
                     className="h-10 w-16 text-center text-xl font-bold"
                   />
-                  <span className="text-sm text-muted-foreground">ft ({speedInSquares} sq)</span>
                 </div>
+                <span className="mt-1 text-xs text-muted-foreground">{speedValueText}</span>
               </div>
             </div>
 
@@ -646,9 +647,8 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                     className="h-8 w-20 text-sm text-center"
                   />
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-green-600">OK</span>
+                <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-2">
                     {[0, 1, 2].map((i) => (
                       <button
                         key={`success-${i}`}
@@ -661,7 +661,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                       />
                     ))}
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
                     {[0, 1, 2].map((i) => (
                       <button
                         key={`failure-${i}`}
@@ -673,7 +673,6 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                         }`}
                       />
                     ))}
-                    <span className="text-xs text-red-600">X</span>
                   </div>
                 </div>
               </div>

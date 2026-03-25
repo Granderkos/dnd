@@ -18,7 +18,9 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   const { t } = useI18n()
   const [activeMap, setActiveMap] = useState<StoredMap | null>(null)
   const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
   const isDragging = useRef(false)
   const lastPos = useRef({ x: 0, y: 0 })
   const pinchStartDistance = useRef(0)
@@ -27,6 +29,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
 
   useEffect(() => {
     const loadActiveMap = async () => {
+      if (document.visibilityState === 'hidden') return
       if (isLoadingMap.current) return
       isLoadingMap.current = true
       try {
@@ -48,7 +51,27 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
     return () => clearInterval(interval)
   }, [])
 
-  const handleZoom = useCallback((delta: number) => onSettingsChange({ ...settings, zoom: Math.max(0.25, Math.min(4, settings.zoom + delta)) }), [settings, onSettingsChange])
+  const applyZoomAt = useCallback((requestedZoom: number, clientX: number, clientY: number) => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    const rect = viewport.getBoundingClientRect()
+    const focusX = clientX - rect.left - (rect.width / 2)
+    const focusY = clientY - rect.top - (rect.height / 2)
+    const nextZoom = Math.max(0.25, Math.min(4, requestedZoom))
+    const ratio = nextZoom / settings.zoom
+    onSettingsChange({
+      ...settings,
+      zoom: nextZoom,
+      panX: focusX - ((focusX - settings.panX) * ratio),
+      panY: focusY - ((focusY - settings.panY) * ratio),
+    })
+  }, [settings, onSettingsChange])
+  const handleZoom = useCallback((delta: number) => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    const rect = viewport.getBoundingClientRect()
+    applyZoomAt(settings.zoom + delta, rect.left + (rect.width / 2), rect.top + (rect.height / 2))
+  }, [settings.zoom, applyZoomAt])
   const handleReset = useCallback(() => onSettingsChange({ ...settings, zoom: 1, panX: 0, panY: 0 }), [settings, onSettingsChange])
   const handleMouseDown = useCallback((e: React.MouseEvent) => { isDragging.current = true; lastPos.current = { x: e.clientX, y: e.clientY } }, [])
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
@@ -74,14 +97,16 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
     }
   }, [settings.zoom])
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    e.preventDefault()
+    if (e.cancelable) e.preventDefault()
     if (e.touches.length === 2) {
       const a = e.touches[0]
       const b = e.touches[1]
       const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
       if (pinchStartDistance.current > 0) {
         const nextZoom = pinchStartZoom.current * (distance / pinchStartDistance.current)
-        onSettingsChange({ ...settings, zoom: Math.max(0.25, Math.min(4, nextZoom)) })
+        const centerX = (a.clientX + b.clientX) / 2
+        const centerY = (a.clientY + b.clientY) / 2
+        applyZoomAt(nextZoom, centerX, centerY)
       }
       return
     }
@@ -90,7 +115,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
     const dy = e.touches[0].clientY - lastPos.current.y
     lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
     onSettingsChange({ ...settings, panX: settings.panX + dx, panY: settings.panY + dy })
-  }, [settings, onSettingsChange])
+  }, [settings, onSettingsChange, applyZoomAt])
   const handleTouchEnd = useCallback(() => {
     isDragging.current = false
     pinchStartDistance.current = 0
@@ -98,14 +123,19 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault()
-      handleZoom(e.deltaY > 0 ? -0.1 : 0.1)
+      applyZoomAt(settings.zoom + (e.deltaY > 0 ? -0.1 : 0.1), e.clientX, e.clientY)
+      return
     }
-  }, [handleZoom])
+    e.preventDefault()
+    onSettingsChange({ ...settings, panX: settings.panX - e.deltaX, panY: settings.panY - e.deltaY })
+  }, [settings, onSettingsChange, applyZoomAt])
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement && containerRef.current?.requestFullscreen) {
+      setIsFullscreen(true)
       void containerRef.current.requestFullscreen()
     } else {
       if (document.fullscreenElement) {
+        setIsFullscreen(false)
         void document.exitFullscreen()
       } else {
         setIsPseudoFullscreen((prev) => !prev)
@@ -116,6 +146,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   useEffect(() => {
     const handleFullscreenChange = () => {
       const active = !!document.fullscreenElement
+      setIsFullscreen(active)
       if (active) setIsPseudoFullscreen(false)
     }
     document.addEventListener('fullscreenchange', handleFullscreenChange)
@@ -123,7 +154,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   }, [])
 
   useEffect(() => {
-    const shouldLock = isPseudoFullscreen || !!document.fullscreenElement
+    const shouldLock = isPseudoFullscreen || isFullscreen
     if (!shouldLock) return
     const originalOverflow = document.body.style.overflow
     const originalTouchAction = document.body.style.touchAction
@@ -133,7 +164,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
       document.body.style.overflow = originalOverflow
       document.body.style.touchAction = originalTouchAction
     }
-  }, [isPseudoFullscreen])
+  }, [isPseudoFullscreen, isFullscreen])
 
   if (!activeMap) {
     return (
@@ -157,11 +188,12 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
           <Button size="icon" variant="ghost" className="size-8" onClick={() => handleZoom(0.25)}><ZoomIn className="size-4" /></Button>
           <Button size="icon" variant="ghost" className="size-8" onClick={handleReset}><RotateCcw className="size-4" /></Button>
           <Button size="icon" variant="ghost" className="size-8" onClick={toggleFullscreen}>
-            {isPseudoFullscreen || !!document.fullscreenElement ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+            {isPseudoFullscreen || isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
           </Button>
         </div>
       </div>
       <div
+        ref={viewportRef}
         className="flex-1 overflow-hidden cursor-grab active:cursor-grabbing select-none"
         style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
         onMouseDown={handleMouseDown}
