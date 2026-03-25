@@ -20,6 +20,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   const [isLoadingMap, setIsLoadingMap] = useState(true)
   const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isMapFocused, setIsMapFocused] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const isDragging = useRef(false)
@@ -27,6 +28,11 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   const pinchStartDistance = useRef(0)
   const pinchStartZoom = useRef(1)
   const isFetchingMap = useRef(false)
+  const latestSettingsRef = useRef(settings)
+
+  useEffect(() => {
+    latestSettingsRef.current = settings
+  }, [settings])
 
   useEffect(() => {
     const loadActiveMap = async () => {
@@ -122,15 +128,6 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
     isDragging.current = false
     pinchStartDistance.current = 0
   }, [])
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault()
-      applyZoomAt(settings.zoom + (e.deltaY > 0 ? -0.1 : 0.1), e.clientX, e.clientY)
-      return
-    }
-    e.preventDefault()
-    onSettingsChange({ ...settings, panX: settings.panX - e.deltaX, panY: settings.panY - e.deltaY })
-  }, [settings, onSettingsChange, applyZoomAt])
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement && containerRef.current?.requestFullscreen) {
       setIsFullscreen(true)
@@ -156,7 +153,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   }, [])
 
   useEffect(() => {
-    const shouldLock = isPseudoFullscreen || isFullscreen
+    const shouldLock = isPseudoFullscreen || isFullscreen || isMapFocused
     if (!shouldLock) return
     const originalOverflow = document.body.style.overflow
     const originalTouchAction = document.body.style.touchAction
@@ -166,7 +163,31 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
       document.body.style.overflow = originalOverflow
       document.body.style.touchAction = originalTouchAction
     }
-  }, [isPseudoFullscreen, isFullscreen])
+  }, [isPseudoFullscreen, isFullscreen, isMapFocused])
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+
+    const handleNativeWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      const current = latestSettingsRef.current
+      if (event.ctrlKey || event.metaKey) {
+        applyZoomAt(current.zoom + (event.deltaY > 0 ? -0.1 : 0.1), event.clientX, event.clientY)
+        return
+      }
+      onSettingsChange({
+        ...current,
+        panX: current.panX - event.deltaX,
+        panY: current.panY - event.deltaY,
+      })
+    }
+
+    viewport.addEventListener('wheel', handleNativeWheel, { passive: false })
+    return () => {
+      viewport.removeEventListener('wheel', handleNativeWheel)
+    }
+  }, [applyZoomAt, onSettingsChange])
 
   if (!activeMap) {
     return (
@@ -207,12 +228,14 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onMouseLeave={() => {
+          handleMouseUp()
+          setIsMapFocused(false)
+        }}
+        onMouseEnter={() => setIsMapFocused(true)}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        onWheelCapture={handleWheel}
-        onWheel={handleWheel}
       >
         <div className="w-full h-full flex items-center justify-center" style={{ transform: `translate(${settings.panX}px, ${settings.panY}px) scale(${settings.zoom})`, transformOrigin: 'center' }}>
           <img src={activeMap.imageData} alt={activeMap.name} className="max-w-none" draggable={false} />

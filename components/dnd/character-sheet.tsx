@@ -474,7 +474,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
             </div>
 
             {/* Ability Scores Grid */}
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+            <div className="grid grid-cols-3 gap-2 justify-items-center sm:grid-cols-6">
               {abilities.map((ability) => {
                 const score = character.abilities[ability].value
                 const mod = calculateModifier(score)
@@ -484,7 +484,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 return (
                   <div
                     key={ability}
-                    className="flex flex-col items-center rounded border bg-muted/30 p-1.5"
+                    className="flex w-full max-w-[112px] flex-col items-center rounded border bg-muted/30 p-1.5"
                   >
                     <span className="text-xs font-medium text-muted-foreground">{ability}</span>
                     <span className="text-xl font-bold">{formatModifier(mod)}</span>

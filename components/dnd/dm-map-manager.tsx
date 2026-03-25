@@ -42,6 +42,7 @@ export const DMMapManager = memo(function DMMapManager() {
   const [viewSettings, setViewSettings] = useState<MapViewSettings>(defaultViewSettings)
   const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isMapFocused, setIsMapFocused] = useState(false)
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const [deleteConfirmMap, setDeleteConfirmMap] = useState<StoredMap | null>(null)
   const [newMapName, setNewMapName] = useState('')
@@ -209,15 +210,6 @@ export const DMMapManager = memo(function DMMapManager() {
     isDragging.current = false
     pinchStartDistance.current = 0
   }, [])
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault()
-      applyZoomAt(viewSettings.zoom + (e.deltaY > 0 ? -0.1 : 0.1), e.clientX, e.clientY)
-      return
-    }
-    e.preventDefault()
-    setViewSettings((prev) => ({ ...prev, panX: prev.panX - e.deltaX, panY: prev.panY - e.deltaY }))
-  }, [viewSettings.zoom, applyZoomAt])
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement && containerRef.current?.requestFullscreen) {
       setIsFullscreen(true)
@@ -243,7 +235,7 @@ export const DMMapManager = memo(function DMMapManager() {
   }, [])
 
   useEffect(() => {
-    const shouldLock = viewingMap && (isPseudoFullscreen || isFullscreen)
+    const shouldLock = viewingMap && (isPseudoFullscreen || isFullscreen || isMapFocused)
     if (!shouldLock) return
     const originalOverflow = document.body.style.overflow
     const originalTouchAction = document.body.style.touchAction
@@ -253,7 +245,26 @@ export const DMMapManager = memo(function DMMapManager() {
       document.body.style.overflow = originalOverflow
       document.body.style.touchAction = originalTouchAction
     }
-  }, [isPseudoFullscreen, isFullscreen, viewingMap])
+  }, [isPseudoFullscreen, isFullscreen, isMapFocused, viewingMap])
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport || !viewingMap) return
+
+    const handleNativeWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      if (event.ctrlKey || event.metaKey) {
+        applyZoomAt(viewSettings.zoom + (event.deltaY > 0 ? -0.1 : 0.1), event.clientX, event.clientY)
+        return
+      }
+      setViewSettings((prev) => ({ ...prev, panX: prev.panX - event.deltaX, panY: prev.panY - event.deltaY }))
+    }
+
+    viewport.addEventListener('wheel', handleNativeWheel, { passive: false })
+    return () => {
+      viewport.removeEventListener('wheel', handleNativeWheel)
+    }
+  }, [applyZoomAt, viewSettings.zoom, viewingMap])
 
   if (viewingMap) {
     return (
@@ -287,12 +298,14 @@ export const DMMapManager = memo(function DMMapManager() {
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
+          onMouseLeave={() => {
+            handleMouseUp()
+            setIsMapFocused(false)
+          }}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          onWheelCapture={handleWheel}
-          onWheel={handleWheel}
+          onMouseEnter={() => setIsMapFocused(true)}
         >
           <div className="w-full h-full flex items-center justify-center" style={{ transform: `translate(${viewSettings.panX}px, ${viewSettings.panY}px) scale(${viewSettings.zoom})`, transformOrigin: 'center' }}>
             <div className="relative">
