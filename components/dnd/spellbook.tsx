@@ -36,7 +36,8 @@ import {
   Spellbook as SpellbookType,
   Spell,
   AbilityName,
-  calculateModifier,
+  calculateSpellAttackBonus,
+  calculateSpellSaveDC,
   formatModifier,
   formatFeetWithSquares,
 } from '@/lib/dnd-types'
@@ -67,12 +68,12 @@ export function Spellbook({
     onConfirm: () => void
   }>({ open: false, title: '', description: '', onConfirm: () => {} })
 
-  const spellcastingMod = useMemo(
-    () => calculateModifier(abilityScores[spellbook.spellcastingAbility].value),
+  const spellcastingScore = useMemo(
+    () => abilityScores[spellbook.spellcastingAbility].value,
     [abilityScores, spellbook.spellcastingAbility],
   )
-  const calculatedDC = 8 + proficiencyBonus + spellcastingMod
-  const calculatedAttack = proficiencyBonus + spellcastingMod
+  const calculatedDC = calculateSpellSaveDC(proficiencyBonus, spellcastingScore)
+  const calculatedAttack = calculateSpellAttackBonus(proficiencyBonus, spellcastingScore)
 
   const updateSpellcastingAbility = useCallback((ability: AbilityName) => {
     onChange({ ...spellbook, spellcastingAbility: ability })

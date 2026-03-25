@@ -21,6 +21,7 @@ interface PlayerCharacterData {
   activity?: { last_seen?: string; current_page?: string; is_online?: boolean } | null
 }
 const DM_TAB_STORAGE_KEY = 'dnd:dm-active-tab'
+const DM_TABS = new Set(['players', 'maps', 'notes'])
 
 function useDebouncedRemoteText(value: string, delay: number, enabled: boolean, saveFn: (value: string) => Promise<void>) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -53,7 +54,7 @@ export const DMDashboard = memo(function DMDashboard() {
 
   useEffect(() => {
     const storedTab = window.localStorage.getItem(DM_TAB_STORAGE_KEY)
-    if (storedTab) setActiveTab(storedTab)
+    if (storedTab && DM_TABS.has(storedTab)) setActiveTab(storedTab)
   }, [])
 
   useEffect(() => {
@@ -94,7 +95,7 @@ export const DMDashboard = memo(function DMDashboard() {
       } finally {
         polling = false
       }
-    }, 10000)
+    }, 12000)
     return () => {
       mounted = false
       clearInterval(interval)
@@ -124,7 +125,10 @@ export const DMDashboard = memo(function DMDashboard() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-dvh flex-col">
         <header className="border-b border-border bg-card px-3 py-3">
           <div className="mb-2 flex items-center justify-between">
-            <div className="text-sm font-bold uppercase tracking-[0.12em] text-primary">{t('dashboard.dmTitle')}</div>
+            <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.12em] text-primary">
+              <img src="/logo.svg" alt="DnD Compendium logo" className="size-5 shrink-0" />
+              <span>{t('dashboard.dmTitle')}</span>
+            </div>
             <div className="flex items-center gap-1">
               <span className="text-xs text-muted-foreground">{APP_VERSION}</span>
               <AppControls />

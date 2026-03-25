@@ -1,6 +1,7 @@
 'use client'
 
 import { emptyCharacter, emptyInventory, emptySpellbook } from './auth-types'
+import { calculateModifier, calculateSpellAttackBonus, calculateSpellSaveDC } from './dnd-types'
 import type { Character, Inventory, Spellbook } from './dnd-types'
 import type { Note } from '@/components/dnd/notes'
 import { supabase } from './supabase'
@@ -155,6 +156,12 @@ function notesBlobToText(blob: CharacterNotesBlob) {
   return JSON.stringify(blob)
 }
 
+function getPerceptionModifier(character: Character): number {
+  const wisMod = calculateModifier(character.abilities.WIS.value)
+  const perceptionSkill = character.skills.find((skill) => skill.name === 'Perception')
+  return wisMod + (perceptionSkill?.proficient ? character.proficiencyBonus : 0)
+}
+
 async function getCharacterBlob(characterId: string): Promise<CharacterNotesBlob> {
   const { data, error } = await supabase
     .from('character_notes')
@@ -213,6 +220,10 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
   const fallbackAttacks = blob.attacks ?? emptyCharacter.attacks
   const hasNormalizedSpells = Boolean(spellsData?.length)
   const hasNormalizedInventory = Boolean(inventoryData?.length)
+  const fallbackPreparedById = new Map(
+    [...fallbackSpellEntries.cantrips, ...fallbackSpellEntries.spells]
+      .map((spell) => [spell.id, spell.prepared] as const)
+  )
 
   const character: Character = {
     info: {
@@ -237,8 +248,11 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
     proficiencyBonus: row.proficiency_bonus ?? 2,
     skills,
     combat: {
+      initiativeBase: calculateModifier(row.dex_score ?? 10),
+      initiativeRoll: 0,
+      initiativeTotal: calculateModifier(row.dex_score ?? 10),
       armorClass: row.armor_class ?? 10,
-      initiative: row.initiative ?? 0,
+      initiative: calculateModifier(row.dex_score ?? 10),
       speed: row.speed ?? 30,
       maxHp: row.hp_max ?? 0,
       currentHp: row.hp_current ?? 0,
@@ -263,13 +277,18 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
     languages: row.languages ?? '',
     passivePerception: 10,
   }
+  character.passivePerception = 10 + getPerceptionModifier(character)
 
   const spellMeta = blob.spellbookMeta ?? emptyBlob().spellbookMeta
+  const spellAbility = spellMeta.spellcastingAbility || 'INT'
+  const spellAbilityScore = row[`${spellAbility.toLowerCase()}_score` as keyof typeof row] as number | null
+  const fallbackSpellSaveDC = calculateSpellSaveDC(row.proficiency_bonus ?? 2, spellAbilityScore ?? 10)
+  const fallbackSpellAttackBonus = calculateSpellAttackBonus(row.proficiency_bonus ?? 2, spellAbilityScore ?? 10)
   const spellbook: Spellbook = {
     spellcastingClass: spellMeta.spellcastingClass || row.class_name || '',
-    spellcastingAbility: spellMeta.spellcastingAbility || 'INT',
-    spellSaveDC: spellMeta.spellSaveDC || 0,
-    spellAttackBonus: spellMeta.spellAttackBonus || 0,
+    spellcastingAbility: spellAbility,
+    spellSaveDC: spellMeta.spellSaveDC ?? fallbackSpellSaveDC,
+    spellAttackBonus: spellMeta.spellAttackBonus ?? fallbackSpellAttackBonus,
     cantrips: (hasNormalizedSpells ? (spellsData ?? []).filter((s) => s.is_cantrip).map((s) => ({
       id: s.client_id ?? s.id,
       name: s.title,
@@ -282,7 +301,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       duration: s.duration_text,
       description: s.description,
       damage: s.dice,
-      prepared: true,
+      prepared: fallbackPreparedById.get(s.client_id ?? s.id) ?? true,
     })) : fallbackSpellEntries.cantrips),
     spells: (hasNormalizedSpells ? (spellsData ?? []).filter((s) => !s.is_cantrip).map((s) => ({
       id: s.client_id ?? s.id,
@@ -296,9 +315,9 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       duration: s.duration_text,
       description: s.description,
       damage: s.dice,
-      prepared: true,
+      prepared: fallbackPreparedById.get(s.client_id ?? s.id) ?? true,
     })) : fallbackSpellEntries.spells),
-    slots: spellMeta.slots || emptySpellbook.slots,
+    slots: spellMeta.slots ?? emptySpellbook.slots,
   }
 
   const inventory: Inventory = {
@@ -348,6 +367,12 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
   const previous = characterSaveQueue.get(characterId) ?? Promise.resolve()
   const saveTask = previous.then(async () => {
     const { character, spellbook, inventory, notes } = payload
+    const spellcastingScore = character.abilities[spellbook.spellcastingAbility]?.value ?? 10
+    const derivedSpellSaveDC = calculateSpellSaveDC(character.proficiencyBonus, spellcastingScore)
+    const derivedSpellAttackBonus = calculateSpellAttackBonus(character.proficiencyBonus, spellcastingScore)
+    const derivedInitiativeBase = calculateModifier(character.abilities.DEX.value)
+    const derivedInitiativeRoll = character.combat.initiativeRoll ?? 0
+    const derivedInitiativeTotal = derivedInitiativeBase + derivedInitiativeRoll
 
     const row = {
       id: characterId,
@@ -362,7 +387,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       xp: character.info.xp,
       proficiency_bonus: character.proficiencyBonus,
       armor_class: character.combat.armorClass,
-      initiative: character.combat.initiative,
+      initiative: derivedInitiativeTotal,
       speed: character.combat.speed,
       hp_max: character.combat.maxHp,
       hp_current: character.combat.currentHp,
@@ -454,8 +479,8 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       spellbookMeta: {
         spellcastingClass: spellbook.spellcastingClass,
         spellcastingAbility: spellbook.spellcastingAbility,
-        spellSaveDC: spellbook.spellSaveDC,
-        spellAttackBonus: spellbook.spellAttackBonus,
+        spellSaveDC: derivedSpellSaveDC,
+        spellAttackBonus: derivedSpellAttackBonus,
         slots: spellbook.slots,
       },
       spellbookEntries: {
@@ -664,8 +689,11 @@ export async function listPlayerCharacters() {
       proficiencyBonus: row.proficiency_bonus ?? 2,
       skills: emptyCharacter.skills,
       combat: {
+        initiativeBase: calculateModifier(row.dex_score ?? 10),
+        initiativeRoll: 0,
+        initiativeTotal: calculateModifier(row.dex_score ?? 10),
         armorClass: row.armor_class ?? 10,
-        initiative: row.initiative ?? 0,
+        initiative: calculateModifier(row.dex_score ?? 10),
         speed: row.speed ?? 30,
         maxHp: row.hp_max ?? 0,
         currentHp: row.hp_current ?? 0,
@@ -681,6 +709,7 @@ export async function listPlayerCharacters() {
       languages: row.languages ?? '',
       passivePerception: 10,
     }
+    character.passivePerception = 10 + getPerceptionModifier(character)
 
     return {
       username: player.username,

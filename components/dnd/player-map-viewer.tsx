@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, memo, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ZoomIn, ZoomOut, Maximize2, RotateCcw, MapIcon } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize2, Minimize2, RotateCcw, MapIcon } from 'lucide-react'
 import { MapSettings } from '@/lib/dnd-types'
 import { getActiveMap } from '@/lib/supabase-data'
 import type { StoredMap } from '@/lib/supabase-data'
@@ -23,9 +23,12 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   const lastPos = useRef({ x: 0, y: 0 })
   const pinchStartDistance = useRef(0)
   const pinchStartZoom = useRef(1)
+  const isLoadingMap = useRef(false)
 
   useEffect(() => {
     const loadActiveMap = async () => {
+      if (isLoadingMap.current) return
+      isLoadingMap.current = true
       try {
         const map = await getActiveMap()
         setActiveMap((prev) => {
@@ -36,10 +39,12 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
         })
       } catch (e) {
         console.error('Failed to load active map', e)
+      } finally {
+        isLoadingMap.current = false
       }
     }
     void loadActiveMap()
-    const interval = setInterval(() => void loadActiveMap(), 10000)
+    const interval = setInterval(() => void loadActiveMap(), 12000)
     return () => clearInterval(interval)
   }, [])
 
@@ -69,6 +74,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
     }
   }, [settings.zoom])
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    e.preventDefault()
     if (e.touches.length === 2) {
       const a = e.touches[0]
       const b = e.touches[1]
@@ -89,6 +95,12 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
     isDragging.current = false
     pinchStartDistance.current = 0
   }, [])
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      handleZoom(e.deltaY > 0 ? -0.1 : 0.1)
+    }
+  }, [handleZoom])
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement && containerRef.current?.requestFullscreen) {
       void containerRef.current.requestFullscreen()
@@ -109,6 +121,19 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
     document.addEventListener('fullscreenchange', handleFullscreenChange)
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
+
+  useEffect(() => {
+    const shouldLock = isPseudoFullscreen || !!document.fullscreenElement
+    if (!shouldLock) return
+    const originalOverflow = document.body.style.overflow
+    const originalTouchAction = document.body.style.touchAction
+    document.body.style.overflow = 'hidden'
+    document.body.style.touchAction = 'none'
+    return () => {
+      document.body.style.overflow = originalOverflow
+      document.body.style.touchAction = originalTouchAction
+    }
+  }, [isPseudoFullscreen])
 
   if (!activeMap) {
     return (
@@ -131,10 +156,23 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
           <span className="text-xs w-12 text-center">{Math.round(settings.zoom * 100)}%</span>
           <Button size="icon" variant="ghost" className="size-8" onClick={() => handleZoom(0.25)}><ZoomIn className="size-4" /></Button>
           <Button size="icon" variant="ghost" className="size-8" onClick={handleReset}><RotateCcw className="size-4" /></Button>
-          <Button size="icon" variant="ghost" className="size-8" onClick={toggleFullscreen}><Maximize2 className="size-4" /></Button>
+          <Button size="icon" variant="ghost" className="size-8" onClick={toggleFullscreen}>
+            {isPseudoFullscreen || !!document.fullscreenElement ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+          </Button>
         </div>
       </div>
-      <div className="flex-1 overflow-hidden cursor-grab active:cursor-grabbing select-none" onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
+      <div
+        className="flex-1 overflow-hidden cursor-grab active:cursor-grabbing select-none"
+        style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onWheel={handleWheel}
+      >
         <div className="w-full h-full flex items-center justify-center" style={{ transform: `translate(${settings.panX}px, ${settings.panY}px) scale(${settings.zoom})`, transformOrigin: 'center' }}>
           <img src={activeMap.imageData} alt={activeMap.name} className="max-w-none" draggable={false} />
         </div>

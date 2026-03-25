@@ -187,13 +187,6 @@ const AttackRow = memo(function AttackRow({ attack, onUpdate, onRemove }: Attack
   )
 })
 
-function parseSignedInteger(value: string, fallback: number) {
-  const normalized = value.trim()
-  if (normalized === '' || normalized === '-' || normalized === '+') return fallback
-  const parsed = Number.parseInt(normalized, 10)
-  return Number.isNaN(parsed) ? fallback : parsed
-}
-
 interface CharacterSheetProps {
   character: Character
   onChange: (character: Character) => void
@@ -345,6 +338,9 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
 
   const abilities: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']
   const speedInSquares = Math.floor(character.combat.speed / 5)
+  const derivedInitiativeBase = calculateModifier(character.abilities.DEX.value)
+  const derivedInitiativeRoll = character.combat.initiativeRoll ?? 0
+  const derivedInitiativeTotal = derivedInitiativeBase + derivedInitiativeRoll
   return (
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="px-3 py-4">
@@ -567,10 +563,11 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                   type="text"
                   inputMode="text"
                   pattern="[+-]?[0-9]*"
-                  value={String(character.combat.initiative)}
-                  onChange={(e) => updateCombat('initiative', parseSignedInteger(e.target.value, character.combat.initiative))}
+                  value={String(derivedInitiativeTotal)}
+                  readOnly
                   className="mt-1 h-10 w-full text-center text-xl font-bold"
                 />
+                <span className="mt-1 text-[10px] text-muted-foreground">base {formatModifier(derivedInitiativeBase)} + roll {derivedInitiativeRoll}</span>
               </div>
               <div className="col-span-2 flex flex-col items-center rounded-lg border border-border bg-background/80 p-3">
                 <Footprints className="mb-1 size-5 text-muted-foreground" />

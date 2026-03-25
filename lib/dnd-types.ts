@@ -41,6 +41,9 @@ export interface CharacterInfo {
 export interface CombatInfo {
   armorClass: number
   initiative: number
+  initiativeBase: number
+  initiativeRoll: number
+  initiativeTotal: number
   speed: number
   maxHp: number
   currentHp: number
@@ -189,6 +192,9 @@ export const defaultCharacter: Character = {
   combat: {
     armorClass: 12,
     initiative: 0,
+    initiativeBase: 0,
+    initiativeRoll: 0,
+    initiativeTotal: 0,
     speed: 30,
     maxHp: 9,
     currentHp: 9,
@@ -278,6 +284,14 @@ export const defaultInventory: Inventory = {
 // Utility functions
 export function calculateModifier(score: number): number {
   return Math.floor((score - 10) / 2)
+}
+
+export function calculateSpellAttackBonus(proficiencyBonus: number, castingAbilityScore: number): number {
+  return proficiencyBonus + calculateModifier(castingAbilityScore)
+}
+
+export function calculateSpellSaveDC(proficiencyBonus: number, castingAbilityScore: number): number {
+  return 8 + calculateSpellAttackBonus(proficiencyBonus, castingAbilityScore)
 }
 
 export function formatModifier(mod: number): string {

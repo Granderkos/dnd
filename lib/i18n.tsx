@@ -19,7 +19,7 @@ const translations: Record<Language, TranslationMap> = {
     'theme.toggle': 'Toggle theme',
     'lang.switch': 'Switch language',
 
-    'auth.title': 'D&D Character Manager',
+    'auth.title': 'DnD Compendium',
     'auth.subtitle': 'Manage your characters, spells, and adventures',
     'auth.login': 'Login',
     'auth.register': 'Register',
@@ -195,7 +195,7 @@ const translations: Record<Language, TranslationMap> = {
     'theme.toggle': 'Přepnout motiv',
     'lang.switch': 'Přepnout jazyk',
 
-    'auth.title': 'D&D správce postav',
+    'auth.title': 'DnD Compendium',
     'auth.subtitle': 'Spravuj své postavy, kouzla a dobrodružství',
     'auth.login': 'Přihlášení',
     'auth.register': 'Registrace',

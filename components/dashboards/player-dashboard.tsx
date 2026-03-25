@@ -90,6 +90,7 @@ const defaultMapSettings: MapSettings = {
   panY: 0,
 }
 const PLAYER_TAB_STORAGE_KEY = 'dnd:player-active-tab'
+const PLAYER_TABS = new Set(['character', 'inventory', 'spellbook', 'notes', 'map'])
 
 export const PlayerDashboard = memo(function PlayerDashboard() {
   const { user, logout, updateCurrentPage } = useAuth()
@@ -104,7 +105,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
 
   useEffect(() => {
     const storedTab = window.localStorage.getItem(PLAYER_TAB_STORAGE_KEY)
-    if (storedTab) setActiveTab(storedTab)
+    if (storedTab && PLAYER_TABS.has(storedTab)) setActiveTab(storedTab)
   }, [])
 
   useEffect(() => {
@@ -139,7 +140,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
 
   const flushSave = useDebouncedRemoteSave(
     { character, spellbook, inventory, notes },
-    800,
+    1500,
     isLoaded && !!user?.id,
     async (payload) => {
       if (!user?.id) return
@@ -173,6 +174,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         <header className="border-b border-border bg-card px-3 py-3">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
+              <img src="/logo.svg" alt="DnD Compendium logo" className="size-5 shrink-0" />
               <span className="text-sm font-bold uppercase tracking-[0.08em] text-primary truncate max-w-[180px]">
                 {character.info.name || user?.username || t('character.name')}
               </span>

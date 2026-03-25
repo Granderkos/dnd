@@ -9,7 +9,7 @@ import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { ZoomIn, ZoomOut, Maximize2, RotateCcw, Upload, Trash2, Eye, MapIcon, Check, X } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize2, Minimize2, RotateCcw, Upload, Trash2, Eye, MapIcon, Check, X } from 'lucide-react'
 import { createMap, deleteMap, loadMaps, setActiveMap as setActiveMapRemote } from '@/lib/supabase-data'
 import type { StoredMap } from '@/lib/supabase-data'
 import { useAuth } from '@/lib/auth-context'
@@ -162,6 +162,7 @@ export const DMMapManager = memo(function DMMapManager() {
     }
   }, [viewSettings.zoom])
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    e.preventDefault()
     if (e.touches.length === 2) {
       const a = e.touches[0]
       const b = e.touches[1]
@@ -182,6 +183,12 @@ export const DMMapManager = memo(function DMMapManager() {
     isDragging.current = false
     pinchStartDistance.current = 0
   }, [])
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      handleZoom(e.deltaY > 0 ? -0.1 : 0.1)
+    }
+  }, [handleZoom])
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement && containerRef.current?.requestFullscreen) {
       void containerRef.current.requestFullscreen()
@@ -203,6 +210,19 @@ export const DMMapManager = memo(function DMMapManager() {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
 
+  useEffect(() => {
+    const shouldLock = viewingMap && (isPseudoFullscreen || !!document.fullscreenElement)
+    if (!shouldLock) return
+    const originalOverflow = document.body.style.overflow
+    const originalTouchAction = document.body.style.touchAction
+    document.body.style.overflow = 'hidden'
+    document.body.style.touchAction = 'none'
+    return () => {
+      document.body.style.overflow = originalOverflow
+      document.body.style.touchAction = originalTouchAction
+    }
+  }, [isPseudoFullscreen, viewingMap])
+
   if (viewingMap) {
     return (
       <div ref={containerRef} className={`${isPseudoFullscreen ? 'fixed inset-0 z-50 h-dvh' : 'h-full'} flex flex-col bg-background`}>
@@ -213,7 +233,9 @@ export const DMMapManager = memo(function DMMapManager() {
             <span className="text-xs w-12 text-center">{Math.round(viewSettings.zoom * 100)}%</span>
             <Button size="icon" variant="ghost" className="size-8" onClick={() => handleZoom(0.25)}><ZoomIn className="size-4" /></Button>
             <Button size="icon" variant="ghost" className="size-8" onClick={handleReset}><RotateCcw className="size-4" /></Button>
-            <Button size="icon" variant="ghost" className="size-8" onClick={toggleFullscreen}><Maximize2 className="size-4" /></Button>
+            <Button size="icon" variant="ghost" className="size-8" onClick={toggleFullscreen}>
+              {isPseudoFullscreen || !!document.fullscreenElement ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+            </Button>
           </div>
           <div className="flex items-center gap-2 ml-auto">
             <Switch checked={viewSettings.gridEnabled} onCheckedChange={(checked) => setViewSettings((prev) => ({ ...prev, gridEnabled: checked }))} />
@@ -226,7 +248,18 @@ export const DMMapManager = memo(function DMMapManager() {
             )}
           </div>
         </div>
-        <div className="flex-1 overflow-hidden cursor-grab active:cursor-grabbing select-none relative" onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
+        <div
+          className="flex-1 overflow-hidden cursor-grab active:cursor-grabbing select-none relative"
+          style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onWheel={handleWheel}
+        >
           <div className="w-full h-full flex items-center justify-center" style={{ transform: `translate(${viewSettings.panX}px, ${viewSettings.panY}px) scale(${viewSettings.zoom})`, transformOrigin: 'center' }}>
             <div className="relative">
               <img src={viewingMap.imageData} alt={viewingMap.name} className="max-w-none" draggable={false} />
