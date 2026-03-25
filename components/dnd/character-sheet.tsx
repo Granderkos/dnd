@@ -494,7 +494,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                       max={30}
                       value={score}
                       onChange={(e) => updateAbility(ability, parseInt(e.target.value) || 10)}
-                      className="h-7 w-12 md:h-8 md:w-14 text-center text-sm"
+                      className="h-7 w-12 md:h-8 md:w-14 text-center text-sm font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
                     <div className="mt-1.5 flex items-center gap-1 border-t pt-1.5">
                       <Checkbox
@@ -601,7 +601,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                     type="number"
                     value={character.combat.maxHp}
                     onChange={(e) => updateCombat('maxHp', parseInt(e.target.value) || 1)}
-                    className="h-9 w-full max-w-24 text-center text-base font-semibold"
+                    className="h-9 w-full max-w-24 text-center text-base font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                 </div>
                 <div className="flex w-full flex-col items-center justify-end">
@@ -619,7 +619,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                       type="number"
                       value={character.combat.currentHp}
                       onChange={(e) => updateCombat('currentHp', parseInt(e.target.value) || 0)}
-                      className="h-12 w-20 text-center text-2xl font-bold"
+                      className="h-12 w-20 text-center text-2xl font-bold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
                     <Button
                       size="icon"
@@ -638,7 +638,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                       min={0}
                       value={character.combat.tempHp}
                       onChange={(e) => updateCombat('tempHp', parseInt(e.target.value) || 0)}
-                      className="h-9 w-full max-w-24 text-center text-base font-semibold"
+                      className="h-9 w-full max-w-24 text-center text-base font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
                 </div>
               </div>
