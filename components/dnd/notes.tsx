@@ -4,7 +4,6 @@ import { useState, memo, useCallback, useMemo } from 'react'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import {
   AlertDialog,
@@ -95,8 +94,8 @@ export function Notes({ notes, onChange }: NotesProps) {
 
   if (selectedNote) {
     return (
-      <ScrollArea className="h-[calc(100vh-4rem)]">
-        <div className="px-3 py-4 pb-24">
+      <div className="h-full min-h-0 overflow-y-auto px-3 py-4 pb-24">
+        <div>
           <PageShell>
             <Card>
               <CardHeader className="pb-2">
@@ -135,7 +134,7 @@ export function Notes({ notes, onChange }: NotesProps) {
                   value={selectedNote.content}
                   onChange={(e) => updateNote({ ...selectedNote, content: e.target.value })}
                   placeholder={t('notes.contentPlaceholder')}
-                  className="min-h-[55vh] resize-none overflow-y-auto overscroll-contain text-sm scrollbar-hidden"
+                  className="min-h-[55vh] resize-none text-sm scrollbar-hidden"
                 />
               </CardContent>
             </Card>
@@ -154,20 +153,20 @@ export function Notes({ notes, onChange }: NotesProps) {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </ScrollArea>
+      </div>
     )
   }
 
   return (
-    <ScrollArea className="h-[calc(100vh-4rem)]">
-      <div className="px-3 py-4">
+    <div className="h-full min-h-0 overflow-y-auto px-3 py-4">
+      <div>
         <PageShell>
-          <div className="-mx-1 overflow-x-auto px-1 scrollbar-hidden"><div className="flex w-max gap-2">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
               <Button
                 size="sm"
                 variant={selectedCategory === 'all' ? 'default' : 'outline'}
                 onClick={() => setSelectedCategory('all')}
-                className="h-8 shrink-0 px-3 text-xs"
+                className="h-9 w-full px-3 text-xs"
               >
                 {t('common.all')}
               </Button>
@@ -177,30 +176,30 @@ export function Notes({ notes, onChange }: NotesProps) {
                   size="sm"
                   variant={selectedCategory === id ? 'default' : 'outline'}
                   onClick={() => setSelectedCategory(id)}
-                  className="h-8 shrink-0 px-3 text-xs"
+                  className="h-9 w-full px-3 text-xs"
                 >
                   {t(labelKey)}
                 </Button>
               ))}
-            </div></div>
+            </div>
 
           <Card className="mt-4">
             <CardContent className="pb-3 pt-3">
-              <div className="-mx-1 overflow-x-auto px-1 scrollbar-hidden"><div className="flex w-max gap-2">
+              <div className="grid grid-cols-5 gap-3">
                 {NOTE_CATEGORIES.map(({ id, icon: Icon, labelKey }) => (
                   <Button
                     key={id}
                     size="sm"
                     variant="outline"
                     onClick={() => addNote(id)}
-                    className="h-10 gap-1.5"
+                    className="h-12 w-full gap-1.5"
                     title={t(labelKey)}
                   >
                     <Icon className="size-5" />
                     <span className="hidden sm:inline text-sm">{t(labelKey)}</span>
                   </Button>
                 ))}
-              </div></div>
+              </div>
             </CardContent>
           </Card>
 
@@ -238,7 +237,7 @@ export function Notes({ notes, onChange }: NotesProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </ScrollArea>
+    </div>
   )
 }
 

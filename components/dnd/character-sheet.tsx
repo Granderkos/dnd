@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -145,6 +144,7 @@ interface AttackRowProps {
 }
 
 const AttackRow = memo(function AttackRow({ attack, onUpdate, onRemove }: AttackRowProps) {
+  const { t } = useI18n()
   return (
     <div className="flex items-start gap-2 rounded-lg border border-border bg-background/80 p-3">
       <div className="min-w-0 flex-1 space-y-1">
@@ -152,26 +152,26 @@ const AttackRow = memo(function AttackRow({ attack, onUpdate, onRemove }: Attack
           value={attack.name}
           onChange={(value) => onUpdate(attack.id, 'name', value)}
           className="h-8 text-sm font-medium"
-          placeholder="Attack name"
+          placeholder={t('character.attackNamePlaceholder')}
         />
         <div className="flex gap-1">
           <DebouncedInput
             value={attack.attackBonus}
             onChange={(value) => onUpdate(attack.id, 'attackBonus', value)}
             className="h-7 w-14 text-center text-xs"
-            placeholder="+0"
+            placeholder={t('character.attackBonusPlaceholder')}
           />
           <DebouncedInput
             value={attack.damage}
             onChange={(value) => onUpdate(attack.id, 'damage', value)}
             className="h-7 flex-1 text-xs"
-            placeholder="1d6"
+            placeholder={t('character.attackDamagePlaceholder')}
           />
           <DebouncedInput
             value={attack.damageType}
             onChange={(value) => onUpdate(attack.id, 'damageType', value)}
             className="h-7 flex-1 text-xs"
-            placeholder="type"
+            placeholder={t('character.attackTypePlaceholder')}
           />
         </div>
       </div>
@@ -187,20 +187,13 @@ const AttackRow = memo(function AttackRow({ attack, onUpdate, onRemove }: Attack
   )
 })
 
-function parseSignedInteger(value: string, fallback: number) {
-  const normalized = value.trim()
-  if (normalized === '' || normalized === '-' || normalized === '+') return fallback
-  const parsed = Number.parseInt(normalized, 10)
-  return Number.isNaN(parsed) ? fallback : parsed
-}
-
 interface CharacterSheetProps {
   character: Character
   onChange: (character: Character) => void
 }
 
 export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
-  const { t } = useI18n()
+  const { t, language } = useI18n()
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
     title: string
@@ -345,8 +338,18 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
 
   const abilities: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']
   const speedInSquares = Math.floor(character.combat.speed / 5)
+  const initiativeModifier = calculateModifier(character.abilities.DEX.value)
+  const initiativeRoll = character.combat.initiativeRoll ?? 0
+  const initiativeTotal = initiativeModifier + initiativeRoll
+  // Compatibility aliases during rollout to avoid ReferenceError from stale refs.
+  const derivedInitiativeBase = initiativeModifier
+  const derivedInitiativeRoll = initiativeRoll
+  const derivedInitiativeTotal = initiativeTotal
+  const speedValueText = language === 'cs'
+    ? `${(character.combat.speed * 0.3048).toFixed(1)} m (${speedInSquares} polí)`
+    : `${character.combat.speed} ft (${speedInSquares} sq)`
   return (
-    <ScrollArea className="h-[calc(100vh-4rem)]">
+    <div className="h-full min-h-0 overflow-y-auto">
       <div className="px-3 py-4">
         <PageShell>
           <div className="space-y-4 pb-24">
@@ -471,7 +474,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
             </div>
 
             {/* Ability Scores Grid */}
-            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
+            <div className="grid grid-cols-3 gap-2 justify-items-center sm:grid-cols-6">
               {abilities.map((ability) => {
                 const score = character.abilities[ability].value
                 const mod = calculateModifier(score)
@@ -481,17 +484,17 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 return (
                   <div
                     key={ability}
-                    className="flex flex-col items-center rounded border bg-muted/30 p-1.5"
+                    className="flex w-[104px] md:w-[120px] flex-col items-center rounded border bg-muted/30 p-1.5 text-center md:p-2"
                   >
                     <span className="text-xs font-medium text-muted-foreground">{ability}</span>
-                    <span className="text-xl font-bold">{formatModifier(mod)}</span>
+                    <span className="text-xl font-bold md:text-2xl">{formatModifier(mod)}</span>
                     <Input
                       type="number"
                       min={1}
                       max={30}
                       value={score}
                       onChange={(e) => updateAbility(ability, parseInt(e.target.value) || 10)}
-                      className="h-7 w-12 text-center text-sm"
+                      className="h-7 w-12 md:h-8 md:w-14 text-center text-sm"
                     />
                     <div className="mt-1.5 flex items-center gap-1 border-t pt-1.5">
                       <Checkbox
@@ -530,7 +533,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                         onCheckedChange={() => toggleSkillProficiency(index)}
                         className="size-5"
                       />
-                      <span className="w-8 text-right font-mono text-sm font-medium">
+                      <span className="w-10 text-center font-mono text-sm font-medium">
                         {formatModifier(total)}
                       </span>
                       <span className="text-sm">
@@ -549,7 +552,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
         <Card>
           <CardContent className="pt-4">
             {/* AC, Initiative, Speed row */}
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <div className="flex flex-col items-center rounded-lg border border-border bg-background/80 p-3">
                 <Shield className="mb-1 size-5 text-muted-foreground" />
                 <span className="text-xs uppercase text-muted-foreground">{t('character.combat.ac')}</span>
@@ -567,40 +570,40 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                   type="text"
                   inputMode="text"
                   pattern="[+-]?[0-9]*"
-                  value={String(character.combat.initiative)}
-                  onChange={(e) => updateCombat('initiative', parseSignedInteger(e.target.value, character.combat.initiative))}
+                  value={String(initiativeTotal)}
+                  readOnly
                   className="mt-1 h-10 w-full text-center text-xl font-bold"
                 />
               </div>
-              <div className="col-span-2 flex flex-col items-center rounded-lg border border-border bg-background/80 p-3">
+              <div className="flex flex-col items-center rounded-lg border border-border bg-background/80 p-3">
                 <Footprints className="mb-1 size-5 text-muted-foreground" />
                 <span className="text-xs uppercase text-muted-foreground">{t('character.combat.speed')}</span>
-                <div className="mt-1 flex items-center gap-1">
+                <div className="mt-1 w-full">
                   <Input
                     type="number"
                     step={5}
                     value={character.combat.speed}
                     onChange={(e) => updateCombat('speed', parseInt(e.target.value) || 30)}
-                    className="h-10 w-16 text-center text-xl font-bold"
+                    className="h-10 w-full text-center text-xl font-bold"
                   />
-                  <span className="text-sm text-muted-foreground">ft ({speedInSquares} sq)</span>
                 </div>
+                <span className="mt-1 text-xs text-muted-foreground">{speedValueText}</span>
               </div>
             </div>
 
             {/* HP Section */}
             <div className="mt-3 rounded-lg border border-border bg-background/70 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex flex-col items-center">
+              <div className="grid grid-cols-3 items-end gap-3">
+                <div className="flex w-full flex-col items-center justify-end">
                   <span className="text-xs uppercase text-muted-foreground">{t('character.combat.max')}</span>
                   <Input
                     type="number"
                     value={character.combat.maxHp}
                     onChange={(e) => updateCombat('maxHp', parseInt(e.target.value) || 1)}
-                    className="h-8 w-16 text-center text-sm"
+                    className="h-9 w-full max-w-24 text-center text-base font-semibold"
                   />
                 </div>
-                <div className="flex flex-col items-center">
+                <div className="flex w-full flex-col items-center justify-end">
                   <Heart className="mb-1 size-6 text-red-500" />
                   <div className="flex items-center gap-1">
                     <Button
@@ -627,15 +630,15 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                     </Button>
                   </div>
                 </div>
-                <div className="flex flex-col items-center">
+                <div className="flex w-full flex-col items-center justify-end">
                   <span className="text-xs uppercase text-muted-foreground">{t('character.combat.temp')}</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={character.combat.tempHp}
-                    onChange={(e) => updateCombat('tempHp', parseInt(e.target.value) || 0)}
-                    className="h-8 w-16 text-center text-sm"
-                  />
+                    <Input
+                      type="number"
+                      min={0}
+                      value={character.combat.tempHp}
+                      onChange={(e) => updateCombat('tempHp', parseInt(e.target.value) || 0)}
+                      className="h-9 w-full max-w-24 text-center text-base font-semibold"
+                    />
                 </div>
               </div>
 
@@ -649,34 +652,38 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                     className="h-8 w-20 text-sm text-center"
                   />
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-green-600">OK</span>
-                    {[0, 1, 2].map((i) => (
-                      <button
-                        key={`success-${i}`}
-                        onClick={() => toggleDeathSave('successes', i)}
-                        className={`size-5 rounded-full border-2 transition-colors ${
-                          character.combat.deathSaves.successes[i]
-                            ? 'border-green-500 bg-green-500'
-                            : 'border-muted-foreground hover:bg-green-500/20'
-                        }`}
-                      />
-                    ))}
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs uppercase text-muted-foreground">{t('character.combat.successes')}</span>
+                    <div className="flex items-center gap-2">
+                      {[0, 1, 2].map((i) => (
+                        <button
+                          key={`success-${i}`}
+                          onClick={() => toggleDeathSave('successes', i)}
+                          className={`size-5 rounded-full border-2 transition-colors ${
+                            character.combat.deathSaves.successes[i]
+                              ? 'border-green-500 bg-green-500'
+                              : 'border-muted-foreground hover:bg-green-500/20'
+                          }`}
+                        />
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    {[0, 1, 2].map((i) => (
-                      <button
-                        key={`failure-${i}`}
-                        onClick={() => toggleDeathSave('failures', i)}
-                        className={`size-5 rounded-full border-2 transition-colors ${
-                          character.combat.deathSaves.failures[i]
-                            ? 'border-red-500 bg-red-500'
-                            : 'border-muted-foreground hover:bg-red-500/20'
-                        }`}
-                      />
-                    ))}
-                    <span className="text-xs text-red-600">X</span>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs uppercase text-muted-foreground">{t('character.combat.failures')}</span>
+                    <div className="flex items-center gap-2">
+                      {[0, 1, 2].map((i) => (
+                        <button
+                          key={`failure-${i}`}
+                          onClick={() => toggleDeathSave('failures', i)}
+                          className={`size-5 rounded-full border-2 transition-colors ${
+                            character.combat.deathSaves.failures[i]
+                              ? 'border-red-500 bg-red-500'
+                              : 'border-muted-foreground hover:bg-red-500/20'
+                          }`}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -721,7 +728,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                   value={character.raceFeatures}
                   onChange={(value) => onChange({ ...character, raceFeatures: value })}
                   placeholder={t('character.combat.raceFeatures')}
-                  className="min-h-20 resize-none overflow-y-auto text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
+                  className="min-h-20 resize-none text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
                   style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                 />
               </div>
@@ -731,7 +738,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                   value={character.classFeatures}
                   onChange={(value) => onChange({ ...character, classFeatures: value })}
                   placeholder={t('character.combat.classFeatures')}
-                  className="min-h-20 resize-none overflow-y-auto text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
+                  className="min-h-20 resize-none text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
                   style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                 />
               </div>
@@ -741,7 +748,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                   value={character.backgroundFeatures}
                   onChange={(value) => onChange({ ...character, backgroundFeatures: value })}
                   placeholder={t('character.combat.backgroundFeatures')}
-                  className="min-h-20 resize-none overflow-y-auto text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
+                  className="min-h-20 resize-none text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
                   style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                 />
               </div>
@@ -759,7 +766,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
               value={character.languages}
               onChange={(value) => onChange({ ...character, languages: value })}
               placeholder={t('character.proficienciesLanguages')}
-              className="min-h-24 resize-none overflow-y-auto text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
+              className="min-h-24 resize-none text-sm scrollbar-hidden break-words overflow-wrap-anywhere"
               style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
             />
           </CardContent>
@@ -783,6 +790,6 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </ScrollArea>
+    </div>
   )
 }
