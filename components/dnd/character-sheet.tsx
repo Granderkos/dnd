@@ -569,6 +569,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                   readOnly
                   className="mt-1 h-10 w-full text-center text-xl font-bold"
                 />
+                <span className="mt-1 text-[10px] text-muted-foreground">base {formatModifier(derivedInitiativeBase)} + roll {derivedInitiativeRoll}</span>
               </div>
               <div className="flex flex-col items-center rounded-lg border border-border bg-background/80 p-3">
                 <Footprints className="mb-1 size-5 text-muted-foreground" />
