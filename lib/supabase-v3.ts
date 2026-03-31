@@ -19,6 +19,7 @@ export async function listCreatures() {
     .from('compendium_entries')
     .select('*')
     .eq('type', 'creature')
+    .eq('subtype', 'monster')
     .order('name', { ascending: true })
 
   if (error) throw error
