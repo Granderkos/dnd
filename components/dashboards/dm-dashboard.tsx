@@ -45,6 +45,15 @@ function isRecentlyActive(activity?: PlayerCharacterData['activity']) {
   return Boolean(activity.is_online) && age < 45000
 }
 
+const DM_TAB_STORAGE_KEY = 'dm-dashboard-active-tab'
+const DM_TABS = new Set(['players', 'maps', 'notes', 'bestiary'])
+
+function getInitialDmTab() {
+  if (typeof window === 'undefined') return 'players'
+  const saved = window.localStorage.getItem(DM_TAB_STORAGE_KEY)
+  return saved && DM_TABS.has(saved) ? saved : 'players'
+}
+
 export const DMDashboard = memo(function DMDashboard() {
   const { logout, getAllPlayerCharacters, updateCurrentPage, user } = useAuth()
   const { t } = useI18n()
@@ -52,7 +61,7 @@ export const DMDashboard = memo(function DMDashboard() {
   const [dmNotes, setDmNotes] = useState('')
   const [players, setPlayers] = useState<PlayerCharacterData[]>([])
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerCharacterData | null>(null)
-  const [activeTab, setActiveTab] = useState('players')
+  const [activeTab, setActiveTab] = useState(getInitialDmTab)
 
   useEffect(() => {
     const storedTab = window.localStorage.getItem(DM_TAB_STORAGE_KEY)
@@ -65,6 +74,9 @@ export const DMDashboard = memo(function DMDashboard() {
 
   useEffect(() => {
     void updateCurrentPage(`dm:${activeTab}`)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(DM_TAB_STORAGE_KEY, activeTab)
+    }
   }, [activeTab, updateCurrentPage])
 
   useEffect(() => {

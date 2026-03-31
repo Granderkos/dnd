@@ -7,9 +7,11 @@ interface MonsterCardProps {
   ac: number
   initiativeBonus: number
   addToFightLabel: string
+  onAddToFight: () => void
+  isAdding?: boolean
 }
 
-export function MonsterCard({ name, hp, ac, initiativeBonus, addToFightLabel }: MonsterCardProps) {
+export function MonsterCard({ name, hp, ac, initiativeBonus, addToFightLabel, onAddToFight, isAdding = false }: MonsterCardProps) {
   return (
     <Card>
       <CardContent className="p-4">
@@ -24,7 +26,9 @@ export function MonsterCard({ name, hp, ac, initiativeBonus, addToFightLabel }: 
         <p className="mt-2 text-sm text-muted-foreground">Initiative bonus: {initiativeBonus >= 0 ? `+${initiativeBonus}` : initiativeBonus}</p>
 
         <div className="mt-3">
-          <Button type="button" size="sm">{addToFightLabel}</Button>
+          <Button type="button" size="sm" onClick={onAddToFight} disabled={isAdding}>
+            {isAdding ? 'Adding...' : addToFightLabel}
+          </Button>
         </div>
       </CardContent>
     </Card>

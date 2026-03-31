@@ -14,6 +14,16 @@ function randomInitiative(modifier = 0) {
   return Math.floor(Math.random() * 20) + 1 + modifier
 }
 
+function numberFromData(data: Record<string, unknown>, key: string, fallback = 0) {
+  const value = data[key]
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : fallback
+  }
+  return fallback
+}
+
 export async function listCreatures() {
   const { data, error } = await supabase
     .from('compendium_entries')
@@ -64,6 +74,26 @@ export async function createFight(campaignId: string) {
   return data as Fight
 }
 
+export async function getActiveFight(campaignId: string) {
+  const { data, error } = await supabase
+    .from('fights')
+    .select('*')
+    .eq('campaign_id', campaignId)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw error
+  return (data ?? null) as Fight | null
+}
+
+export async function getOrCreateActiveFight(campaignId: string) {
+  const existing = await getActiveFight(campaignId)
+  if (existing) return existing
+  return createFight(campaignId)
+}
+
 export async function addFightEntity(input: {
   fightId: string
   entityType: FightEntityType
@@ -103,6 +133,27 @@ export async function addMonsterToFight(fightId: string, entryId: string, name: 
     entityType: 'monster',
     initiative: randomInitiative(),
   })
+}
+
+export async function addCompendiumMonsterToActiveFight(campaignId: string, entry: CompendiumEntry) {
+  const fight = await getOrCreateActiveFight(campaignId)
+  const data = (entry.data ?? {}) as Record<string, unknown>
+  const hp = numberFromData(data, 'hp', 0)
+  const initiativeBonus = numberFromData(data, 'initiative_bonus', 0)
+  const initiative = randomInitiative(initiativeBonus)
+
+  const entity = await addFightEntity({
+    fightId: fight.id,
+    entityType: 'monster',
+    entryId: entry.id,
+    name: entry.name,
+    currentHp: hp,
+    maxHp: hp,
+    initiative,
+    notes: null,
+  })
+
+  return { fight, entity }
 }
 
 export async function sortInitiative(fightId: string) {
