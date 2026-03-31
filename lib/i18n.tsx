@@ -44,6 +44,7 @@ const translations: Record<Language, TranslationMap> = {
     'nav.map': 'Map',
     'nav.players': 'Players',
     'nav.maps': 'Maps',
+    'nav.bestiary': 'Bestiary',
 
     'dashboard.loadingCharacter': 'Loading character data...',
     'dashboard.loadingDm': 'Loading DM Dashboard...',
@@ -119,6 +120,7 @@ const translations: Record<Language, TranslationMap> = {
     'spellbook.ability': 'Ability',
     'spellbook.spellDc': 'Spell DC',
     'spellbook.attack': 'Attack',
+    'bestiary.addToFight': 'Add to Fight',
     'spellbook.cantrips': 'Cantrips',
     'spellbook.level': ({ level }) => `Level ${level}`,
     'spellbook.noSpells': 'No spells',
@@ -183,6 +185,7 @@ const translations: Record<Language, TranslationMap> = {
     'nav.map': 'Mapa',
     'nav.players': 'Hráči',
     'nav.maps': 'Mapy',
+    'nav.bestiary': 'Bestiář',
 
     'dashboard.loadingCharacter': 'Načítám data postavy...',
     'dashboard.loadingDm': 'Načítám DM dashboard...',
@@ -258,6 +261,7 @@ const translations: Record<Language, TranslationMap> = {
     'spellbook.ability': 'Atribut',
     'spellbook.spellDc': 'DC kouzla',
     'spellbook.attack': 'Útok',
+    'bestiary.addToFight': 'Přidat do boje',
     'spellbook.cantrips': 'Triky',
     'spellbook.level': ({ level }) => `Úroveň ${level}`,
     'spellbook.noSpells': 'Žádná kouzla',
