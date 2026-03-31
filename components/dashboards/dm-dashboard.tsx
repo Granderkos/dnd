@@ -7,10 +7,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
-import { Eye, FileText, Heart, LogOut, Map, Shield, Users } from 'lucide-react'
+import { BookOpen, Eye, FileText, Heart, LogOut, Map, Shield, Users } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { loadDmNotes, saveDmNotes, listPlayerCharacters } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
+import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
 import { Character, calculateModifier, formatModifier } from '@/lib/dnd-types'
 import { AppControls } from '@/components/app/app-controls'
 import { APP_VERSION } from '@/lib/app-config'
@@ -42,6 +43,15 @@ function isRecentlyActive(activity?: PlayerCharacterData['activity']) {
   return Boolean(activity.is_online) && age < 45000
 }
 
+const DM_TAB_STORAGE_KEY = 'dm-dashboard-active-tab'
+const DM_TABS = new Set(['players', 'maps', 'notes', 'bestiary'])
+
+function getInitialDmTab() {
+  if (typeof window === 'undefined') return 'players'
+  const saved = window.localStorage.getItem(DM_TAB_STORAGE_KEY)
+  return saved && DM_TABS.has(saved) ? saved : 'players'
+}
+
 export const DMDashboard = memo(function DMDashboard() {
   const { logout, getAllPlayerCharacters, updateCurrentPage, user } = useAuth()
   const { t } = useI18n()
@@ -49,10 +59,13 @@ export const DMDashboard = memo(function DMDashboard() {
   const [dmNotes, setDmNotes] = useState('')
   const [players, setPlayers] = useState<PlayerCharacterData[]>([])
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerCharacterData | null>(null)
-  const [activeTab, setActiveTab] = useState('players')
+  const [activeTab, setActiveTab] = useState(getInitialDmTab)
 
   useEffect(() => {
     void updateCurrentPage(`dm:${activeTab}`)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(DM_TAB_STORAGE_KEY, activeTab)
+    }
   }, [activeTab, updateCurrentPage])
 
   useEffect(() => {
@@ -123,6 +136,7 @@ export const DMDashboard = memo(function DMDashboard() {
             <TabsTrigger value="players" className="flex-1 gap-1 px-2"><Users className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.players')}</span></TabsTrigger>
             <TabsTrigger value="maps" className="flex-1 gap-1 px-2"><Map className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.maps')}</span></TabsTrigger>
             <TabsTrigger value="notes" className="flex-1 gap-1 px-2"><FileText className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.notes')}</span></TabsTrigger>
+            <TabsTrigger value="bestiary" className="flex-1 gap-1 px-2"><BookOpen className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.bestiary')}</span></TabsTrigger>
           </TabsList>
         </header>
 
@@ -155,6 +169,7 @@ export const DMDashboard = memo(function DMDashboard() {
             <p className="mt-2 text-xs text-muted-foreground">{t('dashboard.autoSaves')}</p>
           </div>
         </TabsContent>
+        <TabsContent value="bestiary" className="mt-0 flex-1 overflow-hidden"><DmBestiaryPanel /></TabsContent>
       </Tabs>
 
       <Sheet open={!!selectedPlayer} onOpenChange={(open) => !open && setSelectedPlayer(null)}>

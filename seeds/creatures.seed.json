@@ -1,0 +1,42 @@
+[
+  {
+    "type": "creature",
+    "subtype": "monster",
+    "slug": "zombie",
+    "name": "Zombie",
+    "description": "Undead brute that keeps moving unless destroyed.",
+    "data": { "ac": 8, "hp": 22, "speed": 20, "cr": "1/4" }
+  },
+  {
+    "type": "creature",
+    "subtype": "monster",
+    "slug": "goblin",
+    "name": "Goblin",
+    "description": "Small and nimble raider with pack tactics behavior.",
+    "data": { "ac": 15, "hp": 7, "speed": 30, "cr": "1/4" }
+  },
+  {
+    "type": "creature",
+    "subtype": "monster",
+    "slug": "skeleton",
+    "name": "Skeleton",
+    "description": "Animated bones that fight with rusted weapons.",
+    "data": { "ac": 13, "hp": 13, "speed": 30, "cr": "1/4" }
+  },
+  {
+    "type": "creature",
+    "subtype": "monster",
+    "slug": "wolf",
+    "name": "Wolf",
+    "description": "Pack hunter with keen hearing and smell.",
+    "data": { "ac": 13, "hp": 11, "speed": 40, "cr": "1/4" }
+  },
+  {
+    "type": "creature",
+    "subtype": "monster",
+    "slug": "bandit",
+    "name": "Bandit",
+    "description": "Humanoid outlaw armed with scimitar and crossbow.",
+    "data": { "ac": 12, "hp": 11, "speed": 30, "cr": "1/8" }
+  }
+]
