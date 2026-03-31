@@ -13,7 +13,7 @@ export default function DnDApp() {
   // Loading state
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex min-h-dvh items-center justify-center bg-background">
         <div className="text-center">
           <div className="mb-4 size-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
           <p className="text-muted-foreground">{t('common.loading')}</p>
