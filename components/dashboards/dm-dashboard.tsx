@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, memo } from 'react'
+import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
-import { Eye, FileText, Heart, LogOut, Map, Shield, Users } from 'lucide-react'
+import { BookOpen, Eye, FileText, Heart, LogOut, Map, Shield, Users } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { loadDmNotes, saveDmNotes, listPlayerCharacters } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
@@ -141,6 +142,7 @@ export const DMDashboard = memo(function DMDashboard() {
             <TabsTrigger value="players" className="flex-1 gap-1 px-2"><Users className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.players')}</span></TabsTrigger>
             <TabsTrigger value="maps" className="flex-1 gap-1 px-2"><Map className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.maps')}</span></TabsTrigger>
             <TabsTrigger value="notes" className="flex-1 gap-1 px-2"><FileText className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.notes')}</span></TabsTrigger>
+            <TabsTrigger value="bestiary" asChild className="flex-1 gap-1 px-2"><Link href="/dm/bestiary"><BookOpen className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.bestiary')}</span></Link></TabsTrigger>
           </TabsList>
         </header>
 
