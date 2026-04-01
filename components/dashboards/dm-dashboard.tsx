@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, memo } from 'react'
+import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
@@ -24,6 +24,8 @@ interface PlayerCharacterData {
   character: Character
   activity?: { last_seen?: string; current_page?: string; is_online?: boolean } | null
 }
+const DM_TAB_STORAGE_KEY = 'dnd:dm-active-tab'
+const DM_TABS = new Set(['players', 'maps', 'notes'])
 
 function useDebouncedRemoteText(value: string, delay: number, enabled: boolean, saveFn: (value: string) => Promise<void>) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -133,7 +135,7 @@ export const DMDashboard = memo(function DMDashboard() {
 
   if (!isLoaded) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex min-h-dvh items-center justify-center bg-background">
         <div className="text-center">
           <div className="mb-4 size-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
           <p className="text-muted-foreground">{t('dashboard.loadingDm')}</p>
@@ -143,11 +145,14 @@ export const DMDashboard = memo(function DMDashboard() {
   }
 
   return (
-    <main className="min-h-screen bg-background">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-screen flex-col">
+    <main className="min-h-dvh bg-background">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-dvh flex-col">
         <header className="border-b border-border bg-card px-3 py-3">
           <div className="mb-2 flex items-center justify-between">
-            <div className="text-sm font-bold uppercase tracking-[0.12em] text-primary">{t('dashboard.dmTitle')}</div>
+            <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.12em] text-primary">
+              <img src="/logo.svg" alt="DnD Compendium logo" className="size-5 shrink-0" />
+              <span>{t('dashboard.dmTitle')}</span>
+            </div>
             <div className="flex items-center gap-1">
               <span className="text-xs text-muted-foreground">{APP_VERSION}</span>
               <AppControls />
@@ -166,8 +171,7 @@ export const DMDashboard = memo(function DMDashboard() {
         </header>
 
         <TabsContent value="players" className="mt-0 flex-1 overflow-hidden">
-          <ScrollArea className="h-full">
-            <div className="p-3 space-y-3">
+            <div className="h-full min-h-0 overflow-y-auto p-3 space-y-3">
               <div className="text-base font-bold uppercase tracking-[0.08em] text-primary">{t('dashboard.activePlayers')}</div>
               {activePlayers.length === 0 ? (
                 <Card><CardContent className="py-6 text-sm text-muted-foreground">{t('dashboard.noActivePlayers')}</CardContent></Card>
@@ -182,7 +186,6 @@ export const DMDashboard = memo(function DMDashboard() {
                 <div className="space-y-3">{players.map((player) => <PlayerCard key={player.username} data={player} onOpen={() => setSelectedPlayer(player)} active={isRecentlyActive(player.activity)} />)}</div>
               )}
             </div>
-          </ScrollArea>
         </TabsContent>
 
         <TabsContent value="maps" className="mt-0 flex-1 overflow-hidden"><DMMapManager /></TabsContent>
@@ -297,7 +300,7 @@ const PlayerCard = memo(function PlayerCard({ data, onOpen, active }: { data: Pl
         </div>
         <CardContent>
           <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
-            <div className="text-sm text-muted-foreground">{[info.race, `Level ${info.level}`].filter(Boolean).join(' • ')}</div>
+            <div className="text-sm text-muted-foreground">{[info.race, t('character.levelWithValue', { value: info.level })].filter(Boolean).join(' • ')}</div>
             <div className="flex items-center gap-1 text-sm"><Heart className="size-4 text-destructive" /> {combat.currentHp}/{combat.maxHp}</div>
             <div className="flex items-center gap-1 text-sm"><Shield className="size-4 text-primary" /> {combat.armorClass}</div>
           </div>
@@ -321,19 +324,20 @@ function buildTypeLine(character: Character) {
 }
 
 function CharacterSummary({ character }: { character: Character }) {
+  const { t, language } = useI18n()
   const proficient = proficientSkills(character)
   return (
     <div className="statblock-panel min-h-full overflow-hidden">
       <SheetHeader className="statblock-header pr-12">
-        <SheetTitle className="text-3xl font-bold uppercase tracking-wide text-primary-foreground">{character.info.name || 'Unnamed Character'}</SheetTitle>
+        <SheetTitle className="text-3xl font-bold uppercase tracking-wide text-primary-foreground">{character.info.name || t('dashboard.unnamedCharacter')}</SheetTitle>
         <SheetDescription className="text-primary-foreground/90 italic">{buildTypeLine(character)}</SheetDescription>
       </SheetHeader>
       <div className="space-y-4 p-5">
         <div className="space-y-1 text-sm leading-6">
-          <div><span className="statblock-label">Armor Class</span> {character.combat.armorClass}</div>
-          <div><span className="statblock-label">Hit Points</span> {character.combat.maxHp} / {character.combat.currentHp}</div>
-          <div><span className="statblock-label">Speed</span> {character.combat.speed} ft.</div>
-          <div><span className="statblock-label">Level</span> {character.info.level} <span className="ml-4 statblock-label">Proficiency Bonus</span> {formatModifier(character.proficiencyBonus)}</div>
+          <div><span className="statblock-label">{t('dashboard.armorClass')}</span> {character.combat.armorClass}</div>
+          <div><span className="statblock-label">{t('dashboard.hitPoints')}</span> {character.combat.maxHp} / {character.combat.currentHp}</div>
+          <div><span className="statblock-label">{t('dashboard.speed')}</span> {formatFeetWithSquares(`${character.combat.speed} ft`, language)}</div>
+          <div><span className="statblock-label">{t('character.level')}</span> {character.info.level} <span className="ml-4 statblock-label">{t('character.proficiencyBonus')}</span> {formatModifier(character.proficiencyBonus)}</div>
         </div>
         <div className="statblock-rule" />
         <div className="statblock-abilities">
@@ -344,22 +348,22 @@ function CharacterSummary({ character }: { character: Character }) {
         </div>
         <div className="statblock-rule" />
         <div className="space-y-2 text-sm leading-6">
-          {!!proficient && <div><span className="statblock-label">Skills</span> {proficient}</div>}
-          <div><span className="statblock-label">Passive Perception</span> {character.passivePerception}</div>
-          <div><span className="statblock-label">Languages</span> {character.languages || '—'}</div>
+          {!!proficient && <div><span className="statblock-label">{t('character.skills')}</span> {proficient}</div>}
+          <div><span className="statblock-label">{t('dashboard.passivePerception')}</span> {character.passivePerception}</div>
+          <div><span className="statblock-label">{t('dashboard.languages')}</span> {character.languages || '—'}</div>
         </div>
         <div className="statblock-rule" />
         <div>
-          <div className="mb-2 text-xl font-bold uppercase tracking-wide text-primary">Actions</div>
+          <div className="mb-2 text-xl font-bold uppercase tracking-wide text-primary">{t('dashboard.actions')}</div>
           <div className="space-y-3 text-sm leading-6">
-            {character.attacks.length === 0 ? <div className="text-muted-foreground">No attacks added.</div> : character.attacks.map((attack) => (
+            {character.attacks.length === 0 ? <div className="text-muted-foreground">{t('dashboard.noAttacks')}</div> : character.attacks.map((attack) => (
               <div key={attack.id}><span className="font-bold">{attack.name}.</span>{' '}<span>{attack.damageType ? `${attack.damageType} Attack` : 'Attack'}: {attack.attackBonus} to hit.</span>{' '}<span><em>Hit:</em> {attack.damage}{attack.damageType ? ` ${attack.damageType}` : ''} damage.</span></div>
             ))}
           </div>
         </div>
         <div className="statblock-rule" />
         <div>
-          <div className="mb-2 text-xl font-bold uppercase tracking-wide text-primary">Features & Traits</div>
+          <div className="mb-2 text-xl font-bold uppercase tracking-wide text-primary">{t('character.combat.featuresTraits')}</div>
           <div className="space-y-2 text-sm leading-6">
             {`${character.raceFeatures}\n${character.classFeatures}\n${character.backgroundFeatures}`.split('\n').map((line) => line.trim()).filter(Boolean).map((line, i) => <div key={`${line}-${i}`}><span className="font-bold">{line}.</span></div>)}
           </div>
