@@ -47,12 +47,12 @@ function isRecentlyActive(activity?: PlayerCharacterData['activity']) {
 
 // Keep this tab list centralized so persistence and validation use one source of truth.
 const DM_TAB_STORAGE_KEY = 'dm-dashboard-active-tab'
-const DM_TABS = ['players', 'maps', 'notes', 'bestiary'] as const
+const DM_DASHBOARD_TABS = ['players', 'maps', 'notes', 'bestiary'] as const
 
 function getInitialDmTab() {
   if (typeof window === 'undefined') return 'players'
   const saved = window.localStorage.getItem(DM_TAB_STORAGE_KEY)
-  return saved && DM_TABS.includes(saved as (typeof DM_TABS)[number]) ? saved : 'players'
+  return saved && DM_DASHBOARD_TABS.includes(saved as (typeof DM_DASHBOARD_TABS)[number]) ? saved : 'players'
 }
 
 export const DMDashboard = memo(function DMDashboard() {
