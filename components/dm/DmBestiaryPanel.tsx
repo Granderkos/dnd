@@ -17,7 +17,9 @@ function numberFromData(data: Record<string, unknown>, key: string, fallback = 0
   return fallback
 }
 
-export function DmBestiaryPanel() {
+let cachedMonsters: CompendiumEntry[] | null = null
+
+export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => void }) {
   const { t } = useI18n()
   const { user } = useAuth()
   const [monsters, setMonsters] = useState<CompendiumEntry[]>([])
@@ -30,10 +32,16 @@ export function DmBestiaryPanel() {
   useEffect(() => {
     let active = true
     const load = async () => {
+      if (cachedMonsters) {
+        setMonsters(cachedMonsters)
+        setIsLoading(false)
+        return
+      }
       try {
         setLoadError(null)
         const rows = await listCreatures()
         if (!active) return
+        cachedMonsters = rows
         setMonsters(rows)
       } catch (error) {
         console.error('Failed to load bestiary monsters', error)
@@ -84,6 +92,7 @@ export function DmBestiaryPanel() {
     try {
       const { entity } = await addCompendiumMonsterToActiveFight(user.id, monster)
       setActionSuccess(`${monster.name} added to fight (initiative ${entity.initiative ?? '—'}).`)
+      onMonsterAdded?.()
     } catch (error) {
       console.error('Failed to add monster to fight', error)
       const message = error instanceof Error ? error.message : 'Unknown error'

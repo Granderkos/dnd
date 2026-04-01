@@ -27,7 +27,7 @@ function numberFromData(data: Record<string, unknown>, key: string, fallback = 0
 export async function listCreatures() {
   const { data, error } = await supabase
     .from('compendium_entries')
-    .select('*')
+    .select('id, type, subtype, slug, name, description, is_system, data, created_by, created_at')
     .eq('type', 'creature')
     .eq('subtype', 'monster')
     .order('name', { ascending: true })
@@ -67,7 +67,7 @@ export async function createFight(campaignId: string) {
   const { data, error } = await supabase
     .from('fights')
     .insert({ campaign_id: campaignId, is_active: true })
-    .select('*')
+    .select('id, campaign_id, is_active, created_at')
     .single()
 
   if (error) throw error
@@ -77,7 +77,7 @@ export async function createFight(campaignId: string) {
 export async function getActiveFight(campaignId: string) {
   const { data, error } = await supabase
     .from('fights')
-    .select('*')
+    .select('id, campaign_id, is_active, created_at')
     .eq('campaign_id', campaignId)
     .eq('is_active', true)
     .order('created_at', { ascending: false })
@@ -118,7 +118,7 @@ export async function addFightEntity(input: {
       max_hp: input.maxHp ?? null,
       notes: input.notes ?? null,
     })
-    .select('*')
+    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, current_hp, max_hp, turn_order, notes, created_at')
     .single()
 
   if (error) throw error
@@ -139,6 +139,7 @@ export async function addCompendiumMonsterToActiveFight(campaignId: string, entr
   const fight = await getOrCreateActiveFight(campaignId)
   const data = (entry.data ?? {}) as Record<string, unknown>
   const hp = numberFromData(data, 'hp', 0)
+  const ac = numberFromData(data, 'ac', 0)
   const initiativeBonus = numberFromData(data, 'initiative_bonus', 0)
   const initiative = randomInitiative(initiativeBonus)
 
@@ -150,7 +151,7 @@ export async function addCompendiumMonsterToActiveFight(campaignId: string, entr
     currentHp: hp,
     maxHp: hp,
     initiative,
-    notes: null,
+    notes: `ac:${ac}`,
   })
 
   return { fight, entity }
@@ -159,7 +160,7 @@ export async function addCompendiumMonsterToActiveFight(campaignId: string, entr
 export async function sortInitiative(fightId: string) {
   const { data, error } = await supabase
     .from('fight_entities')
-    .select('*')
+    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, current_hp, max_hp, turn_order, notes, created_at')
     .eq('fight_id', fightId)
     .order('initiative', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: true })
@@ -182,7 +183,7 @@ export async function sortInitiative(fightId: string) {
 export async function advanceTurn(fightId: string) {
   const { data, error } = await supabase
     .from('fight_entities')
-    .select('*')
+    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, current_hp, max_hp, turn_order, notes, created_at')
     .eq('fight_id', fightId)
     .order('turn_order', { ascending: true })
 
@@ -207,7 +208,7 @@ export async function updateHP(entityId: string, currentHp: number) {
     .from('fight_entities')
     .update({ current_hp: currentHp })
     .eq('id', entityId)
-    .select('*')
+    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, current_hp, max_hp, turn_order, notes, created_at')
     .single()
 
   if (error) throw error
@@ -219,7 +220,7 @@ export async function updateFightEntityNotes(entityId: string, notes: string) {
     .from('fight_entities')
     .update({ notes })
     .eq('id', entityId)
-    .select('*')
+    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, current_hp, max_hp, turn_order, notes, created_at')
     .single()
 
   if (error) throw error
@@ -238,7 +239,7 @@ export async function removeEntity(entityId: string) {
 export async function getUnlockedCreatures(campaignId: string, playerId?: string) {
   let query = supabase
     .from('campaign_entry_unlocks')
-    .select('*, compendium_entries(*)')
+    .select('id, campaign_id, entry_id, player_id, is_unlocked, created_at, compendium_entries(id, type, subtype, slug, name, description, is_system, data, created_by, created_at)')
     .eq('campaign_id', campaignId)
     .eq('is_unlocked', true)
 
@@ -251,13 +252,16 @@ export async function getUnlockedCreatures(campaignId: string, playerId?: string
   const { data, error } = await query
   if (error) throw error
 
-  return (data ?? []) as (CampaignEntryUnlock & { compendium_entries: CompendiumEntry })[]
+  return (data ?? []).map((row) => ({
+    ...row,
+    compendium_entries: Array.isArray(row.compendium_entries) ? row.compendium_entries[0] : row.compendium_entries,
+  })) as (CampaignEntryUnlock & { compendium_entries: CompendiumEntry })[]
 }
 
 export async function listCharacterCompanions(characterId: string) {
   const { data, error } = await supabase
     .from('character_companions')
-    .select('*')
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, created_at')
     .eq('character_id', characterId)
     .order('created_at', { ascending: true })
 
@@ -282,7 +286,7 @@ export async function assignCompanion(input: {
       notes: input.notes ?? null,
       is_active: true,
     })
-    .select('*')
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, created_at')
     .single()
 
   if (error) throw error
@@ -294,7 +298,7 @@ export async function activateCompanion(companionId: string, isActive: boolean) 
     .from('character_companions')
     .update({ is_active: isActive })
     .eq('id', companionId)
-    .select('*')
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, created_at')
     .single()
 
   if (error) throw error
@@ -332,4 +336,16 @@ export async function addPlayerToFight(input: {
     currentHp: input.currentHp ?? null,
     maxHp: input.maxHp ?? null,
   })
+}
+
+export async function listFightEntities(fightId: string) {
+  const { data, error } = await supabase
+    .from('fight_entities')
+    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, current_hp, max_hp, turn_order, notes, created_at')
+    .eq('fight_id', fightId)
+    .order('initiative', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+  return (data ?? []) as FightEntity[]
 }
