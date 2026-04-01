@@ -136,25 +136,37 @@ export async function addMonsterToFight(fightId: string, entryId: string, name: 
 }
 
 export async function addCompendiumMonsterToActiveFight(campaignId: string, entry: CompendiumEntry) {
-  const fight = await getOrCreateActiveFight(campaignId)
+  let fight: Fight
+  try {
+    fight = await getOrCreateActiveFight(campaignId)
+  } catch (error) {
+    console.error('[fight:add] failed to resolve active fight', { campaignId, entryId: entry.id, error })
+    throw error
+  }
+
   const data = (entry.data ?? {}) as Record<string, unknown>
   const hp = numberFromData(data, 'hp', 0)
   const ac = numberFromData(data, 'ac', 0)
   const initiativeBonus = numberFromData(data, 'initiative_bonus', 0)
   const initiative = randomInitiative(initiativeBonus)
 
-  const entity = await addFightEntity({
-    fightId: fight.id,
-    entityType: 'monster',
-    entryId: entry.id,
-    name: entry.name,
-    currentHp: hp,
-    maxHp: hp,
-    initiative,
-    notes: `ac:${ac}`,
-  })
+  try {
+    const entity = await addFightEntity({
+      fightId: fight.id,
+      entityType: 'monster',
+      entryId: entry.id,
+      name: entry.name,
+      currentHp: hp,
+      maxHp: hp,
+      initiative,
+      notes: `ac:${ac}`,
+    })
 
-  return { fight, entity }
+    return { fight, entity }
+  } catch (error) {
+    console.error('[fight:add] failed to insert fight entity', { fightId: fight.id, entryId: entry.id, error })
+    throw error
+  }
 }
 
 export async function sortInitiative(fightId: string) {
