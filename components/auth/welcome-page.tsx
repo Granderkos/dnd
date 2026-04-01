@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Shield, Sword, Crown, Users } from 'lucide-react'
+import { Crown, Users } from 'lucide-react'
 import { AppControls } from '@/components/app/app-controls'
 import { APP_VERSION } from '@/lib/app-config'
 import { useI18n } from '@/lib/i18n'
@@ -57,10 +57,7 @@ export const WelcomePage = memo(function WelcomePage() {
 
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4">
-          <div className="relative">
-            <Shield className="size-16 text-primary" />
-            <Sword className="size-8 text-primary absolute -right-2 -bottom-1 rotate-45" />
-          </div>
+          <img src="/logo.svg" alt="DnD Compendium logo" className="size-20" />
         </div>
         <h1 className="text-3xl font-bold text-foreground mb-2">
           {t('auth.title')}
