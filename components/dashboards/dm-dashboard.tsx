@@ -67,6 +67,7 @@ export const DMDashboard = memo(function DMDashboard() {
   const [fightId, setFightId] = useState<string | null>(null)
   const [fightError, setFightError] = useState<string | null>(null)
   const [isLoadingFight, setIsLoadingFight] = useState(false)
+  const fightLoadedRef = useRef(false)
 
   useEffect(() => {
     void updateCurrentPage(`dm:${activeTab}`)
@@ -107,11 +108,13 @@ export const DMDashboard = memo(function DMDashboard() {
       if (!activeFight) {
         setFightId(null)
         setFightEntities([])
+        fightLoadedRef.current = true
         return
       }
       const entities = await listFightEntities(activeFight.id)
       setFightId(activeFight.id)
       setFightEntities(entities)
+      fightLoadedRef.current = true
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Unknown error'
       setFightError(message)
@@ -121,12 +124,12 @@ export const DMDashboard = memo(function DMDashboard() {
   }
 
   useEffect(() => {
-    if (activeTab === 'fight') {
+    if (activeTab === 'fight' && !fightLoadedRef.current) {
       void loadFightState()
     }
   }, [activeTab, user?.id])
 
-  useDebouncedRemoteText(dmNotes, 500, isLoaded && !!user?.id, async (value) => {
+  useDebouncedRemoteText(dmNotes, 3000, isLoaded && !!user?.id, async (value) => {
     if (!user?.id) return
     await saveDmNotes(user.id, value)
   })
@@ -166,7 +169,7 @@ export const DMDashboard = memo(function DMDashboard() {
             <TabsTrigger value="maps" className="flex-1 gap-1 px-2"><Map className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.maps')}</span></TabsTrigger>
             <TabsTrigger value="notes" className="flex-1 gap-1 px-2"><FileText className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.notes')}</span></TabsTrigger>
             <TabsTrigger value="bestiary" className="flex-1 gap-1 px-2"><BookOpen className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.bestiary')}</span></TabsTrigger>
-            <TabsTrigger value="fight" className="flex-1 gap-1 px-2"><Crosshair className="size-4" /><span className="hidden sm:inline text-xs">Fight</span></TabsTrigger>
+            <TabsTrigger value="fight" className="flex-1 gap-1 px-2"><Crosshair className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.fight')}</span></TabsTrigger>
           </TabsList>
         </header>
 
@@ -210,6 +213,17 @@ export const DMDashboard = memo(function DMDashboard() {
               await advanceTurn(fightId)
               await loadFightState()
             }}
+            labels={{
+              title: t('fight.title'),
+              refresh: t('fight.refresh'),
+              nextTurn: t('fight.nextTurn'),
+              loading: t('fight.loading'),
+              noActive: t('fight.noActiveFight'),
+              noEntities: t('fight.noEntities'),
+              initiative: t('fight.initiative'),
+              hp: t('fight.hp'),
+              ac: t('fight.ac'),
+            }}
           />
         </TabsContent>
       </Tabs>
@@ -230,6 +244,7 @@ function DMFightPanel({
   error,
   onRefresh,
   onAdvanceTurn,
+  labels,
 }: {
   fightId: string | null
   entities: FightEntity[]
@@ -237,25 +252,36 @@ function DMFightPanel({
   error: string | null
   onRefresh: () => void
   onAdvanceTurn: () => Promise<void>
+  labels: {
+    title: string
+    refresh: string
+    nextTurn: string
+    loading: string
+    noActive: string
+    noEntities: string
+    initiative: string
+    hp: string
+    ac: string
+  }
 }) {
   if (isLoading) {
-    return <div className="flex h-full items-center justify-center text-muted-foreground">Loading fight…</div>
+    return <div className="flex h-full items-center justify-center text-muted-foreground">{labels.loading}</div>
   }
 
   return (
     <div className="h-full overflow-y-auto p-3 space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-bold uppercase tracking-[0.08em] text-primary">Fight</h2>
+        <h2 className="text-base font-bold uppercase tracking-[0.08em] text-primary">{labels.title}</h2>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={onRefresh}>Refresh</Button>
-          <Button size="sm" onClick={() => void onAdvanceTurn()} disabled={!fightId || entities.length === 0}>Next Turn</Button>
+          <Button size="sm" variant="outline" onClick={onRefresh}>{labels.refresh}</Button>
+          <Button size="sm" onClick={() => void onAdvanceTurn()} disabled={!fightId || entities.length === 0}>{labels.nextTurn}</Button>
         </div>
       </div>
       {error ? <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
       {!fightId ? (
-        <div className="rounded-lg border p-4 text-sm text-muted-foreground">No active fight yet. Add a monster from Bestiary to start.</div>
+        <div className="rounded-lg border p-4 text-sm text-muted-foreground">{labels.noActive}</div>
       ) : entities.length === 0 ? (
-        <div className="rounded-lg border p-4 text-sm text-muted-foreground">Active fight has no entities.</div>
+        <div className="rounded-lg border p-4 text-sm text-muted-foreground">{labels.noEntities}</div>
       ) : (
         <div className="space-y-2">
           {entities.map((entity, index) => (
@@ -267,9 +293,9 @@ function DMFightPanel({
                     <div className="text-xs text-muted-foreground uppercase">{entity.entity_type}</div>
                   </div>
                   <div className="text-right text-sm">
-                    <div>Init: <span className="font-semibold">{entity.initiative ?? '—'}</span></div>
-                    <div>HP: <span className="font-semibold">{entity.current_hp ?? 0}/{entity.max_hp ?? 0}</span></div>
-                    <div>AC: <span className="font-semibold">{entity.notes?.startsWith('ac:') ? entity.notes.replace('ac:', '') : '—'}</span></div>
+                    <div>{labels.initiative}: <span className="font-semibold">{entity.initiative ?? '—'}</span></div>
+                    <div>{labels.hp}: <span className="font-semibold">{entity.current_hp ?? 0}/{entity.max_hp ?? 0}</span></div>
+                    <div>{labels.ac}: <span className="font-semibold">{entity.notes?.startsWith('ac:') ? entity.notes.replace('ac:', '') : '—'}</span></div>
                   </div>
                 </div>
               </CardContent>

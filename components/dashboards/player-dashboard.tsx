@@ -153,7 +153,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
 
   const flushSave = useDebouncedRemoteSave(
     { character, spellbook, inventory, notes },
-    1500,
+    3000,
     isLoaded && !!user?.id,
     async (payload) => {
       if (!user?.id) return
@@ -164,11 +164,6 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       }
     }
   )
-
-  useEffect(() => {
-    if (!isLoaded) return
-    flushSave()
-  }, [isLoaded, flushSave])
 
   if (!isLoaded) {
     return (

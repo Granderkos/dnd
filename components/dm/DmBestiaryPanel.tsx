@@ -17,6 +17,20 @@ function numberFromData(data: Record<string, unknown>, key: string, fallback = 0
   return fallback
 }
 
+function formatError(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === 'object' && error !== null) {
+    const message = 'message' in error && typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : null
+    const details = 'details' in error && typeof (error as { details?: unknown }).details === 'string'
+      ? (error as { details: string }).details
+      : null
+    return [message, details].filter(Boolean).join(' — ') || fallback
+  }
+  return fallback
+}
+
 let cachedMonsters: CompendiumEntry[] | null = null
 
 export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => void }) {
@@ -46,7 +60,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
       } catch (error) {
         console.error('Failed to load bestiary monsters', error)
         if (!active) return
-        const message = error instanceof Error ? error.message : 'Unknown error'
+        const message = formatError(error, t('common.unknownError'))
         setLoadError(message)
         setMonsters([])
       } finally {
@@ -80,7 +94,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
 
   const handleAddToFight = async (monster: CompendiumEntry) => {
     if (!user?.id) {
-      setActionError('You must be logged in as DM to add monsters.')
+      setActionError(t('bestiary.mustBeLoggedIn'))
       setActionSuccess(null)
       return
     }
@@ -91,12 +105,12 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
     setActionSuccess(null)
     try {
       const { entity } = await addCompendiumMonsterToActiveFight(user.id, monster)
-      setActionSuccess(`${monster.name} added to fight (initiative ${entity.initiative ?? '—'}).`)
+      setActionSuccess(t('bestiary.addSuccess', { name: monster.name, initiative: `${entity.initiative ?? '—'}` }))
       onMonsterAdded?.()
     } catch (error) {
       console.error('Failed to add monster to fight', error)
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      setActionError(`Failed to add ${monster.name}: ${message}`)
+      const message = formatError(error, t('common.unknownError'))
+      setActionError(t('bestiary.addError', { name: monster.name, message }))
     } finally {
       setPendingEntryIds((prev) => prev.filter((id) => id !== monster.id))
     }
@@ -106,7 +120,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
     <div className="h-full min-h-0 overflow-y-auto p-3">
       {loadError ? (
         <div className="mb-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          Failed to load monsters: {loadError}
+          {t('bestiary.loadError', { message: loadError })}
         </div>
       ) : null}
       {actionSuccess ? (
@@ -121,7 +135,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
       ) : null}
 
       {monsterCards.length === 0 ? (
-        <div className="rounded-lg border p-4 text-muted-foreground">No monsters available.</div>
+        <div className="rounded-lg border p-4 text-muted-foreground">{t('bestiary.empty')}</div>
       ) : (
         <div className="space-y-3">
           {monsterCards.map((monster) => (
