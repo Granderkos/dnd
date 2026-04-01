@@ -72,6 +72,9 @@ export const emptyCharacter: Character = {
   combat: {
     armorClass: 10,
     initiative: 0,
+    initiativeBase: 0,
+    initiativeRoll: 0,
+    initiativeTotal: 0,
     speed: 30,
     maxHp: 0,
     currentHp: 0,
