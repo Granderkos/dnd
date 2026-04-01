@@ -45,6 +45,7 @@ function isRecentlyActive(activity?: PlayerCharacterData['activity']) {
   return Boolean(activity.is_online) && age < 45000
 }
 
+// Keep this tab list centralized so persistence and validation use one source of truth.
 const DM_TAB_STORAGE_KEY = 'dm-dashboard-active-tab'
 const DM_TABS = ['players', 'maps', 'notes', 'bestiary'] as const
 
@@ -62,15 +63,6 @@ export const DMDashboard = memo(function DMDashboard() {
   const [players, setPlayers] = useState<PlayerCharacterData[]>([])
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerCharacterData | null>(null)
   const [activeTab, setActiveTab] = useState(getInitialDmTab)
-
-  useEffect(() => {
-    const storedTab = window.localStorage.getItem(DM_TAB_STORAGE_KEY)
-    if (storedTab && DM_TABS.has(storedTab)) setActiveTab(storedTab)
-  }, [])
-
-  useEffect(() => {
-    window.localStorage.setItem(DM_TAB_STORAGE_KEY, activeTab)
-  }, [activeTab])
 
   useEffect(() => {
     void updateCurrentPage(`dm:${activeTab}`)
