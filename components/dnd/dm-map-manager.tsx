@@ -33,6 +33,8 @@ const defaultViewSettings: MapViewSettings = {
   gridOpacity: 0.3,
 }
 
+let cachedMaps: StoredMap[] | null = null
+
 export const DMMapManager = memo(function DMMapManager() {
   const { user } = useAuth()
   const [maps, setMaps] = useState<StoredMap[]>([])
@@ -51,9 +53,16 @@ export const DMMapManager = memo(function DMMapManager() {
   const isDragging = useRef(false)
   const lastPos = useRef({ x: 0, y: 0 })
 
-  const refreshMaps = useCallback(async () => {
+  const refreshMaps = useCallback(async (force = false) => {
+    if (!force && cachedMaps) {
+      setMaps(cachedMaps)
+      const cachedActive = cachedMaps.find((m) => m.isActive)
+      setActiveMapId(cachedActive?.id ?? null)
+      return
+    }
     try {
       const dbMaps = await loadMaps()
+      cachedMaps = dbMaps
       setMaps(dbMaps)
       const currentActive = dbMaps.find((m) => m.isActive)
       setActiveMapId(currentActive?.id ?? null)
@@ -69,6 +78,11 @@ export const DMMapManager = memo(function DMMapManager() {
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
+      const allowedTypes = new Set(['image/webp', 'image/jpeg'])
+      if (!allowedTypes.has(file.type)) {
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        return
+      }
       setNewMapFile(file)
       if (!newMapName) setNewMapName(file.name.replace(/\.[^/.]+$/, ''))
     }
@@ -83,7 +97,7 @@ export const DMMapManager = memo(function DMMapManager() {
         try {
           const imageData = e.target?.result as string
           await createMap(user.id, { name: newMapName.trim(), imageData, gridEnabled: false, gridSize: 50, gridOpacity: 0.3 })
-          await refreshMaps()
+          await refreshMaps(true)
           setNewMapName('')
           setNewMapFile(null)
           setUploadDialogOpen(false)
@@ -104,7 +118,7 @@ export const DMMapManager = memo(function DMMapManager() {
   const handleDelete = useCallback(async (map: StoredMap) => {
     try {
       await deleteMap(map.id)
-      await refreshMaps()
+      await refreshMaps(true)
       if (activeMapId === map.id) setActiveMapId(null)
       if (viewingMap?.id === map.id) setViewingMap(null)
       setDeleteConfirmMap(null)
@@ -117,7 +131,7 @@ export const DMMapManager = memo(function DMMapManager() {
     try {
       await setActiveMapRemote(mapId)
       setActiveMapId(mapId)
-      await refreshMaps()
+      await refreshMaps(true)
     } catch (e) {
       console.error('Failed to set active map', e)
     }
@@ -195,7 +209,7 @@ export const DMMapManager = memo(function DMMapManager() {
         <div className="flex-1 overflow-hidden cursor-grab active:cursor-grabbing select-none relative" onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
           <div className="w-full h-full flex items-center justify-center" style={{ transform: `translate(${viewSettings.panX}px, ${viewSettings.panY}px) scale(${viewSettings.zoom})`, transformOrigin: 'center' }}>
             <div className="relative">
-              <img src={viewingMap.imageData} alt={viewingMap.name} className="max-w-none" draggable={false} />
+              <img src={viewingMap.imageData} alt={viewingMap.name} className="max-w-none" draggable={false} loading="lazy" />
               {viewSettings.gridEnabled && (
                 <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `linear-gradient(to right, rgba(255,255,255,${viewSettings.gridOpacity}) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,${viewSettings.gridOpacity}) 1px, transparent 1px)`, backgroundSize: `${viewSettings.gridSize}px ${viewSettings.gridSize}px` }} />
               )}
@@ -217,7 +231,7 @@ export const DMMapManager = memo(function DMMapManager() {
               <DialogHeader><DialogTitle>Upload New Map</DialogTitle></DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2"><Label>Map Name</Label><Input value={newMapName} onChange={(e) => setNewMapName(e.target.value)} placeholder="Enter map name" /></div>
-                <div className="space-y-2"><Label>Image File</Label><Input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} /></div>
+                <div className="space-y-2"><Label>Image File (WebP/JPG)</Label><Input ref={fileInputRef} type="file" accept=".webp,.jpg,.jpeg,image/webp,image/jpeg" onChange={handleFileSelect} /></div>
                 <Button onClick={() => void handleUpload()} disabled={!newMapFile || !newMapName.trim() || isUploading} className="w-full">{isUploading ? 'Uploading...' : 'Upload Map'}</Button>
               </div>
             </DialogContent>
@@ -231,7 +245,7 @@ export const DMMapManager = memo(function DMMapManager() {
               <Card key={map.id} className={activeMapId === map.id ? 'ring-2 ring-primary' : ''}>
                 <CardContent className="py-3">
                   <div className="flex items-center gap-3">
-                    <div className="size-12 rounded bg-muted overflow-hidden shrink-0">{map.imageData ? <img src={map.imageData} alt={map.name} className="size-full object-cover" /> : null}</div>
+                    <div className="size-12 rounded bg-muted overflow-hidden shrink-0">{map.imageData ? <img src={map.imageData} alt={map.name} className="size-full object-cover" loading="lazy" /> : null}</div>
                     <div className="flex-1 min-w-0"><p className="font-medium truncate">{map.name}</p><p className="text-xs text-muted-foreground">{new Date(map.createdAt).toLocaleDateString()}</p></div>
                     <div className="flex items-center gap-1 shrink-0">
                       <Button size="icon" variant={activeMapId === map.id ? 'default' : 'outline'} className="size-8" onClick={() => void setActiveMap(activeMapId === map.id ? null : map.id)} title={activeMapId === map.id ? 'Active for players' : 'Set active for players'}><Check className="size-4" /></Button>
