@@ -252,6 +252,24 @@ export async function moveFightTurnToEnd(entityId: string, turnOrder: number) {
   if (error) throw error
 }
 
+export async function setFightEntityCurrentHp(entityId: string, currentHp: number) {
+  const { error } = await supabase
+    .from('fight_entities')
+    .update({ current_hp: currentHp })
+    .eq('id', entityId)
+
+  if (error) throw error
+}
+
+export async function clearFightEntities(fightId: string) {
+  const { error } = await supabase
+    .from('fight_entities')
+    .delete()
+    .eq('fight_id', fightId)
+
+  if (error) throw error
+}
+
 export async function removeEntity(entityId: string) {
   const { error } = await supabase
     .from('fight_entities')
