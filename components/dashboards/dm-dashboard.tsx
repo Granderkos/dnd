@@ -12,7 +12,7 @@ import { useAuth } from '@/lib/auth-context'
 import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
-import { advanceTurn, getActiveFight, listFightEntities } from '@/lib/supabase-v3'
+import { getActiveFight, listFightEntities, moveFightTurnToEnd } from '@/lib/supabase-v3'
 import type { FightEntity } from '@/lib/v3-types'
 import { Character, calculateModifier, formatModifier } from '@/lib/dnd-types'
 import { AppControls } from '@/components/app/app-controls'
@@ -209,9 +209,19 @@ export const DMDashboard = memo(function DMDashboard() {
             error={fightError}
             onRefresh={() => void loadFightState()}
             onAdvanceTurn={async () => {
-              if (!fightId) return
-              await advanceTurn(fightId)
-              await loadFightState()
+              if (!fightId || fightEntities.length === 0) return
+              const [current, ...rest] = fightEntities
+              const maxTurnOrder = fightEntities.reduce((max, entity) => Math.max(max, entity.turn_order ?? 0), 0)
+              const nextTurnOrder = maxTurnOrder + 1
+              const rotated = [...rest, { ...current, turn_order: nextTurnOrder }]
+              setFightEntities(rotated)
+              try {
+                await moveFightTurnToEnd(current.id, nextTurnOrder)
+              } catch (e) {
+                setFightEntities(fightEntities)
+                const message = e instanceof Error ? e.message : t('common.unknownError')
+                setFightError(message)
+              }
             }}
             labels={{
               title: t('fight.title'),

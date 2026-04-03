@@ -243,6 +243,15 @@ export async function updateFightEntityNotes(entityId: string, notes: string) {
   return data as FightEntity
 }
 
+export async function moveFightTurnToEnd(entityId: string, turnOrder: number) {
+  const { error } = await supabase
+    .from('fight_entities')
+    .update({ turn_order: turnOrder })
+    .eq('id', entityId)
+
+  if (error) throw error
+}
+
 export async function removeEntity(entityId: string) {
   const { error } = await supabase
     .from('fight_entities')
