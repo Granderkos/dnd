@@ -2,6 +2,7 @@ export type CompendiumType = 'creature' | 'companion'
 export type CompendiumSubtype = 'monster' | 'pet' | 'mount' | 'summon' | 'familiar'
 export type CompanionKind = 'pet' | 'mount' | 'summon' | 'familiar'
 export type FightEntityType = 'player' | 'monster' | 'npc' | 'summon'
+export type FightStatus = 'draft' | 'active' | 'ended'
 
 export interface CompendiumEntry {
   id: string
@@ -40,6 +41,7 @@ export interface Fight {
   id: string
   campaign_id: string
   is_active: boolean
+  status: FightStatus
   created_at: string
 }
 
@@ -51,6 +53,7 @@ export interface FightEntity {
   entry_id: string | null
   name: string
   initiative: number | null
+  initiative_mod: number
   current_hp: number | null
   max_hp: number | null
   turn_order: number | null

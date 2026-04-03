@@ -7,6 +7,7 @@ import type {
   Fight,
   FightEntity,
   FightEntityType,
+  FightStatus,
   InitiativeSubmission,
 } from '@/lib/v3-types'
 
@@ -22,6 +23,10 @@ function numberFromData(data: Record<string, unknown>, key: string, fallback = 0
     return Number.isFinite(parsed) ? parsed : fallback
   }
   return fallback
+}
+
+function abilityModifier(score: number) {
+  return Math.floor((score - 10) / 2)
 }
 
 export async function listCreatures() {
@@ -66,8 +71,8 @@ export async function updateCreature(id: string, patch: Partial<CompendiumEntry>
 export async function createFight(campaignId: string) {
   const { data, error } = await supabase
     .from('fights')
-    .insert({ campaign_id: campaignId, is_active: true })
-    .select('id, campaign_id, is_active, created_at')
+    .insert({ campaign_id: campaignId, is_active: true, status: 'draft' })
+    .select('id, campaign_id, is_active, status, created_at')
     .single()
 
   if (error) throw error
@@ -77,7 +82,7 @@ export async function createFight(campaignId: string) {
 export async function getActiveFight(campaignId: string) {
   const { data, error } = await supabase
     .from('fights')
-    .select('id, campaign_id, is_active, created_at')
+    .select('id, campaign_id, is_active, status, created_at')
     .eq('campaign_id', campaignId)
     .eq('is_active', true)
     .order('created_at', { ascending: false })
@@ -90,7 +95,7 @@ export async function getActiveFight(campaignId: string) {
 
 export async function getOrCreateActiveFight(campaignId: string) {
   const existing = await getActiveFight(campaignId)
-  if (existing) return existing
+  if (existing && existing.status !== 'ended') return existing
   return createFight(campaignId)
 }
 
@@ -101,6 +106,7 @@ export async function addFightEntity(input: {
   characterId?: string | null
   entryId?: string | null
   initiative?: number | null
+  initiativeMod?: number | null
   currentHp?: number | null
   maxHp?: number | null
   notes?: string | null
@@ -114,11 +120,12 @@ export async function addFightEntity(input: {
       character_id: input.characterId ?? null,
       entry_id: input.entryId ?? null,
       initiative: input.initiative ?? null,
+      initiative_mod: input.initiativeMod ?? 0,
       current_hp: input.currentHp ?? null,
       max_hp: input.maxHp ?? null,
       notes: input.notes ?? null,
     })
-    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, current_hp, max_hp, turn_order, notes, created_at')
+    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, initiative_mod, current_hp, max_hp, turn_order, notes, created_at')
     .single()
 
   if (error) throw error
@@ -173,7 +180,7 @@ export async function addCompendiumMonsterToActiveFight(campaignId: string, entr
 export async function sortInitiative(fightId: string) {
   const { data, error } = await supabase
     .from('fight_entities')
-    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, current_hp, max_hp, turn_order, notes, created_at')
+    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, initiative_mod, current_hp, max_hp, turn_order, notes, created_at')
     .eq('fight_id', fightId)
     .order('initiative', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: true })
@@ -196,7 +203,7 @@ export async function sortInitiative(fightId: string) {
 export async function advanceTurn(fightId: string) {
   const { data, error } = await supabase
     .from('fight_entities')
-    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, current_hp, max_hp, turn_order, notes, created_at')
+    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, initiative_mod, current_hp, max_hp, turn_order, notes, created_at')
     .eq('fight_id', fightId)
     .order('turn_order', { ascending: true })
 
@@ -224,7 +231,7 @@ export async function updateHP(entityId: string, currentHp: number) {
     .from('fight_entities')
     .update({ current_hp: currentHp })
     .eq('id', entityId)
-    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, current_hp, max_hp, turn_order, notes, created_at')
+    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, initiative_mod, current_hp, max_hp, turn_order, notes, created_at')
     .single()
 
   if (error) throw error
@@ -236,7 +243,7 @@ export async function updateFightEntityNotes(entityId: string, notes: string) {
     .from('fight_entities')
     .update({ notes })
     .eq('id', entityId)
-    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, current_hp, max_hp, turn_order, notes, created_at')
+    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, initiative_mod, current_hp, max_hp, turn_order, notes, created_at')
     .single()
 
   if (error) throw error
@@ -384,7 +391,7 @@ export async function addPlayerToFight(input: {
 export async function listFightEntities(fightId: string) {
   const { data, error } = await supabase
     .from('fight_entities')
-    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, current_hp, max_hp, turn_order, notes, created_at')
+    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, initiative_mod, current_hp, max_hp, turn_order, notes, created_at')
     .eq('fight_id', fightId)
     .order('turn_order', { ascending: true, nullsFirst: false })
     .order('initiative', { ascending: false, nullsFirst: false })
@@ -392,4 +399,117 @@ export async function listFightEntities(fightId: string) {
 
   if (error) throw error
   return (data ?? []) as FightEntity[]
+}
+
+export async function setFightStatus(fightId: string, status: FightStatus) {
+  const { data, error } = await supabase
+    .from('fights')
+    .update({ status })
+    .eq('id', fightId)
+    .select('id, campaign_id, is_active, status, created_at')
+    .single()
+
+  if (error) throw error
+  return data as Fight
+}
+
+export async function createOrGetDraftFight(campaignId: string) {
+  const existing = await getActiveFight(campaignId)
+  if (existing) return existing
+  return createFight(campaignId)
+}
+
+export async function preparePlayerEntitiesForFight(fightId: string) {
+  const [{ data: existingEntities, error: existingError }, { data: characters, error: charactersError }] = await Promise.all([
+    supabase
+      .from('fight_entities')
+      .select('character_id')
+      .eq('fight_id', fightId)
+      .eq('entity_type', 'player'),
+    supabase
+      .from('characters')
+      .select('id, user_id, name, hp_current, hp_max, dex_score'),
+  ])
+
+  if (existingError) throw existingError
+  if (charactersError) throw charactersError
+
+  const existingCharacterIds = new Set((existingEntities ?? []).map((entity) => entity.character_id).filter(Boolean))
+  const rowsToInsert = (characters ?? [])
+    .filter((character) => !existingCharacterIds.has(character.id))
+    .map((character) => ({
+      fight_id: fightId,
+      entity_type: 'player',
+      character_id: character.id,
+      name: character.name || 'Player',
+      initiative: null,
+      initiative_mod: abilityModifier(character.dex_score ?? 10),
+      current_hp: character.hp_current ?? 0,
+      max_hp: character.hp_max ?? 0,
+      notes: null as string | null,
+    }))
+
+  if (rowsToInsert.length === 0) return
+
+  const { error } = await supabase.from('fight_entities').insert(rowsToInsert)
+  if (error) throw error
+}
+
+export async function startCombatForCampaign(campaignId: string) {
+  const fight = await createOrGetDraftFight(campaignId)
+  await preparePlayerEntitiesForFight(fight.id)
+  await setFightStatus(fight.id, 'active')
+  await sortInitiative(fight.id)
+  return fight
+}
+
+export async function endCombatForFight(fightId: string) {
+  return setFightStatus(fightId, 'ended')
+}
+
+export async function getPendingInitiativeForUser(userId: string) {
+  const { data: character, error: characterError } = await supabase
+    .from('characters')
+    .select('id')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (characterError) throw characterError
+  if (!character?.id) return null
+
+  const { data, error } = await supabase
+    .from('fight_entities')
+    .select('id, fight_id, initiative_mod, fights!inner(id, status)')
+    .eq('character_id', character.id)
+    .eq('entity_type', 'player')
+    .is('initiative', null)
+    .eq('fights.status', 'active')
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) return null
+
+  return { entityId: data.id as string, fightId: data.fight_id as string, initiativeMod: data.initiative_mod as number }
+}
+
+export async function submitPlayerInitiative(entityId: string, roll: number) {
+  const { data, error } = await supabase
+    .from('fight_entities')
+    .select('id, fight_id, initiative_mod')
+    .eq('id', entityId)
+    .single()
+
+  if (error) throw error
+
+  const finalInitiative = roll + (data.initiative_mod ?? 0)
+  const { error: updateError } = await supabase
+    .from('fight_entities')
+    .update({ initiative: finalInitiative })
+    .eq('id', entityId)
+
+  if (updateError) throw updateError
+
+  await sortInitiative(data.fight_id)
+  return finalInitiative
 }
