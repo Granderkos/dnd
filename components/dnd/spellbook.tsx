@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
@@ -37,11 +36,13 @@ import {
   Spellbook as SpellbookType,
   Spell,
   AbilityName,
-  calculateModifier,
+  calculateSpellAttackBonus,
+  calculateSpellSaveDC,
   formatModifier,
   formatFeetWithSquares,
 } from '@/lib/dnd-types'
 import { useI18n } from '@/lib/i18n'
+import { generateClientId } from '@/lib/client-id'
 
 interface SpellbookProps {
   spellbook: SpellbookType
@@ -56,7 +57,7 @@ export function Spellbook({
   abilityScores,
   onChange,
 }: SpellbookProps) {
-  const { t } = useI18n()
+  const { t, language } = useI18n()
   const [selectedSpell, setSelectedSpell] = useState<Spell | null>(null)
   const [isAddingSpell, setIsAddingSpell] = useState(false)
   const [newSpellLevel, setNewSpellLevel] = useState(0)
@@ -67,12 +68,12 @@ export function Spellbook({
     onConfirm: () => void
   }>({ open: false, title: '', description: '', onConfirm: () => {} })
 
-  const spellcastingMod = useMemo(
-    () => calculateModifier(abilityScores[spellbook.spellcastingAbility].value),
+  const spellcastingScore = useMemo(
+    () => abilityScores[spellbook.spellcastingAbility].value,
     [abilityScores, spellbook.spellcastingAbility],
   )
-  const calculatedDC = 8 + proficiencyBonus + spellcastingMod
-  const calculatedAttack = proficiencyBonus + spellcastingMod
+  const calculatedDC = calculateSpellSaveDC(proficiencyBonus, spellcastingScore)
+  const calculatedAttack = calculateSpellAttackBonus(proficiencyBonus, spellcastingScore)
 
   const updateSpellcastingAbility = useCallback((ability: AbilityName) => {
     onChange({ ...spellbook, spellcastingAbility: ability })
@@ -147,8 +148,8 @@ export function Spellbook({
   const getSpellsByLevel = useCallback((level: number) => spellbook.spells.filter((s) => s.level === level), [spellbook.spells])
 
   return (
-    <ScrollArea className="h-[calc(100vh-4rem)]">
-      <div className="flex flex-col gap-3 p-3">
+    <div className="h-full min-h-0 overflow-y-auto px-3 py-4">
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 pb-24">
         <Card>
           <CardContent className="pt-4">
             <div className="grid grid-cols-3 gap-2">
@@ -283,7 +284,7 @@ export function Spellbook({
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div><span className="text-muted-foreground">{t('spellbook.castingTime')}: </span><span className="break-words">{selectedSpell.castingTime}</span></div>
-                  <div><span className="text-muted-foreground">{t('spellbook.range')}: </span><span className="break-words">{formatFeetWithSquares(selectedSpell.range)}</span></div>
+                  <div><span className="text-muted-foreground">{t('spellbook.range')}: </span><span className="break-words">{formatFeetWithSquares(selectedSpell.range, language)}</span></div>
                   <div><span className="text-muted-foreground">{t('spellbook.duration')}: </span><span className="break-words">{selectedSpell.duration}</span></div>
                   {selectedSpell.damage && <div><span className="text-muted-foreground">{t('spellbook.damage')}: </span><span className="break-words">{selectedSpell.damage}</span></div>}
                 </div>
@@ -308,7 +309,7 @@ export function Spellbook({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </ScrollArea>
+    </div>
   )
 }
 
@@ -367,7 +368,7 @@ function AddSpellDialog({ open, onOpenChange, level, onAdd }: AddSpellDialogProp
 
   const handleSubmit = () => {
     if (spell.name) {
-      onAdd({ ...spell, id: Date.now().toString(), level } as Spell)
+      onAdd({ ...spell, id: generateClientId(), level } as Spell)
       setSpell(initialSpell())
     }
   }
