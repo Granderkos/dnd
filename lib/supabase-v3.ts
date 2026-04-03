@@ -457,14 +457,16 @@ export async function preparePlayerEntitiesForFight(fightId: string) {
 
 export async function startCombatForCampaign(campaignId: string) {
   const fight = await createOrGetDraftFight(campaignId)
-  await supabase.from('fight_entities').delete().eq('fight_id', fight.id).eq('entity_type', 'player')
-
-  const { data: playerCharacters, error: playersError } = await supabase
-    .from('characters')
-    .select('user_id')
-    .not('user_id', 'is', null)
+  const [{ data: playerCharacters, error: playersError }, { error: clearPlayerEntitiesError }] = await Promise.all([
+    supabase
+      .from('characters')
+      .select('user_id')
+      .not('user_id', 'is', null),
+    supabase.from('fight_entities').delete().eq('fight_id', fight.id).eq('entity_type', 'player'),
+  ])
 
   if (playersError) throw playersError
+  if (clearPlayerEntitiesError) throw clearPlayerEntitiesError
 
   const uniquePlayerIds = [...new Set((playerCharacters ?? []).map((character) => character.user_id).filter(Boolean))]
   const requests = uniquePlayerIds.map((playerId) => ({
@@ -526,6 +528,9 @@ export async function submitPlayerInitiative(userId: string, requestId: string, 
     .single()
 
   if (requestError) throw requestError
+  if (request.status !== 'pending') {
+    throw new Error('Initiative already submitted for this fight.')
+  }
 
   const { data: character, error: characterError } = await supabase
     .from('characters')

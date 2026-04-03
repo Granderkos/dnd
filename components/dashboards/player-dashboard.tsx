@@ -104,6 +104,23 @@ const defaultMapSettings: MapSettings = {
 const PLAYER_TAB_STORAGE_KEY = 'dnd:player-active-tab'
 const PLAYER_TABS = new Set(['character', 'inventory', 'spellbook', 'notes', 'map'])
 
+function formatErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === 'object' && error !== null) {
+    const message = 'message' in error && typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : null
+    const details = 'details' in error && typeof (error as { details?: unknown }).details === 'string'
+      ? (error as { details: string }).details
+      : null
+    const hint = 'hint' in error && typeof (error as { hint?: unknown }).hint === 'string'
+      ? (error as { hint: string }).hint
+      : null
+    return [message, details, hint].filter(Boolean).join(' — ') || fallback
+  }
+  return fallback
+}
+
 export const PlayerDashboard = memo(function PlayerDashboard() {
   const { user, logout, updateCurrentPage } = useAuth()
   const { t } = useI18n()
@@ -158,10 +175,10 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       setInitiativePrompt({ requestId: pending.requestId, initiativeMod: pending.initiativeMod })
       setInitiativeError(null)
     } catch (error) {
-      const message = error instanceof Error ? error.message : t('common.unknownError')
+      const message = formatErrorMessage(error, 'Failed to check initiative request.')
       setInitiativeError(message)
     }
-  }, [t, user?.id])
+  }, [user?.id])
 
   useEffect(() => {
     if (!isLoaded || !user?.id) return
@@ -195,7 +212,11 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
           void refreshInitiativePrompt()
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          void refreshInitiativePrompt()
+        }
+      })
 
     return () => {
       void supabase.removeChannel(channel)
@@ -326,7 +347,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
                   setInitiativeRollInput('')
                   setInitiativeError(null)
                 } catch (error) {
-                  const message = error instanceof Error ? error.message : t('common.unknownError')
+                  const message = formatErrorMessage(error, 'Failed to submit initiative.')
                   setInitiativeError(message)
                 } finally {
                   setIsSubmittingInitiative(false)

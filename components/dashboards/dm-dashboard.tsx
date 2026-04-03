@@ -278,7 +278,7 @@ export const DMDashboard = memo(function DMDashboard() {
       const fight = await startCombatForCampaign(user.id)
       setFightId(fight.id)
       setFightStatus('collecting_initiative')
-      await loadFightState()
+      void loadFightState()
     } catch (error) {
       console.error('Failed to start combat', error)
       setFightError(formatErrorMessage(error, 'Failed to start combat'))
@@ -407,6 +407,8 @@ export const DMDashboard = memo(function DMDashboard() {
               loading: t('fight.loading'),
               noActive: t('fight.noActiveFight'),
               noEntities: t('fight.noEntities'),
+              noEntitiesCollecting: t('fight.noEntitiesCollecting'),
+              noEntitiesDraft: t('fight.noEntitiesDraft'),
               allDowned: t('fight.allDowned'),
               initiative: t('fight.initiative'),
               hp: t('fight.hp'),
@@ -501,6 +503,8 @@ function DMFightPanel({
     loading: string
     noActive: string
     noEntities: string
+    noEntitiesCollecting: string
+    noEntitiesDraft: string
     allDowned: string
     initiative: string
     hp: string
@@ -515,6 +519,11 @@ function DMFightPanel({
   const activeEntity = entities.find((entity) => !isDownedEntity(entity)) ?? null
   const activeEntityId = activeEntity?.id ?? null
   const hasActiveTurn = Boolean(activeEntity)
+  const emptyStateMessage = fightStatus === 'collecting_initiative'
+    ? labels.noEntitiesCollecting
+    : fightStatus === 'draft'
+      ? labels.noEntitiesDraft
+      : labels.noEntities
   const fightStateLabel = fightStatus === 'active'
     ? labels.stateActive
     : fightStatus === 'collecting_initiative'
@@ -571,7 +580,7 @@ function DMFightPanel({
       {!fightId ? (
         <div className="rounded-lg border p-4 text-sm text-muted-foreground">{labels.noActive}</div>
       ) : entities.length === 0 ? (
-        <div className="rounded-lg border p-4 text-sm text-muted-foreground">{labels.noEntities}</div>
+        <div className="rounded-lg border p-4 text-sm text-muted-foreground">{emptyStateMessage}</div>
       ) : (
         <div className="space-y-2">
           {!activeEntity ? (
