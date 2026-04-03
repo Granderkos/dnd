@@ -479,11 +479,12 @@ export async function getPendingInitiativeForUser(userId: string) {
 
   const { data, error } = await supabase
     .from('fight_entities')
-    .select('id, fight_id, initiative_mod, fights!inner(id, status)')
+    .select('id, fight_id, initiative_mod')
     .eq('character_id', character.id)
     .eq('entity_type', 'player')
     .is('initiative', null)
-    .eq('fights.status', 'active')
+    .gt('max_hp', 0)
+    .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
 

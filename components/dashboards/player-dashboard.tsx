@@ -119,15 +119,6 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [initiativeError, setInitiativeError] = useState<string | null>(null)
 
   useEffect(() => {
-    const storedTab = window.localStorage.getItem(PLAYER_TAB_STORAGE_KEY)
-    if (storedTab && PLAYER_TABS.has(storedTab)) setActiveTab(storedTab)
-  }, [])
-
-  useEffect(() => {
-    window.localStorage.setItem(PLAYER_TAB_STORAGE_KEY, activeTab)
-  }, [activeTab])
-
-  useEffect(() => {
     if (!user?.id) return
     let mounted = true
     ;(async () => {

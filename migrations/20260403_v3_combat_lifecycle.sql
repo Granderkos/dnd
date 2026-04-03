@@ -19,24 +19,7 @@ where is_active = true and status = 'draft';
 
 create index if not exists idx_fights_status on public.fights (status);
 
--- Player visibility + initiative submit permissions for active fights.
--- These are additive to DM-owner policies.
-
-drop policy if exists "player_select_active_fights" on public.fights;
-create policy "player_select_active_fights"
-on public.fights
-for select
-to authenticated
-using (
-  status = 'active'
-  and exists (
-    select 1
-    from public.fight_entities fe
-    join public.characters c on c.id = fe.character_id
-    where fe.fight_id = fights.id
-      and c.user_id = auth.uid()
-  )
-);
+-- Player initiative submit permissions (additive to DM-owner policies).
 
 drop policy if exists "player_select_own_fight_entity" on public.fight_entities;
 create policy "player_select_own_fight_entity"
