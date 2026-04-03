@@ -272,18 +272,20 @@ export const DMDashboard = memo(function DMDashboard() {
 
   const handleStartCombat = useCallback(async () => {
     if (!user?.id || isStartingCombat) return
+    setFightError(null)
     setIsStartingCombat(true)
     try {
       const fight = await startCombatForCampaign(user.id)
       setFightId(fight.id)
-      setFightStatus('active')
+      setFightStatus('collecting_initiative')
       await loadFightState()
     } catch (error) {
-      setFightError(formatErrorMessage(error, t('common.unknownError')))
+      console.error('Failed to start combat', error)
+      setFightError(formatErrorMessage(error, 'Failed to start combat'))
     } finally {
       setIsStartingCombat(false)
     }
-  }, [isStartingCombat, t, user?.id])
+  }, [isStartingCombat, user?.id])
 
   const handleEndCombat = useCallback(async () => {
     if (!fightId || isEndingCombat) return
@@ -399,6 +401,7 @@ export const DMDashboard = memo(function DMDashboard() {
               statusActive: t('fight.statusActive'),
               statusDowned: t('fight.statusDowned'),
               stateDraft: t('fight.stateDraft'),
+              stateCollecting: t('fight.stateCollecting'),
               stateActive: t('fight.stateActive'),
               stateEnded: t('fight.stateEnded'),
               loading: t('fight.loading'),
@@ -492,6 +495,7 @@ function DMFightPanel({
     statusActive: string
     statusDowned: string
     stateDraft: string
+    stateCollecting: string
     stateActive: string
     stateEnded: string
     loading: string
@@ -511,7 +515,13 @@ function DMFightPanel({
   const activeEntity = entities.find((entity) => !isDownedEntity(entity)) ?? null
   const activeEntityId = activeEntity?.id ?? null
   const hasActiveTurn = Boolean(activeEntity)
-  const fightStateLabel = fightStatus === 'active' ? labels.stateActive : fightStatus === 'ended' ? labels.stateEnded : labels.stateDraft
+  const fightStateLabel = fightStatus === 'active'
+    ? labels.stateActive
+    : fightStatus === 'collecting_initiative'
+      ? labels.stateCollecting
+      : fightStatus === 'ended'
+        ? labels.stateEnded
+        : labels.stateDraft
 
   useEffect(() => {
     if (!activeEntityId) return
@@ -541,7 +551,7 @@ function DMFightPanel({
           </span>
         </div>
         <div className="flex gap-2">
-          {fightStatus === 'active' ? (
+          {fightStatus === 'active' || fightStatus === 'collecting_initiative' ? (
             <Button size="sm" variant="outline" onClick={() => void onEndCombat()} disabled={isEndingCombat}>
               {isEndingCombat ? labels.ending : labels.endCombat}
             </Button>

@@ -459,16 +459,17 @@ export async function startCombatForCampaign(campaignId: string) {
   const fight = await createOrGetDraftFight(campaignId)
   await supabase.from('fight_entities').delete().eq('fight_id', fight.id).eq('entity_type', 'player')
 
-  const { data: players, error: playersError } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('role', 'player')
+  const { data: playerCharacters, error: playersError } = await supabase
+    .from('characters')
+    .select('user_id')
+    .not('user_id', 'is', null)
 
   if (playersError) throw playersError
 
-  const requests = (players ?? []).map((player) => ({
+  const uniquePlayerIds = [...new Set((playerCharacters ?? []).map((character) => character.user_id).filter(Boolean))]
+  const requests = uniquePlayerIds.map((playerId) => ({
     fight_id: fight.id,
-    user_id: player.id,
+    user_id: playerId,
     status: 'pending' as const,
     initiative_roll: null as number | null,
     submitted_at: null as string | null,
