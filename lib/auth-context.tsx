@@ -59,6 +59,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const currentPageRef = useRef('app')
   const lastHydratedUserIdRef = useRef<string | null>(null)
   const presenceStartedForRef = useRef<string | null>(null)
+  const lastPresenceWriteRef = useRef(0)
+  const lastPresencePageRef = useRef('')
 
   const hydrateUserFromSession = useCallback(async (userId: string) => {
     const profile = await fetchProfile(userId)
@@ -152,9 +154,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     presenceStartedForRef.current = user.id
     let cancelled = false
 
-    const heartbeat = async () => {
+    const heartbeat = async (force = false) => {
+      const now = Date.now()
+      if (!force && now - lastPresenceWriteRef.current < 45000) return
+      if (!force && lastPresencePageRef.current === currentPageRef.current) return
       try {
         await updateActivityStatus(user.id, currentPageRef.current, true)
+        lastPresenceWriteRef.current = now
+        lastPresencePageRef.current = currentPageRef.current
       } catch (e) {
         if (!cancelled) {
           console.error('Failed to update activity', e)
@@ -162,14 +169,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    void heartbeat()
+    void heartbeat(true)
     const interval = window.setInterval(() => {
       void heartbeat()
-    }, 30000)
+    }, 60000)
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        void heartbeat()
+        void heartbeat(true)
       }
     }
 
@@ -348,11 +355,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const updateCurrentPage = useCallback(async (page: string) => {
+    if (currentPageRef.current === page) return
     currentPageRef.current = page
 
     if (user) {
       try {
         await updateActivityStatus(user.id, page, true)
+        lastPresenceWriteRef.current = Date.now()
+        lastPresencePageRef.current = page
       } catch (e) {
         console.error('Failed to update current page', e)
       }

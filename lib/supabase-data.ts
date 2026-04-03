@@ -163,17 +163,10 @@ async function getCharacterBlob(characterId: string): Promise<CharacterNotesBlob
   return safeJsonParse<CharacterNotesBlob>(data?.notes, emptyBlob())
 }
 
-async function upsertCharacterBlob(characterId: string, patch: Partial<CharacterNotesBlob>) {
-  const current = await getCharacterBlob(characterId)
-  const merged = {
-    ...current,
-    ...patch,
-    inventoryCurrency: patch.inventoryCurrency ?? current.inventoryCurrency,
-    spellbookMeta: patch.spellbookMeta ? { ...current.spellbookMeta, ...patch.spellbookMeta } : current.spellbookMeta,
-  }
+async function upsertCharacterBlob(characterId: string, blob: CharacterNotesBlob) {
   const { error } = await supabase.from('character_notes').upsert({
     character_id: characterId,
-    notes: notesBlobToText(merged),
+    notes: notesBlobToText(blob),
   })
   if (error) throw error
 }
@@ -181,16 +174,14 @@ async function upsertCharacterBlob(characterId: string, patch: Partial<Character
 export async function loadCurrentPlayerData(userId: string): Promise<{ character: Character; spellbook: Spellbook; inventory: Inventory; notes: Note[] }> {
   const characterId = await ensureCharacterRecord(userId)
 
-  const [{ data: row, error: charError }, { data: attacksData, error: attacksError }, { data: inventoryData, error: inventoryError }, { data: spellsData, error: spellsError }, blob] = await Promise.all([
+  const [{ data: row, error: charError }, { data: inventoryData, error: inventoryError }, { data: spellsData, error: spellsError }, blob] = await Promise.all([
     supabase.from('characters').select('*').eq('id', characterId).single(),
-    supabase.from('attacks').select('*').eq('character_id', characterId).order('sort_order', { ascending: true }),
     supabase.from('inventory_items').select('*').eq('character_id', characterId).order('sort_order', { ascending: true }),
     supabase.from('spells').select('*').eq('character_id', characterId).order('sort_order', { ascending: true }),
     getCharacterBlob(characterId),
   ])
 
   if (charError) throw charError
-  if (attacksError) throw attacksError
   if (inventoryError) throw inventoryError
   if (spellsError) throw spellsError
 
@@ -244,13 +235,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
         failures: [0, 1, 2].map((i) => i < (row.death_failures ?? 0)) as [boolean, boolean, boolean],
       },
     },
-    attacks: (attacksData?.length ? (attacksData ?? []).map((attack) => ({
-      id: attack.id,
-      name: attack.name,
-      attackBonus: attack.attack_bonus,
-      damage: attack.damage,
-      damageType: '',
-    })) : fallbackAttacks),
+    attacks: fallbackAttacks,
     attackNotes: '',
     raceFeatures: blob.raceFeatures ?? '',
     classFeatures: blob.classFeatures ?? blob.featuresText ?? row.features ?? '',
@@ -404,7 +389,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
     raceFeatures: character.raceFeatures,
     classFeatures: character.classFeatures,
     backgroundFeatures: character.backgroundFeatures,
-  })
+  } satisfies CharacterNotesBlob)
 
   try {
     const [{ error: attacksDeleteError }, { error: invDeleteError }, { error: spellsDeleteError }] = await Promise.all([
@@ -493,10 +478,7 @@ export async function listPlayerCharacters() {
       return { username: player.username, character: emptyCharacter, activity: player.activity_status }
     }
 
-    const [{ data: attacksData }, blob] = await Promise.all([
-      supabase.from('attacks').select('*').eq('character_id', row.id).order('sort_order'),
-      getCharacterBlob(row.id),
-    ])
+    const blob = await getCharacterBlob(row.id)
 
     const character: Character = {
       info: {
@@ -530,7 +512,7 @@ export async function listPlayerCharacters() {
         hitDice: row.hit_dice_type ?? '',
         deathSaves: { successes: [false, false, false], failures: [false, false, false] },
       },
-      attacks: attacksData?.length ? attacksData.map((attack: any) => ({ id: attack.id, name: attack.name, attackBonus: attack.attack_bonus, damage: attack.damage, damageType: '' })) : (blob.attacks ?? emptyCharacter.attacks),
+      attacks: blob.attacks ?? emptyCharacter.attacks,
       attackNotes: '',
       raceFeatures: blob.raceFeatures ?? '',
       classFeatures: blob.classFeatures ?? blob.featuresText ?? row.features ?? '',

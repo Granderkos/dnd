@@ -1,0 +1,34 @@
+[
+  {
+    "type": "companion",
+    "subtype": "mount",
+    "slug": "horse",
+    "name": "Horse",
+    "description": "Reliable riding mount for travel and combat positioning.",
+    "data": { "ac": 10, "hp": 13, "speed": 60 }
+  },
+  {
+    "type": "companion",
+    "subtype": "pet",
+    "slug": "wolf-companion",
+    "name": "Wolf Companion",
+    "description": "Loyal wolf trained to aid its bonded adventurer.",
+    "data": { "ac": 13, "hp": 11, "speed": 40 }
+  },
+  {
+    "type": "companion",
+    "subtype": "familiar",
+    "slug": "owl-familiar",
+    "name": "Owl Familiar",
+    "description": "Silent scout with flyby support capabilities.",
+    "data": { "ac": 11, "hp": 1, "speed": 5, "fly": 60 }
+  },
+  {
+    "type": "companion",
+    "subtype": "summon",
+    "slug": "spirit-summon",
+    "name": "Spirit Summon",
+    "description": "Arcane spirit manifestation sustaining temporary aid.",
+    "data": { "ac": 12, "hp": 20, "speed": 30 }
+  }
+]
