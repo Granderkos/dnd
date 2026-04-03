@@ -78,6 +78,10 @@ function formatErrorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
+function isDownedEntity(entity: FightEntity) {
+  return (entity.current_hp ?? 0) <= 0
+}
+
 export const DMDashboard = memo(function DMDashboard() {
   const { logout, getAllPlayerCharacters, updateCurrentPage, user } = useAuth()
   const { t } = useI18n()
@@ -198,7 +202,13 @@ export const DMDashboard = memo(function DMDashboard() {
 
   const handleAdvanceTurn = useCallback(async () => {
     if (!fightId || fightEntities.length === 0 || isAdvancingTurn) return
-    const [current, ...rest] = fightEntities
+    const activeIndex = fightEntities.findIndex((entity) => !isDownedEntity(entity))
+    if (activeIndex === -1) {
+      setFightError(t('fight.allDowned'))
+      return
+    }
+    const current = fightEntities[activeIndex]
+    const rest = fightEntities.filter((_, index) => index !== activeIndex)
     const maxTurnOrder = fightEntities.reduce((max, entity) => Math.max(max, entity.turn_order ?? 0), 0)
     const nextTurnOrder = maxTurnOrder + 1
     const rotated = [...rest, { ...current, turn_order: nextTurnOrder }]
@@ -343,9 +353,12 @@ export const DMDashboard = memo(function DMDashboard() {
               removing: t('fight.removing'),
               clearing: t('fight.clearing'),
               hpCurrent: t('fight.hpCurrent'),
+              statusActive: t('fight.statusActive'),
+              statusDowned: t('fight.statusDowned'),
               loading: t('fight.loading'),
               noActive: t('fight.noActiveFight'),
               noEntities: t('fight.noEntities'),
+              allDowned: t('fight.allDowned'),
               initiative: t('fight.initiative'),
               hp: t('fight.hp'),
               ac: t('fight.ac'),
@@ -416,9 +429,12 @@ function DMFightPanel({
     removing: string
     clearing: string
     hpCurrent: string
+    statusActive: string
+    statusDowned: string
     loading: string
     noActive: string
     noEntities: string
+    allDowned: string
     initiative: string
     hp: string
     ac: string
@@ -429,7 +445,9 @@ function DMFightPanel({
   const [activePulseId, setActivePulseId] = useState<string | null>(null)
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
-  const activeEntityId = entities[0]?.id ?? null
+  const activeEntity = entities.find((entity) => !isDownedEntity(entity)) ?? null
+  const activeEntityId = activeEntity?.id ?? null
+  const hasActiveTurn = Boolean(activeEntity)
 
   useEffect(() => {
     if (!activeEntityId) return
@@ -452,7 +470,7 @@ function DMFightPanel({
           <Button size="sm" variant="outline" onClick={onClearFight} disabled={!fightId || entities.length === 0 || isClearingFight}>
             {isClearingFight ? labels.clearing : labels.clearFight}
           </Button>
-          <Button size="sm" onClick={() => void onAdvanceTurn()} disabled={!fightId || entities.length === 0 || isAdvancingTurn}>{labels.nextTurn}</Button>
+          <Button size="sm" onClick={() => void onAdvanceTurn()} disabled={!fightId || entities.length === 0 || isAdvancingTurn || !hasActiveTurn}>{labels.nextTurn}</Button>
         </div>
       </div>
       {error ? <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
@@ -462,40 +480,63 @@ function DMFightPanel({
         <div className="rounded-lg border p-4 text-sm text-muted-foreground">{labels.noEntities}</div>
       ) : (
         <div className="space-y-2">
+          {!activeEntity ? (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
+              {labels.allDowned}
+            </div>
+          ) : null}
           {entities.map((entity, index) => (
             <Card
               key={entity.id}
-              className={index === 0 ? 'border-primary' : ''}
+              className={`transition-all ${
+                entity.id === activeEntityId ? 'border-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.45)]' : ''
+              } ${isDownedEntity(entity) ? 'border-destructive/40 bg-destructive/5' : ''}`}
             >
-              <CardContent className={`py-3 transition-colors ${activePulseId === entity.id ? 'bg-primary/10' : ''}`}>
-                <div ref={(node) => { rowRefs.current[entity.id] = node }} className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="font-semibold">{entity.name}</div>
-                    <div className="text-xs text-muted-foreground uppercase">{entity.entity_type}</div>
+              <CardContent className={`py-2.5 transition-colors ${activePulseId === entity.id ? 'bg-primary/15' : ''}`}>
+                <div
+                  ref={(node) => { rowRefs.current[entity.id] = node }}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 scroll-mt-24"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <div className={`truncate text-sm font-semibold ${isDownedEntity(entity) ? 'line-through opacity-70' : ''}`}>{entity.name}</div>
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${
+                        isDownedEntity(entity)
+                          ? 'bg-destructive/15 text-destructive'
+                          : entity.id === activeEntityId
+                            ? 'bg-primary/15 text-primary'
+                            : 'bg-muted text-muted-foreground'
+                      }`}>
+                        {isDownedEntity(entity) ? labels.statusDowned : labels.statusActive}
+                      </span>
+                    </div>
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{entity.entity_type}</div>
                   </div>
-                  <div className="text-right text-sm space-y-1">
-                    <div>{labels.initiative}: <span className="font-semibold">{entity.initiative ?? '—'}</span></div>
-                    <div>{labels.hp}: <span className="font-semibold">{entity.current_hp ?? 0}/{entity.max_hp ?? 0}</span></div>
-                    <div>{labels.ac}: <span className="font-semibold">{entity.notes?.startsWith('ac:') ? entity.notes.replace('ac:', '') : '—'}</span></div>
-                    <div className="flex items-center justify-end gap-1">
-                      <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 5))} disabled={pendingHpIds.includes(entity.id)}>-5</Button>
-                      <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 1))} disabled={pendingHpIds.includes(entity.id)}>-1</Button>
+                  <div className="text-right">
+                    <div className="flex items-center justify-end gap-2 text-[11px] text-muted-foreground">
+                      <span>{labels.initiative}: <span className="font-semibold text-foreground">{entity.initiative ?? '—'}</span></span>
+                      <span>{labels.ac}: <span className="font-semibold text-foreground">{entity.notes?.startsWith('ac:') ? entity.notes.replace('ac:', '') : '—'}</span></span>
+                    </div>
+                    <div className="mt-1.5 flex items-center justify-end gap-1">
+                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 5))} disabled={pendingHpIds.includes(entity.id)}>-5</Button>
+                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 1))} disabled={pendingHpIds.includes(entity.id)}>-1</Button>
                       <input
                         type="number"
                         inputMode="numeric"
                         value={entity.current_hp ?? 0}
                         onChange={(e) => onSetEntityHp(entity.id, Number.parseInt(e.target.value, 10) || 0)}
-                        className="h-7 w-16 rounded border border-border bg-background px-2 text-center text-xs"
+                        className="h-6 w-14 rounded border border-border bg-background px-1 text-center text-xs font-semibold"
                         aria-label={labels.hpCurrent}
                       />
-                      <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 1)} disabled={pendingHpIds.includes(entity.id)}>+1</Button>
-                      <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 5)} disabled={pendingHpIds.includes(entity.id)}>+5</Button>
+                      <span className="text-[11px] text-muted-foreground">/ {entity.max_hp ?? 0}</span>
+                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 1)} disabled={pendingHpIds.includes(entity.id)}>+1</Button>
+                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 5)} disabled={pendingHpIds.includes(entity.id)}>+5</Button>
                     </div>
-                    <div className="flex justify-end">
+                    <div className="mt-1 flex justify-end">
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-7 px-2 text-destructive hover:text-destructive"
+                        className="h-6 px-1.5 text-xs text-destructive hover:text-destructive"
                         onClick={() => void onRemoveEntity(entity.id)}
                         disabled={pendingRemoveIds.includes(entity.id)}
                       >
