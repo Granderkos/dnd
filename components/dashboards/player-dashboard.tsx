@@ -19,6 +19,7 @@ import { useAuth } from '@/lib/auth-context'
 import { emptyCharacter, emptyInventory, emptySpellbook } from '@/lib/auth-types'
 import { loadCurrentPlayerData, saveCurrentPlayerData } from '@/lib/supabase-data'
 import { getPendingInitiativeForUser, submitPlayerInitiative } from '@/lib/supabase-v3'
+import { supabase } from '@/lib/supabase'
 import {
   Character,
   Spellbook as SpellbookType,
@@ -113,7 +114,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [inventory, setInventory] = useState<InventoryType>(emptyInventory)
   const [notes, setNotes] = useState<Note[]>([])
   const [mapSettings, setMapSettings] = useState<MapSettings>(defaultMapSettings)
-  const [initiativePrompt, setInitiativePrompt] = useState<{ entityId: string; initiativeMod: number } | null>(null)
+  const [initiativePrompt, setInitiativePrompt] = useState<{ requestId: string; initiativeMod: number } | null>(null)
   const [initiativeRollInput, setInitiativeRollInput] = useState('')
   const [isSubmittingInitiative, setIsSubmittingInitiative] = useState(false)
   const [initiativeError, setInitiativeError] = useState<string | null>(null)
@@ -154,7 +155,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         setInitiativeError(null)
         return
       }
-      setInitiativePrompt({ entityId: pending.entityId, initiativeMod: pending.initiativeMod })
+      setInitiativePrompt({ requestId: pending.requestId, initiativeMod: pending.initiativeMod })
       setInitiativeError(null)
     } catch (error) {
       const message = error instanceof Error ? error.message : t('common.unknownError')
@@ -176,6 +177,29 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [refreshInitiativePrompt, user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    const channel = supabase
+      .channel(`initiative-requests-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'fight_initiative_requests',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          void refreshInitiativePrompt()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
   }, [refreshInitiativePrompt, user?.id])
 
   const flushSave = useDebouncedRemoteSave(
@@ -289,7 +313,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
             <AlertDialogAction
               onClick={async (e) => {
                 e.preventDefault()
-                if (!initiativePrompt) return
+                if (!initiativePrompt || !user?.id) return
                 const parsed = Number.parseInt(initiativeRollInput, 10)
                 if (!Number.isFinite(parsed) || parsed < 1 || parsed > 20) {
                   setInitiativeError(t('fight.initiativeValidation'))
@@ -297,7 +321,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
                 }
                 setIsSubmittingInitiative(true)
                 try {
-                  await submitPlayerInitiative(initiativePrompt.entityId, parsed)
+                  await submitPlayerInitiative(user.id, initiativePrompt.requestId, parsed)
                   setInitiativePrompt(null)
                   setInitiativeRollInput('')
                   setInitiativeError(null)

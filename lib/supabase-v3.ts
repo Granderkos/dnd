@@ -457,33 +457,46 @@ export async function preparePlayerEntitiesForFight(fightId: string) {
 
 export async function startCombatForCampaign(campaignId: string) {
   const fight = await createOrGetDraftFight(campaignId)
-  await preparePlayerEntitiesForFight(fight.id)
-  await setFightStatus(fight.id, 'active')
-  await sortInitiative(fight.id)
+  await supabase.from('fight_entities').delete().eq('fight_id', fight.id).eq('entity_type', 'player')
+
+  const { data: players, error: playersError } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('role', 'player')
+
+  if (playersError) throw playersError
+
+  const requests = (players ?? []).map((player) => ({
+    fight_id: fight.id,
+    user_id: player.id,
+    status: 'pending' as const,
+    initiative_roll: null as number | null,
+    submitted_at: null as string | null,
+  }))
+
+  if (requests.length > 0) {
+    const { error: requestError } = await supabase
+      .from('fight_initiative_requests')
+      .upsert(requests, { onConflict: 'fight_id,user_id' })
+    if (requestError) throw requestError
+  }
+
+  await setFightStatus(fight.id, 'collecting_initiative')
   return fight
 }
 
 export async function endCombatForFight(fightId: string) {
-  return setFightStatus(fightId, 'ended')
+  const result = await setFightStatus(fightId, 'ended')
+  await supabase.from('fight_initiative_requests').delete().eq('fight_id', fightId)
+  return result
 }
 
 export async function getPendingInitiativeForUser(userId: string) {
-  const { data: character, error: characterError } = await supabase
-    .from('characters')
-    .select('id')
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (characterError) throw characterError
-  if (!character?.id) return null
-
   const { data, error } = await supabase
-    .from('fight_entities')
-    .select('id, fight_id, initiative_mod')
-    .eq('character_id', character.id)
-    .eq('entity_type', 'player')
-    .is('initiative', null)
-    .gt('max_hp', 0)
+    .from('fight_initiative_requests')
+    .select('id, fight_id, status')
+    .eq('user_id', userId)
+    .eq('status', 'pending')
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -491,26 +504,125 @@ export async function getPendingInitiativeForUser(userId: string) {
   if (error) throw error
   if (!data) return null
 
-  return { entityId: data.id as string, fightId: data.fight_id as string, initiativeMod: data.initiative_mod as number }
+  const { data: character, error: characterError } = await supabase
+    .from('characters')
+    .select('dex_score')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (characterError) throw characterError
+  const initiativeMod = abilityModifier(character?.dex_score ?? 10)
+
+  return { requestId: data.id as string, fightId: data.fight_id as string, initiativeMod }
 }
 
-export async function submitPlayerInitiative(entityId: string, roll: number) {
-  const { data, error } = await supabase
-    .from('fight_entities')
-    .select('id, fight_id, initiative_mod')
-    .eq('id', entityId)
+export async function submitPlayerInitiative(userId: string, requestId: string, roll: number) {
+  const { data: request, error: requestError } = await supabase
+    .from('fight_initiative_requests')
+    .select('id, fight_id, user_id, status')
+    .eq('id', requestId)
+    .eq('user_id', userId)
     .single()
 
-  if (error) throw error
+  if (requestError) throw requestError
 
-  const finalInitiative = roll + (data.initiative_mod ?? 0)
-  const { error: updateError } = await supabase
+  const { data: character, error: characterError } = await supabase
+    .from('characters')
+    .select('id, name, dex_score, hp_current, hp_max')
+    .eq('user_id', userId)
+    .single()
+
+  if (characterError) throw characterError
+
+  const initiativeMod = abilityModifier(character.dex_score ?? 10)
+  const finalInitiative = roll + initiativeMod
+
+  const { data: existingEntity, error: existingError } = await supabase
     .from('fight_entities')
-    .update({ initiative: finalInitiative })
-    .eq('id', entityId)
+    .select('id')
+    .eq('fight_id', request.fight_id)
+    .eq('character_id', character.id)
+    .eq('entity_type', 'player')
+    .maybeSingle()
 
-  if (updateError) throw updateError
+  if (existingError) throw existingError
 
-  await sortInitiative(data.fight_id)
+  if (existingEntity?.id) {
+    const { error: updateEntityError } = await supabase
+      .from('fight_entities')
+      .update({
+        name: character.name || 'Player',
+        initiative: finalInitiative,
+        initiative_mod: initiativeMod,
+        current_hp: character.hp_current ?? 0,
+        max_hp: character.hp_max ?? 0,
+      })
+      .eq('id', existingEntity.id)
+    if (updateEntityError) throw updateEntityError
+  } else {
+    const { error: insertEntityError } = await supabase
+      .from('fight_entities')
+      .insert({
+        fight_id: request.fight_id,
+        entity_type: 'player',
+        character_id: character.id,
+        name: character.name || 'Player',
+        initiative: finalInitiative,
+        initiative_mod: initiativeMod,
+        current_hp: character.hp_current ?? 0,
+        max_hp: character.hp_max ?? 0,
+      })
+    if (insertEntityError) throw insertEntityError
+  }
+
+  const { error: updateRequestError } = await supabase
+    .from('fight_initiative_requests')
+    .update({
+      status: 'submitted',
+      initiative_roll: roll,
+      submitted_at: new Date().toISOString(),
+    })
+    .eq('id', requestId)
+  if (updateRequestError) throw updateRequestError
+
+  const { count, error: pendingCountError } = await supabase
+    .from('fight_initiative_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('fight_id', request.fight_id)
+    .eq('status', 'pending')
+
+  if (pendingCountError) throw pendingCountError
+
+  if ((count ?? 0) === 0) {
+    await setFightStatus(request.fight_id, 'active')
+  }
+
+  await sortInitiative(request.fight_id)
   return finalInitiative
+}
+
+export async function getPlayerCombatState(userId: string): Promise<'none' | 'collecting_initiative' | 'active'> {
+  const { data: pending, error: pendingError } = await supabase
+    .from('fight_initiative_requests')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('status', 'pending')
+    .limit(1)
+    .maybeSingle()
+
+  if (pendingError) throw pendingError
+  if (pending) return 'collecting_initiative'
+
+  const { data: submitted, error: submittedError } = await supabase
+    .from('fight_initiative_requests')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('status', 'submitted')
+    .limit(1)
+    .maybeSingle()
+
+  if (submittedError) throw submittedError
+  if (submitted) return 'active'
+
+  return 'none'
 }

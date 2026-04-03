@@ -2,7 +2,7 @@ export type CompendiumType = 'creature' | 'companion'
 export type CompendiumSubtype = 'monster' | 'pet' | 'mount' | 'summon' | 'familiar'
 export type CompanionKind = 'pet' | 'mount' | 'summon' | 'familiar'
 export type FightEntityType = 'player' | 'monster' | 'npc' | 'summon'
-export type FightStatus = 'draft' | 'active' | 'ended'
+export type FightStatus = 'draft' | 'collecting_initiative' | 'active' | 'ended'
 
 export interface CompendiumEntry {
   id: string
