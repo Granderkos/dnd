@@ -161,6 +161,7 @@ export async function addCompendiumMonsterToActiveFight(campaignId: string, entr
       initiative,
       notes: `ac:${ac}`,
     })
+    await sortInitiative(fight.id)
 
     return { fight, entity }
   } catch (error) {
@@ -189,7 +190,7 @@ export async function sortInitiative(fightId: string) {
     )
   )
 
-  return entities
+  return entities.map((entity, index) => ({ ...entity, turn_order: index + 1 }))
 }
 
 export async function advanceTurn(fightId: string) {
@@ -200,8 +201,11 @@ export async function advanceTurn(fightId: string) {
     .order('turn_order', { ascending: true })
 
   if (error) throw error
-  const entities = (data ?? []) as FightEntity[]
+  let entities = (data ?? []) as FightEntity[]
   if (entities.length === 0) return []
+  if (entities.some((entity) => !entity.turn_order)) {
+    entities = await sortInitiative(fightId)
+  }
 
   const [first, ...rest] = entities
   const rotated = [...rest, first]
@@ -355,6 +359,7 @@ export async function listFightEntities(fightId: string) {
     .from('fight_entities')
     .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, current_hp, max_hp, turn_order, notes, created_at')
     .eq('fight_id', fightId)
+    .order('turn_order', { ascending: true, nullsFirst: false })
     .order('initiative', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: true })
 
