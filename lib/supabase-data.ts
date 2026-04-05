@@ -415,30 +415,11 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       languages: character.languages,
     }
 
-  const allSpells = [...spellbook.cantrips.map((s) => ({ ...s, level: 0 })), ...spellbook.spells]
-
-  await upsertCharacterBlob(characterId, {
-    notes,
-    inventoryCurrency: inventory.currency,
-    spellbookMeta: {
-      spellcastingClass: spellbook.spellcastingClass,
-      spellcastingAbility: spellbook.spellcastingAbility,
-      spellSaveDC: spellbook.spellSaveDC,
-      spellAttackBonus: spellbook.spellAttackBonus,
-      slots: spellbook.slots,
-    },
-    spellbookEntries: {
-      cantrips: spellbook.cantrips,
-      spells: spellbook.spells,
-    },
-    inventoryItems: inventory.items,
-    attacks: character.attacks,
-    portraitUrl: character.info.portraitUrl,
-    featuresText: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n\n'),
-    raceFeatures: character.raceFeatures,
-    classFeatures: character.classFeatures,
-    backgroundFeatures: character.backgroundFeatures,
-  } satisfies CharacterNotesBlob)
+    const allSpells = [...spellbook.cantrips.map((s) => ({ ...s, level: 0 })), ...spellbook.spells]
+    const normalizedInventory = inventory.items.map((item) => ({
+      ...item,
+      quantity: Number.isFinite(item.quantity) ? Math.max(0, Math.floor(item.quantity)) : 0,
+    }))
 
     const { error: attacksDeleteError } = await supabase.from('attacks').delete().eq('character_id', characterId)
     if (attacksDeleteError) throw attacksDeleteError
