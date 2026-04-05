@@ -124,14 +124,22 @@ export const DMDashboard = memo(function DMDashboard() {
 
   useEffect(() => {
     let mounted = true
-    const load = async () => {
+    const loadPlayers = async () => {
       try {
-        const [playersData, notesData] = await Promise.all([
-          getAllPlayerCharacters(),
-          loadDmNotes(),
-        ])
+        const playersData = await getAllPlayerCharacters()
         if (!mounted) return
         setPlayers(playersData as PlayerCharacterData[])
+      } catch (e) {
+        console.error('Failed to load DM players', e)
+      }
+    }
+    const load = async () => {
+      try {
+        const [notesData] = await Promise.all([
+          loadDmNotes(),
+          loadPlayers(),
+        ])
+        if (!mounted) return
         setDmNotes(notesData)
       } catch (e) {
         console.error('Failed to load DM data', e)
@@ -142,6 +150,39 @@ export const DMDashboard = memo(function DMDashboard() {
     void load()
     return () => {
       mounted = false
+    }
+  }, [getAllPlayerCharacters])
+
+  useEffect(() => {
+    let active = true
+    const reloadPlayers = async () => {
+      try {
+        const playersData = await getAllPlayerCharacters()
+        if (!active) return
+        setPlayers(playersData as PlayerCharacterData[])
+      } catch (e) {
+        console.error('Failed to refresh player activity', e)
+      }
+    }
+
+    const channel = supabase
+      .channel('dm-player-activity')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'activity_status',
+        },
+        () => {
+          void reloadPlayers()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      active = false
+      void supabase.removeChannel(channel)
     }
   }, [getAllPlayerCharacters])
 

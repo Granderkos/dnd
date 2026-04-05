@@ -459,11 +459,11 @@ export async function preparePlayerEntitiesForFight(fightId: string) {
 
 export async function startCombatForCampaign(campaignId: string) {
   const fight = await createOrGetDraftFight(campaignId)
-  const [{ data: playerCharacters, error: playersError }, { error: clearPlayerEntitiesError }, { error: clearRequestsError }] = await Promise.all([
+  const [{ data: playerProfiles, error: playersError }, { error: clearPlayerEntitiesError }, { error: clearRequestsError }] = await Promise.all([
     supabase
-      .from('characters')
-      .select('user_id')
-      .not('user_id', 'is', null),
+      .from('profiles')
+      .select('id')
+      .eq('role', 'player'),
     supabase.from('fight_entities').delete().eq('fight_id', fight.id).eq('entity_type', 'player'),
     supabase.from('fight_initiative_requests').delete().eq('fight_id', fight.id),
   ])
@@ -472,7 +472,7 @@ export async function startCombatForCampaign(campaignId: string) {
   if (clearPlayerEntitiesError) throw clearPlayerEntitiesError
   if (clearRequestsError) throw clearRequestsError
 
-  const uniquePlayerIds = [...new Set((playerCharacters ?? []).map((character) => character.user_id).filter(Boolean))]
+  const uniquePlayerIds = [...new Set((playerProfiles ?? []).map((profile) => profile.id).filter(Boolean))]
   const requests = uniquePlayerIds.map((playerId) => ({
     fight_id: fight.id,
     user_id: playerId,
