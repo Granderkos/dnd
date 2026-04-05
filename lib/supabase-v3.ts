@@ -504,8 +504,7 @@ export async function startCombatForCampaign(campaignId: string) {
     supabase
       .from('profiles')
       .select('id')
-      .eq('role', 'player')
-      .neq('id', campaignId),
+      .eq('role', 'player'),
     supabase
       .from('activity_status')
       .select('user_id, is_online, last_seen')

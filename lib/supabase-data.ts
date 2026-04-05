@@ -33,6 +33,20 @@ async function withRetry<T>(operation: () => Promise<T>, retries = 2, delayMs = 
   throw lastError
 }
 
+async function withRetryQuery<T extends { error: { message?: string } | null }>(
+  operation: () => Promise<T>,
+  retries = 2,
+  delayMs = 250
+): Promise<T> {
+  return withRetry(async () => {
+    const result = await operation()
+    if (result.error) {
+      throw new Error(result.error.message ?? 'Query failed')
+    }
+    return result
+  }, retries, delayMs)
+}
+
 export interface StoredMap {
   id: string
   name: string
@@ -57,6 +71,27 @@ interface CharacterNotesBlob {
   raceFeatures?: string
   classFeatures?: string
   backgroundFeatures?: string
+}
+
+const skillColumnByName: Record<string, string> = {
+  Acrobatics: 'skill_acrobatics_prof',
+  'Animal Handling': 'skill_animal_handling_prof',
+  Arcana: 'skill_arcana_prof',
+  Athletics: 'skill_athletics_prof',
+  Deception: 'skill_deception_prof',
+  History: 'skill_history_prof',
+  Insight: 'skill_insight_prof',
+  Intimidation: 'skill_intimidation_prof',
+  Investigation: 'skill_investigation_prof',
+  Medicine: 'skill_medicine_prof',
+  Nature: 'skill_nature_prof',
+  Perception: 'skill_perception_prof',
+  Performance: 'skill_performance_prof',
+  Persuasion: 'skill_persuasion_prof',
+  Religion: 'skill_religion_prof',
+  'Sleight of Hand': 'skill_sleight_of_hand_prof',
+  Stealth: 'skill_stealth_prof',
+  Survival: 'skill_survival_prof',
 }
 
 const emptyBlob = (): CharacterNotesBlob => ({
@@ -224,13 +259,10 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
   if (spellsError) throw spellsError
 
   const skills = emptyCharacter.skills.map((skill) => {
-    const key = skill.name
-      .toLowerCase()
-      .replace(/ /g, '_')
-      .replace(/'/g, '')
+    const skillColumn = skillColumnByName[skill.name]
     return {
       ...skill,
-      proficient: Boolean((row as any)[`skill_${key}_prof`]),
+      proficient: skillColumn ? Boolean(row[skillColumn as keyof typeof row]) : false,
     }
   })
 
@@ -748,7 +780,9 @@ export async function saveDmNotes(userId: string, content: string) {
 }
 
 export async function loadMaps() {
-  const { data, error } = await withRetry(async () => await supabase.from('maps').select('*').order('created_at', { ascending: false }))
+  const { data, error } = await withRetryQuery(async () =>
+    await supabase.from('maps').select('*').order('created_at', { ascending: false })
+  )
   if (error) throw error
   return (data ?? []).map((map) => ({
     id: map.id,
@@ -802,7 +836,9 @@ export async function setActiveMap(mapId: string | null) {
 }
 
 export async function getActiveMap() {
-  const { data, error } = await withRetry(async () => await supabase.from('maps').select('*').eq('is_active', true).maybeSingle())
+  const { data, error } = await withRetryQuery(async () =>
+    await supabase.from('maps').select('*').eq('is_active', true).maybeSingle()
+  )
   if (error) throw error
   if (!data) return null
   return {
