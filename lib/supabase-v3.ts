@@ -730,10 +730,34 @@ export async function listCampaignCreatureCompendium(campaignId: string) {
 }
 
 export async function listCreatureCompendiumForUser(userId: string) {
+  const { data: character, error: characterError } = await supabase
+    .from('characters')
+    .select('id')
+    .eq('user_id', userId)
+    .limit(1)
+    .maybeSingle()
+  if (characterError) throw characterError
+  if (!character?.id) return []
+
+  const { data: recentFightEntity, error: fightEntityError } = await supabase
+    .from('fight_entities')
+    .select('fight_id, fights!inner(campaign_id)')
+    .eq('character_id', character.id)
+    .eq('entity_type', 'player')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (fightEntityError) throw fightEntityError
+
+  const fight = recentFightEntity?.fights
+  const campaignId = (Array.isArray(fight) ? fight[0] : fight)?.campaign_id as string | undefined
+  if (!campaignId) return []
+
   const { data, error } = await supabase
     .from('campaign_entry_unlocks')
     .select('entry_id, is_unlocked, compendium_entries!inner(id, type, subtype, slug, name, description, data)')
-    .or(`player_id.is.null,player_id.eq.${userId}`)
+    .eq('campaign_id', campaignId)
+    .is('player_id', null)
     .eq('compendium_entries.type', 'creature')
     .order('created_at', { ascending: true })
 
