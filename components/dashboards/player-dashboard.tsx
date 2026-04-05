@@ -144,6 +144,15 @@ function normalizeList(value: unknown): string[] {
   return []
 }
 
+function safeSessionParse<T>(value: string | null): T | null {
+  if (!value) return null
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    return null
+  }
+}
+
 export const PlayerDashboard = memo(function PlayerDashboard() {
   const { user, logout, updateCurrentPage } = useAuth()
   const { t } = useI18n()
@@ -174,6 +183,27 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [selectedCreature, setSelectedCreature] = useState<{ entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'>; isUnlocked: boolean } | null>(null)
   const compendiumLoadedRef = useRef(false)
   const initiativeRefreshTimeoutRef = useRef<number | null>(null)
+  const playerCacheHydratedRef = useRef(false)
+
+  const playerDataCacheKey = user?.id ? `player-data-cache:${user.id}` : null
+  const compendiumCacheKey = user?.id ? `player-compendium-cache:${user.id}` : null
+
+  useEffect(() => {
+    if (!playerDataCacheKey || playerCacheHydratedRef.current) return
+    const cached = safeSessionParse<{
+      character: Character
+      spellbook: SpellbookType
+      inventory: InventoryType
+      notes: Note[]
+    }>(sessionStorage.getItem(playerDataCacheKey))
+    if (!cached) return
+    setCharacter(cached.character)
+    setSpellbook(cached.spellbook)
+    setInventory(cached.inventory)
+    setNotes(cached.notes)
+    setIsLoaded(true)
+    playerCacheHydratedRef.current = true
+  }, [playerDataCacheKey])
 
   useEffect(() => {
     if (!user?.id) return
@@ -186,6 +216,9 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         setSpellbook(data.spellbook)
         setInventory(data.inventory)
         setNotes(data.notes)
+        if (playerDataCacheKey) {
+          sessionStorage.setItem(playerDataCacheKey, JSON.stringify(data))
+        }
       } catch (e) {
         console.error('Failed to load player data', e)
       } finally {
@@ -195,7 +228,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     return () => {
       mounted = false
     }
-  }, [user?.id])
+  }, [playerDataCacheKey, user?.id])
 
   useEffect(() => {
     void updateCurrentPage(activeTab)
@@ -247,6 +280,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
 
   const refreshCompendium = useCallback(async () => {
     if (!user?.id) return
+    if (!compendiumCacheKey) return
     setIsCompendiumLoading(true)
     setCompendiumError(null)
     try {
@@ -262,19 +296,36 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       setCreatureCompendium(creatures)
       setCompanions(companionState.companions)
       setCompanionCharacterId(companionState.characterId)
+      sessionStorage.setItem(compendiumCacheKey, JSON.stringify({
+        creatures,
+        companions: companionState.companions,
+        characterId: companionState.characterId,
+      }))
     } catch (error) {
       console.error('[compendium:player] refresh failed', { userId: user.id, error })
       setCompendiumError(formatErrorMessage(error, 'Failed to load compendium data.'))
     } finally {
       setIsCompendiumLoading(false)
     }
-  }, [user?.id])
+  }, [compendiumCacheKey, user?.id])
 
   useEffect(() => {
     if (!user?.id || activeTab !== 'compendium' || compendiumLoadedRef.current) return
     compendiumLoadedRef.current = true
+    if (compendiumCacheKey) {
+      const cached = safeSessionParse<{
+        creatures: Array<{ entry_id: string; is_unlocked: boolean; entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'> }>
+        companions: Array<CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }>
+        characterId: string | null
+      }>(sessionStorage.getItem(compendiumCacheKey))
+      if (cached) {
+        setCreatureCompendium(cached.creatures)
+        setCompanions(cached.companions)
+        setCompanionCharacterId(cached.characterId)
+      }
+    }
     void refreshCompendium()
-  }, [activeTab, refreshCompendium, user?.id])
+  }, [activeTab, compendiumCacheKey, refreshCompendium, user?.id])
 
   useEffect(() => {
     if (!user?.id) return

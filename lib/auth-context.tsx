@@ -28,28 +28,31 @@ function usernameToEmail(username: string) {
 }
 
 async function fetchProfile(userId: string): Promise<User | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, username, role, created_at')
-    .eq('id', userId)
-    .single()
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, username, role, created_at')
+      .eq('id', userId)
+      .maybeSingle()
 
-  if (error) {
-    console.error('Failed to fetch profile', error)
-    return null
-  }
+    if (error) {
+      if (attempt === 3) {
+        console.error('Failed to fetch profile', error)
+        return null
+      }
+    } else if (data) {
+      return {
+        id: data.id,
+        username: data.username,
+        role: data.role,
+        createdAt: data.created_at ? new Date(data.created_at).getTime() : undefined,
+      }
+    }
 
-  if (!data) {
-    console.error('Profile not found for user', userId)
-    return null
+    await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)))
   }
-
-  return {
-    id: data.id,
-    username: data.username,
-    role: data.role,
-    createdAt: data.created_at ? new Date(data.created_at).getTime() : undefined,
-  }
+  console.error('Profile not found for user', userId)
+  return null
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
