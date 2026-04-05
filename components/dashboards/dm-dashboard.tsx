@@ -108,11 +108,15 @@ export const DMDashboard = memo(function DMDashboard() {
   const fightLoadedRef = useRef(false)
   const hpPersistTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const confirmedHpRef = useRef<Record<string, number>>({})
+  const fightRefreshInFlightRef = useRef(false)
+  const fightRefreshQueuedRef = useRef(false)
+  const fightRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     return () => {
       Object.values(hpPersistTimersRef.current).forEach((timeout) => clearTimeout(timeout))
       hpPersistTimersRef.current = {}
+      if (fightRefreshTimerRef.current) clearTimeout(fightRefreshTimerRef.current)
     }
   }, [])
 
@@ -195,8 +199,13 @@ export const DMDashboard = memo(function DMDashboard() {
     }
   }, [fightId, fightStatus])
 
-  const loadFightState = async (showLoader = true) => {
+  const loadFightState = useCallback(async (showLoader = true) => {
     if (!user?.id) return
+    if (fightRefreshInFlightRef.current) {
+      fightRefreshQueuedRef.current = true
+      return
+    }
+    fightRefreshInFlightRef.current = true
     if (showLoader) setIsLoadingFight(true)
     setFightError(null)
     try {
@@ -219,14 +228,85 @@ export const DMDashboard = memo(function DMDashboard() {
       setFightError(message)
     } finally {
       if (showLoader) setIsLoadingFight(false)
+      fightRefreshInFlightRef.current = false
+      if (fightRefreshQueuedRef.current) {
+        fightRefreshQueuedRef.current = false
+        void loadFightState(false)
+      }
     }
-  }
+  }, [t, user?.id])
+
+  const scheduleFightRefresh = useCallback((delayMs = 120, showLoader = false) => {
+    if (fightRefreshTimerRef.current) clearTimeout(fightRefreshTimerRef.current)
+    fightRefreshTimerRef.current = setTimeout(() => {
+      void loadFightState(showLoader)
+    }, delayMs)
+  }, [loadFightState])
 
   useEffect(() => {
     if (activeTab === 'fight' && !fightLoadedRef.current) {
-      void loadFightState()
+      void loadFightState(true)
     }
-  }, [activeTab, user?.id])
+  }, [activeTab, loadFightState, user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    let channel = supabase
+      .channel(`dm-fight-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'fight_initiative_requests',
+        },
+        () => {
+          if (!fightId) return
+          void (async () => {
+            try {
+              await finalizeInitiativeCollectionForFight(fightId)
+            } catch {
+              // Ignore race conditions from simultaneous DM tabs.
+            } finally {
+              scheduleFightRefresh(80)
+            }
+          })()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'fights',
+          filter: `campaign_id=eq.${user.id}`,
+        },
+        () => {
+          scheduleFightRefresh()
+        }
+      )
+
+    if (fightId) {
+      channel = channel.on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'fight_entities',
+          filter: `fight_id=eq.${fightId}`,
+        },
+        () => {
+          scheduleFightRefresh()
+        }
+      )
+    }
+
+    channel = channel.subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [fightId, scheduleFightRefresh, user?.id])
 
   useEffect(() => {
     if (!user?.id) return

@@ -172,6 +172,8 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [compendiumError, setCompendiumError] = useState<string | null>(null)
   const [isCompendiumLoading, setIsCompendiumLoading] = useState(false)
   const [selectedCreature, setSelectedCreature] = useState<{ entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'>; isUnlocked: boolean } | null>(null)
+  const compendiumLoadedRef = useRef(false)
+  const initiativeRefreshTimeoutRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!user?.id) return
@@ -227,18 +229,21 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   }, [user?.id])
 
   const scheduleInitiativeRefreshBurst = useCallback(() => {
-    const retryDelays = [0, 350, 1000, 2500]
-    retryDelays.forEach((delay) => {
-      window.setTimeout(() => {
-        void refreshInitiativePrompt()
-      }, delay)
-    })
+    void refreshInitiativePrompt()
+    if (initiativeRefreshTimeoutRef.current) clearTimeout(initiativeRefreshTimeoutRef.current)
+    initiativeRefreshTimeoutRef.current = window.setTimeout(() => {
+      void refreshInitiativePrompt()
+    }, 700)
   }, [refreshInitiativePrompt])
 
   useEffect(() => {
     if (!user?.id) return
     void refreshInitiativePrompt()
   }, [refreshInitiativePrompt, user?.id])
+
+  useEffect(() => {
+    compendiumLoadedRef.current = false
+  }, [user?.id])
 
   const refreshCompendium = useCallback(async () => {
     if (!user?.id) return
@@ -266,9 +271,10 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   }, [user?.id])
 
   useEffect(() => {
-    if (!user?.id) return
+    if (!user?.id || activeTab !== 'compendium' || compendiumLoadedRef.current) return
+    compendiumLoadedRef.current = true
     void refreshCompendium()
-  }, [refreshCompendium, user?.id])
+  }, [activeTab, refreshCompendium, user?.id])
 
   useEffect(() => {
     if (!user?.id) return
@@ -317,6 +323,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       })
 
     return () => {
+      if (initiativeRefreshTimeoutRef.current) clearTimeout(initiativeRefreshTimeoutRef.current)
       void supabase.removeChannel(channel)
     }
   }, [scheduleInitiativeRefreshBurst, user?.id])
