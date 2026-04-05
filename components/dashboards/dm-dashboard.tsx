@@ -308,65 +308,6 @@ export const DMDashboard = memo(function DMDashboard() {
     }
   }, [fightId, scheduleFightRefresh, user?.id])
 
-  useEffect(() => {
-    if (!user?.id) return
-    let channel = supabase
-      .channel(`dm-fight-${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'fight_initiative_requests',
-        },
-        () => {
-          if (!fightId) return
-          void (async () => {
-            try {
-              await finalizeInitiativeCollectionForFight(fightId)
-            } catch {
-              // Ignore race conditions from simultaneous DM tabs.
-            } finally {
-              await loadFightState(false)
-            }
-          })()
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'fights',
-          filter: `campaign_id=eq.${user.id}`,
-        },
-        () => {
-          void loadFightState(false)
-        }
-      )
-
-    if (fightId) {
-      channel = channel.on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'fight_entities',
-          filter: `fight_id=eq.${fightId}`,
-        },
-        () => {
-          void loadFightState(false)
-        }
-      )
-    }
-
-    channel = channel.subscribe()
-
-    return () => {
-      void supabase.removeChannel(channel)
-    }
-  }, [fightId, user?.id])
-
   useDebouncedRemoteText(dmNotes, 3000, isLoaded && !!user?.id, async (value) => {
     if (!user?.id) return
     await saveDmNotes(user.id, value)

@@ -8,6 +8,13 @@ import { supabase } from './supabase'
 import { generateClientId } from './client-id'
 
 const characterSaveQueue = new Map<string, Promise<void>>()
+const characterSaveSignatures = new Map<string, {
+  row: string
+  attacks: string
+  inventory: string
+  spells: string
+  blob: string
+}>()
 
 export interface StoredMap {
   id: string
@@ -401,27 +408,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       quantity: Number.isFinite(item.quantity) ? Math.max(0, Math.floor(item.quantity)) : 0,
     }))
 
-    const { error: attacksDeleteError } = await supabase.from('attacks').delete().eq('character_id', characterId)
-    if (attacksDeleteError) throw attacksDeleteError
-
-    if (character.attacks.length) {
-      const { error } = await supabase.from('attacks').insert(
-        character.attacks.map((attack, index) => ({
-          character_id: characterId,
-          sort_order: index,
-          name: attack.name,
-          attack_bonus: attack.attackBonus,
-          damage: [attack.damage, attack.damageType].filter(Boolean).join(' '),
-        }))
-      )
-      if (error) throw error
-    }
-
-    await syncInventoryRows(characterId, normalizedInventory)
-    await syncSpellRows(characterId, allSpells)
-
-    // Blob is an explicit mirror/backup written only after normalized sync succeeds.
-    await upsertCharacterBlob(characterId, {
+    const blobPayload: CharacterNotesBlob = {
       notes,
       inventoryCurrency: inventory.currency,
       spellbookMeta: {
@@ -442,7 +429,51 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       raceFeatures: character.raceFeatures,
       classFeatures: character.classFeatures,
       backgroundFeatures: character.backgroundFeatures,
-    })
+    }
+
+    const signatures = {
+      row: JSON.stringify(row),
+      attacks: JSON.stringify(character.attacks),
+      inventory: JSON.stringify(normalizedInventory),
+      spells: JSON.stringify(allSpells),
+      blob: JSON.stringify(blobPayload),
+    }
+    const previousSignatures = characterSaveSignatures.get(characterId)
+
+    if (!previousSignatures || previousSignatures.row !== signatures.row) {
+      const { error: characterUpsertError } = await supabase.from('characters').upsert(row, { onConflict: 'id' })
+      if (characterUpsertError) throw characterUpsertError
+    }
+
+    if (!previousSignatures || previousSignatures.attacks !== signatures.attacks) {
+      const { error: attacksDeleteError } = await supabase.from('attacks').delete().eq('character_id', characterId)
+      if (attacksDeleteError) throw attacksDeleteError
+
+      if (character.attacks.length) {
+        const { error } = await supabase.from('attacks').insert(
+          character.attacks.map((attack, index) => ({
+            character_id: characterId,
+            sort_order: index,
+            name: attack.name,
+            attack_bonus: attack.attackBonus,
+            damage: [attack.damage, attack.damageType].filter(Boolean).join(' '),
+          }))
+        )
+        if (error) throw error
+      }
+    }
+
+    if (!previousSignatures || previousSignatures.inventory !== signatures.inventory) {
+      await syncInventoryRows(characterId, normalizedInventory)
+    }
+    if (!previousSignatures || previousSignatures.spells !== signatures.spells) {
+      await syncSpellRows(characterId, allSpells)
+    }
+    if (!previousSignatures || previousSignatures.blob !== signatures.blob) {
+      await upsertCharacterBlob(characterId, blobPayload)
+    }
+
+    characterSaveSignatures.set(characterId, signatures)
   })
 
   const chained = saveTask.catch(() => {})

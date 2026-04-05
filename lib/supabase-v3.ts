@@ -639,6 +639,7 @@ export async function getPendingInitiativeForUser(_userId: string) {
   const { data, error } = await supabase
     .from('fight_initiative_requests')
     .select('id, fight_id, status')
+    .eq('user_id', _userId)
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
     .limit(1)
@@ -653,6 +654,7 @@ export async function getPendingInitiativeForUser(_userId: string) {
   const { data: character, error: characterError } = await supabase
     .from('characters')
     .select('dex_score')
+    .eq('user_id', _userId)
     .limit(1)
     .maybeSingle()
 
@@ -676,6 +678,9 @@ export async function submitPlayerInitiative(_userId: string, requestId: string,
     .single()
 
   if (requestError) throw requestError
+  if (request.user_id !== _userId) {
+    throw new Error('Initiative request does not belong to this user.')
+  }
   if (request.status !== 'pending') {
     throw new Error('Initiative already submitted for this fight.')
   }
@@ -684,6 +689,7 @@ export async function submitPlayerInitiative(_userId: string, requestId: string,
   const { data: character, error: characterError } = await supabase
     .from('characters')
     .select('id, name, dex_score, hp_current, hp_max')
+    .eq('user_id', _userId)
     .limit(1)
     .maybeSingle()
 
