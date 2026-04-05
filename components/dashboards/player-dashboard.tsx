@@ -227,7 +227,6 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
           filter: 'status=eq.collecting_initiative',
         },
         () => {
-          console.info('[ui:initiative] fights UPDATE event -> refresh prompt', { userId: user.id })
           scheduleInitiativeRefreshBurst()
         }
       )
@@ -240,7 +239,6 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
           filter: `user_id=eq.${user.id}`,
         },
         () => {
-          console.info('[ui:initiative] fight_initiative_requests event -> refresh prompt', { userId: user.id })
           scheduleInitiativeRefreshBurst()
         }
       )

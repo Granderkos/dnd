@@ -21,7 +21,7 @@ import { useAuth } from '@/lib/auth-context'
 import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
-import { clearFightEntities, endCombatForFight, finalizeInitiativeCollectionForFight, getActiveFight, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, startCombatForCampaign } from '@/lib/supabase-v3'
+import { clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, startCombatForCampaign } from '@/lib/supabase-v3'
 import type { FightStatus } from '@/lib/v3-types'
 import type { FightEntity } from '@/lib/v3-types'
 import { Character, calculateModifier, formatModifier } from '@/lib/dnd-types'
@@ -182,6 +182,10 @@ export const DMDashboard = memo(function DMDashboard() {
             })
             return changed ? updated : prev
           })
+
+          if (fightId && fightStatus === 'collecting_initiative' && next?.is_online) {
+            void ensureActivePlayerInitiativeRequest(fightId, userId)
+          }
         }
       )
       .subscribe()
@@ -189,7 +193,7 @@ export const DMDashboard = memo(function DMDashboard() {
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [])
+  }, [fightId, fightStatus])
 
   const loadFightState = async (showLoader = true) => {
     if (!user?.id) return

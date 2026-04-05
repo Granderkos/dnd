@@ -29,6 +29,10 @@ function abilityModifier(score: number) {
   return Math.floor((score - 10) / 2)
 }
 
+function activeSinceIso(minutes = 2) {
+  return new Date(Date.now() - minutes * 60_000).toISOString()
+}
+
 export async function listCreatures() {
   const { data, error } = await supabase
     .from('compendium_entries')
@@ -459,66 +463,36 @@ export async function preparePlayerEntitiesForFight(fightId: string) {
 
 export async function startCombatForCampaign(campaignId: string) {
   const fight = await createOrGetDraftFight(campaignId)
-  const [{ data: playerProfiles, error: playersError }, { data: characterUsers, error: characterUsersError }, { error: clearPlayerEntitiesError }, { error: clearRequestsError }] = await Promise.all([
+  const [{ data: playerProfiles, error: playersError }, { data: characterUsers, error: characterUsersError }, { data: activityUsers, error: activityUsersError }, { error: clearPlayerEntitiesError }, { error: clearRequestsError }] = await Promise.all([
     supabase
       .from('profiles')
       .select('id')
       .neq('id', campaignId),
     supabase
-      .from('profiles')
-      .select('id')
-      .neq('id', campaignId),
+      .from('characters')
+      .select('user_id')
+      .not('user_id', 'is', null),
     supabase
-      .from('profiles')
-      .select('id')
-      .neq('id', campaignId),
-    supabase
-      .from('profiles')
-      .select('id')
-      .eq('role', 'player'),
-    supabase
-      .from('profiles')
-      .select('id')
-      .eq('role', 'player'),
-    supabase
-      .from('profiles')
-      .select('id')
-      .eq('role', 'player'),
-    supabase
-      .from('profiles')
-      .select('id')
-      .eq('role', 'player'),
+      .from('activity_status')
+      .select('user_id, is_online, last_seen')
+      .eq('is_online', true)
+      .gte('last_seen', activeSinceIso(2)),
     supabase.from('fight_entities').delete().eq('fight_id', fight.id).eq('entity_type', 'player'),
     supabase.from('fight_initiative_requests').delete().eq('fight_id', fight.id),
   ])
 
   if (playersError) throw playersError
   if (characterUsersError) throw characterUsersError
+  if (activityUsersError) throw activityUsersError
   if (clearPlayerEntitiesError) throw clearPlayerEntitiesError
   if (clearRequestsError) throw clearRequestsError
-
-  const { data: activityUsers, error: activityUsersError } = await supabase
-    .from('activity_status')
-    .select('user_id')
-    .not('user_id', 'is', null)
-
-  if (activityUsersError) {
-    console.warn('[fight:start] failed to read activity_status user ids', { campaignId, error: activityUsersError })
-  }
 
   const profileIds = (playerProfiles ?? []).map((profile) => profile.id).filter(Boolean)
   const characterUserIds = (characterUsers ?? []).map((row) => row.user_id).filter(Boolean)
   const activityUserIds = (activityUsers ?? []).map((row) => row.user_id).filter(Boolean)
-  const uniquePlayerIds = [...new Set([...profileIds, ...characterUserIds, ...activityUserIds])]
-  console.info('[fight:start] seed participants', {
-    campaignId,
-    fightId: fight.id,
-    profileCount: profileIds.length,
-    characterUserCount: characterUserIds.length,
-    activityUserCount: activityUserIds.length,
-    uniqueCount: uniquePlayerIds.length,
-    uniquePlayerIds,
-  })
+  const knownPlayerIds = new Set([...profileIds, ...characterUserIds])
+  const activePlayerIds = activityUserIds.filter((id) => knownPlayerIds.has(id))
+  const uniquePlayerIds = [...new Set(activePlayerIds)]
   const requests = uniquePlayerIds.map((playerId) => ({
     fight_id: fight.id,
     user_id: playerId,
@@ -537,8 +511,7 @@ export async function startCombatForCampaign(campaignId: string) {
     console.warn('[fight:start] no participants resolved for initiative requests', { campaignId, fightId: fight.id })
   }
 
-  await setFightStatus(fight.id, 'collecting_initiative')
-  console.info('[fight:start] set fight status collecting_initiative', { fightId: fight.id })
+  await setFightStatus(fight.id, requests.length > 0 ? 'collecting_initiative' : 'active')
   return fight
 }
 
@@ -585,9 +558,7 @@ export async function getPendingInitiativeForUser(_userId: string) {
     .limit(1)
     .maybeSingle()
 
-  if (characterError) {
-    console.warn('[initiative] failed to load character dex modifier, defaulting to +0', { userId: _userId, error: characterError })
-  }
+  if (characterError) console.warn('[initiative] failed to load character dex modifier, defaulting to +0', { userId: _userId, error: characterError })
   const initiativeMod = abilityModifier(character?.dex_score ?? 10)
   console.info('[initiative:pending] resolved pending request', {
     requestedUserId: _userId,
@@ -671,9 +642,31 @@ export async function submitPlayerInitiative(_userId: string, requestId: string,
     })
     .eq('id', requestId)
   if (updateRequestError) throw updateRequestError
-  console.info('[initiative:submit] success', { requestedUserId: _userId, requestId, fightId: request.fight_id, finalInitiative })
-
   return finalInitiative
+}
+
+export async function ensureActivePlayerInitiativeRequest(fightId: string, userId: string) {
+  const { data: request, error: requestError } = await supabase
+    .from('fight_initiative_requests')
+    .select('id')
+    .eq('fight_id', fightId)
+    .eq('user_id', userId)
+    .limit(1)
+    .maybeSingle()
+  if (requestError) throw requestError
+  if (request) return false
+
+  const { error: insertError } = await supabase
+    .from('fight_initiative_requests')
+    .insert({
+      fight_id: fightId,
+      user_id: userId,
+      status: 'pending',
+      initiative_roll: null,
+      submitted_at: null,
+    })
+  if (insertError) throw insertError
+  return true
 }
 
 export async function getPlayerCombatState(userId: string): Promise<'none' | 'collecting_initiative' | 'active'> {
