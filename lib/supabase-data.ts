@@ -8,6 +8,13 @@ import { supabase } from './supabase'
 import { generateClientId } from './client-id'
 
 const characterSaveQueue = new Map<string, Promise<void>>()
+const characterSaveSignatures = new Map<string, {
+  row: string
+  attacks: string
+  inventory: string
+  spells: string
+  blob: string
+}>()
 
 export interface StoredMap {
   id: string
@@ -319,26 +326,6 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
     currency: blob.inventoryCurrency || emptyInventory.currency,
   }
 
-  if (hasNormalizedInventory) {
-    console.info('[inventory:load] source=normalized', {
-      count: inventoryData?.length ?? 0,
-      sample: (inventoryData ?? []).slice(0, 5).map((item) => ({
-        client_id: item.client_id ?? item.id,
-        title: item.title,
-        quantity: item.quantity,
-      })),
-    })
-  } else {
-    console.info('[inventory:load] source=blob-fallback', {
-      fallbackCount: fallbackInventoryItems.length,
-      fallbackSample: fallbackInventoryItems.slice(0, 5).map((item) => ({
-        client_id: item.id,
-        name: item.name,
-        quantity: item.quantity,
-      })),
-    })
-  }
-
   return {
     character,
     spellbook,
@@ -415,52 +402,13 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       languages: character.languages,
     }
 
-  const allSpells = [...spellbook.cantrips.map((s) => ({ ...s, level: 0 })), ...spellbook.spells]
+    const allSpells = [...spellbook.cantrips.map((s) => ({ ...s, level: 0 })), ...spellbook.spells]
+    const normalizedInventory = inventory.items.map((item) => ({
+      ...item,
+      quantity: Number.isFinite(item.quantity) ? Math.max(0, Math.floor(item.quantity)) : 0,
+    }))
 
-  await upsertCharacterBlob(characterId, {
-    notes,
-    inventoryCurrency: inventory.currency,
-    spellbookMeta: {
-      spellcastingClass: spellbook.spellcastingClass,
-      spellcastingAbility: spellbook.spellcastingAbility,
-      spellSaveDC: spellbook.spellSaveDC,
-      spellAttackBonus: spellbook.spellAttackBonus,
-      slots: spellbook.slots,
-    },
-    spellbookEntries: {
-      cantrips: spellbook.cantrips,
-      spells: spellbook.spells,
-    },
-    inventoryItems: inventory.items,
-    attacks: character.attacks,
-    portraitUrl: character.info.portraitUrl,
-    featuresText: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n\n'),
-    raceFeatures: character.raceFeatures,
-    classFeatures: character.classFeatures,
-    backgroundFeatures: character.backgroundFeatures,
-  } satisfies CharacterNotesBlob)
-
-    const { error: attacksDeleteError } = await supabase.from('attacks').delete().eq('character_id', characterId)
-    if (attacksDeleteError) throw attacksDeleteError
-
-    if (character.attacks.length) {
-      const { error } = await supabase.from('attacks').insert(
-        character.attacks.map((attack, index) => ({
-          character_id: characterId,
-          sort_order: index,
-          name: attack.name,
-          attack_bonus: attack.attackBonus,
-          damage: [attack.damage, attack.damageType].filter(Boolean).join(' '),
-        }))
-      )
-      if (error) throw error
-    }
-
-    await syncInventoryRows(characterId, normalizedInventory)
-    await syncSpellRows(characterId, allSpells)
-
-    // Blob is an explicit mirror/backup written only after normalized sync succeeds.
-    await upsertCharacterBlob(characterId, {
+    const blobPayload: CharacterNotesBlob = {
       notes,
       inventoryCurrency: inventory.currency,
       spellbookMeta: {
@@ -481,7 +429,51 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       raceFeatures: character.raceFeatures,
       classFeatures: character.classFeatures,
       backgroundFeatures: character.backgroundFeatures,
-    })
+    }
+
+    const signatures = {
+      row: JSON.stringify(row),
+      attacks: JSON.stringify(character.attacks),
+      inventory: JSON.stringify(normalizedInventory),
+      spells: JSON.stringify(allSpells),
+      blob: JSON.stringify(blobPayload),
+    }
+    const previousSignatures = characterSaveSignatures.get(characterId)
+
+    if (!previousSignatures || previousSignatures.row !== signatures.row) {
+      const { error: characterUpsertError } = await supabase.from('characters').upsert(row, { onConflict: 'id' })
+      if (characterUpsertError) throw characterUpsertError
+    }
+
+    if (!previousSignatures || previousSignatures.attacks !== signatures.attacks) {
+      const { error: attacksDeleteError } = await supabase.from('attacks').delete().eq('character_id', characterId)
+      if (attacksDeleteError) throw attacksDeleteError
+
+      if (character.attacks.length) {
+        const { error } = await supabase.from('attacks').insert(
+          character.attacks.map((attack, index) => ({
+            character_id: characterId,
+            sort_order: index,
+            name: attack.name,
+            attack_bonus: attack.attackBonus,
+            damage: [attack.damage, attack.damageType].filter(Boolean).join(' '),
+          }))
+        )
+        if (error) throw error
+      }
+    }
+
+    if (!previousSignatures || previousSignatures.inventory !== signatures.inventory) {
+      await syncInventoryRows(characterId, normalizedInventory)
+    }
+    if (!previousSignatures || previousSignatures.spells !== signatures.spells) {
+      await syncSpellRows(characterId, allSpells)
+    }
+    if (!previousSignatures || previousSignatures.blob !== signatures.blob) {
+      await upsertCharacterBlob(characterId, blobPayload)
+    }
+
+    characterSaveSignatures.set(characterId, signatures)
   })
 
   const chained = saveTask.catch(() => {})
@@ -530,18 +522,7 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
     })
     throw upsertError
   }
-  console.info('[inventory:save] upsert success', {
-    characterId,
-    rowCount: rows.length,
-    sample: rows.slice(0, 5).map((row) => ({
-      client_id: row.client_id,
-      title: row.title,
-      quantity: row.quantity,
-    })),
-  })
-
   await deleteMissingInventoryRows(characterId, items.map((item) => item.id))
-  console.info('[inventory:save] delete missing rows success', { characterId })
 }
 
 async function syncSpellRows(characterId: string, spells: Spellbook['spells'][number][]) {
@@ -645,7 +626,7 @@ export async function listPlayerCharacters() {
   const results = await Promise.all((players ?? []).map(async (player: any) => {
     const row = Array.isArray(player.characters) ? player.characters[0] : player.characters
     if (!row) {
-      return { username: player.username, character: emptyCharacter, activity: player.activity_status }
+      return { id: player.id, username: player.username, character: emptyCharacter, activity: player.activity_status }
     }
 
     const blob = await getCharacterBlob(row.id)
@@ -696,6 +677,7 @@ export async function listPlayerCharacters() {
     character.passivePerception = 10 + getPerceptionModifier(character)
 
     return {
+      id: player.id,
       username: player.username,
       character,
       activity: Array.isArray(player.activity_status) ? player.activity_status[0] : player.activity_status,
