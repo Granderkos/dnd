@@ -174,6 +174,7 @@ export async function addCompendiumMonsterToActiveFight(campaignId: string, entr
       notes: `ac:${ac}`,
     })
     await sortInitiative(fight.id)
+    await unlockFightCreaturesForCampaign(campaignId, fight.id)
 
     return { fight, entity }
   } catch (error) {
