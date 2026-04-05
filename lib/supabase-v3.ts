@@ -524,7 +524,16 @@ export async function unlockFightCreaturesForCampaign(campaignId: string, fightI
     p_campaign_id: campaignId,
     p_fight_id: fightId,
   })
-  if (!rpcError) return Number(rpcCount ?? 0)
+  if (!rpcError) {
+    const inserted = Number(rpcCount ?? 0)
+    console.info('[compendium:unlock] rpc success', { campaignId, fightId, inserted })
+    return inserted
+  }
+  console.warn('[compendium:unlock] rpc failed, falling back to client insert path', {
+    campaignId,
+    fightId,
+    error: rpcError.message,
+  })
 
   const { data: fightCreatures, error: fightCreatureError } = await supabase
     .from('fight_entities')
@@ -535,7 +544,10 @@ export async function unlockFightCreaturesForCampaign(campaignId: string, fightI
 
   if (fightCreatureError) throw fightCreatureError
   const candidateEntryIds = [...new Set((fightCreatures ?? []).map((row) => row.entry_id).filter(Boolean))]
-  if (candidateEntryIds.length === 0) return 0
+  if (candidateEntryIds.length === 0) {
+    console.info('[compendium:unlock] no candidate monster entries found', { campaignId, fightId })
+    return 0
+  }
 
   const { data: existing, error: existingError } = await supabase
     .from('campaign_entry_unlocks')
@@ -558,6 +570,12 @@ export async function unlockFightCreaturesForCampaign(campaignId: string, fightI
 
   const { error: insertError } = await supabase.from('campaign_entry_unlocks').insert(rows)
   if (insertError) throw insertError
+  console.info('[compendium:unlock] fallback insert success', {
+    campaignId,
+    fightId,
+    inserted: rows.length,
+    candidates: candidateEntryIds.length,
+  })
   return rows.length
 }
 

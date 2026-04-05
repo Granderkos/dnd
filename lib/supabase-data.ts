@@ -319,26 +319,6 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
     currency: blob.inventoryCurrency || emptyInventory.currency,
   }
 
-  if (hasNormalizedInventory) {
-    console.info('[inventory:load] source=normalized', {
-      count: inventoryData?.length ?? 0,
-      sample: (inventoryData ?? []).slice(0, 5).map((item) => ({
-        client_id: item.client_id ?? item.id,
-        title: item.title,
-        quantity: item.quantity,
-      })),
-    })
-  } else {
-    console.info('[inventory:load] source=blob-fallback', {
-      fallbackCount: fallbackInventoryItems.length,
-      fallbackSample: fallbackInventoryItems.slice(0, 5).map((item) => ({
-        client_id: item.id,
-        name: item.name,
-        quantity: item.quantity,
-      })),
-    })
-  }
-
   return {
     character,
     spellbook,
@@ -511,18 +491,7 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
     })
     throw upsertError
   }
-  console.info('[inventory:save] upsert success', {
-    characterId,
-    rowCount: rows.length,
-    sample: rows.slice(0, 5).map((row) => ({
-      client_id: row.client_id,
-      title: row.title,
-      quantity: row.quantity,
-    })),
-  })
-
   await deleteMissingInventoryRows(characterId, items.map((item) => item.id))
-  console.info('[inventory:save] delete missing rows success', { characterId })
 }
 
 async function syncSpellRows(characterId: string, spells: Spellbook['spells'][number][]) {

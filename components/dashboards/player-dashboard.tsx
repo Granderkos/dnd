@@ -112,9 +112,6 @@ const defaultMapSettings: MapSettings = {
   panX: 0,
   panY: 0,
 }
-const PLAYER_TAB_STORAGE_KEY = 'dnd:player-active-tab'
-const PLAYER_TABS = new Set(['character', 'inventory', 'spellbook', 'notes', 'map', 'compendium'])
-
 function formatErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) return error.message
   if (typeof error === 'object' && error !== null) {
@@ -232,11 +229,17 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         listCompanionEntries(),
         listCompanionsForUser(user.id),
       ])
+      console.info('[compendium:player] refresh success', {
+        userId: user.id,
+        creatures: creatures.length,
+        companions: companionState.companions.length,
+      })
       setCreatureCompendium(creatures)
       setCompanionEntries(allCompanionEntries)
       setCompanions(companionState.companions)
       setCompanionCharacterId(companionState.characterId)
     } catch (error) {
+      console.error('[compendium:player] refresh failed', { userId: user.id, error })
       setCompendiumError(formatErrorMessage(error, 'Failed to load compendium data.'))
     } finally {
       setIsCompendiumLoading(false)
