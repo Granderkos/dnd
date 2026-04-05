@@ -150,7 +150,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [selectedCompanionEntryId, setSelectedCompanionEntryId] = useState('')
   const [compendiumError, setCompendiumError] = useState<string | null>(null)
   const [isCompendiumLoading, setIsCompendiumLoading] = useState(false)
-  const [selectedCreature, setSelectedCreature] = useState<Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'> | null>(null)
+  const [selectedCreature, setSelectedCreature] = useState<{ entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'>; isUnlocked: boolean } | null>(null)
 
   useEffect(() => {
     if (!user?.id) return
@@ -406,17 +406,19 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
                   <button
                     key={row.entry_id}
                     type="button"
-                    onClick={() => setSelectedCreature(row.entry)}
+                    onClick={() => setSelectedCreature({ entry: row.entry, isUnlocked: row.is_unlocked })}
                     className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/50"
                   >
                     <div className="mb-1 flex items-center justify-between gap-2">
-                      <h3 className="font-medium">{row.entry.name}</h3>
+                      <h3 className="font-medium">{row.is_unlocked ? row.entry.name : t('compendium.unknownName')}</h3>
                       <Badge variant={row.is_unlocked ? 'default' : 'secondary'}>
                         {row.is_unlocked ? t('compendium.unlocked') : t('compendium.unknown')}
                       </Badge>
                     </div>
-                    <p className="text-xs uppercase text-muted-foreground">{row.entry.subtype ?? 'creature'}</p>
-                    <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{row.entry.description || t('compendium.noSummary')}</p>
+                    <p className="text-xs uppercase text-muted-foreground">{row.is_unlocked ? (row.entry.subtype ?? 'creature') : '???'}</p>
+                    <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
+                      {row.is_unlocked ? (row.entry.description || t('compendium.noSummary')) : t('compendium.lockedHint')}
+                    </p>
                   </button>
                 ))}
               </div>
@@ -486,16 +488,18 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       <Drawer open={!!selectedCreature} onOpenChange={(open) => !open && setSelectedCreature(null)} direction="right">
         <DrawerContent>
           <DrawerHeader>
-            <DrawerTitle>{selectedCreature?.name}</DrawerTitle>
-            <DrawerDescription>{selectedCreature?.subtype ?? 'creature'}</DrawerDescription>
+            <DrawerTitle>{selectedCreature?.isUnlocked ? selectedCreature.entry.name : t('compendium.unknownName')}</DrawerTitle>
+            <DrawerDescription>{selectedCreature?.isUnlocked ? (selectedCreature.entry.subtype ?? 'creature') : '???'}</DrawerDescription>
           </DrawerHeader>
           <div className="space-y-3 px-4 pb-6">
             <img
-              src={typeof selectedCreature?.data?.image === 'string' ? selectedCreature.data.image : '/logo.svg'}
-              alt={selectedCreature?.name ?? 'Creature'}
+              src={selectedCreature?.isUnlocked && typeof selectedCreature.entry.data?.image === 'string' ? selectedCreature.entry.data.image : '/logo.svg'}
+              alt={selectedCreature?.isUnlocked ? selectedCreature.entry.name : t('compendium.unknownName')}
               className="h-40 w-full rounded-md border border-border object-cover"
             />
-            <p className="text-sm text-muted-foreground">{selectedCreature?.description || t('compendium.noSummary')}</p>
+            <p className="text-sm text-muted-foreground">
+              {selectedCreature?.isUnlocked ? (selectedCreature.entry.description || t('compendium.noSummary')) : t('compendium.lockedHint')}
+            </p>
           </div>
         </DrawerContent>
       </Drawer>
