@@ -729,6 +729,34 @@ export async function listCampaignCreatureCompendium(campaignId: string) {
   }>
 }
 
+export async function listCreatureCompendiumForUser(userId: string) {
+  const { data, error } = await supabase
+    .from('campaign_entry_unlocks')
+    .select('entry_id, is_unlocked, compendium_entries!inner(id, type, subtype, slug, name, description, data)')
+    .or(`player_id.is.null,player_id.eq.${userId}`)
+    .eq('compendium_entries.type', 'creature')
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+
+  const rows = (data ?? []).map((row) => ({
+    entry_id: row.entry_id as string,
+    is_unlocked: Boolean(row.is_unlocked),
+    entry: Array.isArray(row.compendium_entries) ? row.compendium_entries[0] : row.compendium_entries,
+  })) as Array<{
+    entry_id: string
+    is_unlocked: boolean
+    entry: Pick<CompendiumEntry, 'id' | 'type' | 'subtype' | 'slug' | 'name' | 'description' | 'data'>
+  }>
+
+  const merged = new Map<string, (typeof rows)[number]>()
+  for (const row of rows) {
+    const existing = merged.get(row.entry_id)
+    if (!existing || row.is_unlocked) merged.set(row.entry_id, row)
+  }
+  return [...merged.values()]
+}
+
 export async function listCompanionEntries() {
   const { data, error } = await supabase
     .from('compendium_entries')

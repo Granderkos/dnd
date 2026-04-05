@@ -5,6 +5,8 @@ import dynamic from 'next/dynamic'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,7 +20,15 @@ import type { Note } from '@/components/dnd/notes'
 import { useAuth } from '@/lib/auth-context'
 import { emptyCharacter, emptyInventory, emptySpellbook } from '@/lib/auth-types'
 import { loadCurrentPlayerData, saveCurrentPlayerData } from '@/lib/supabase-data'
-import { getPendingInitiativeForUser, submitPlayerInitiative } from '@/lib/supabase-v3'
+import {
+  activateCompanion,
+  assignCompanion,
+  getPendingInitiativeForUser,
+  listCompanionEntries,
+  listCompanionsForUser,
+  listCreatureCompendiumForUser,
+  submitPlayerInitiative,
+} from '@/lib/supabase-v3'
 import { supabase } from '@/lib/supabase'
 import {
   Character,
@@ -26,7 +36,8 @@ import {
   Inventory as InventoryType,
   MapSettings,
 } from '@/lib/dnd-types'
-import { User, BookOpen, Package, FileText, Map, LogOut } from 'lucide-react'
+import type { CharacterCompanion, CompanionKind, CompendiumEntry } from '@/lib/v3-types'
+import { User, BookOpen, Package, FileText, Map, LogOut, Sparkles } from 'lucide-react'
 import { AppControls } from '@/components/app/app-controls'
 import { APP_VERSION } from '@/lib/app-config'
 import { useI18n } from '@/lib/i18n'
@@ -102,7 +113,7 @@ const defaultMapSettings: MapSettings = {
   panY: 0,
 }
 const PLAYER_TAB_STORAGE_KEY = 'dnd:player-active-tab'
-const PLAYER_TABS = new Set(['character', 'inventory', 'spellbook', 'notes', 'map'])
+const PLAYER_TABS = new Set(['character', 'inventory', 'spellbook', 'notes', 'map', 'compendium'])
 
 function formatErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) return error.message
@@ -135,6 +146,14 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [initiativeRollInput, setInitiativeRollInput] = useState('')
   const [isSubmittingInitiative, setIsSubmittingInitiative] = useState(false)
   const [initiativeError, setInitiativeError] = useState<string | null>(null)
+  const [creatureCompendium, setCreatureCompendium] = useState<Array<{ entry_id: string; is_unlocked: boolean; entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'> }>>([])
+  const [companionEntries, setCompanionEntries] = useState<Array<Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'>>>([])
+  const [companions, setCompanions] = useState<Array<CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }>>([])
+  const [companionCharacterId, setCompanionCharacterId] = useState<string | null>(null)
+  const [selectedCompanionEntryId, setSelectedCompanionEntryId] = useState('')
+  const [compendiumError, setCompendiumError] = useState<string | null>(null)
+  const [isCompendiumLoading, setIsCompendiumLoading] = useState(false)
+  const [selectedCreature, setSelectedCreature] = useState<Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'> | null>(null)
 
   useEffect(() => {
     if (!user?.id) return
@@ -202,6 +221,32 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     if (!user?.id) return
     void refreshInitiativePrompt()
   }, [refreshInitiativePrompt, user?.id])
+
+  const refreshCompendium = useCallback(async () => {
+    if (!user?.id) return
+    setIsCompendiumLoading(true)
+    setCompendiumError(null)
+    try {
+      const [creatures, allCompanionEntries, companionState] = await Promise.all([
+        listCreatureCompendiumForUser(user.id),
+        listCompanionEntries(),
+        listCompanionsForUser(user.id),
+      ])
+      setCreatureCompendium(creatures)
+      setCompanionEntries(allCompanionEntries)
+      setCompanions(companionState.companions)
+      setCompanionCharacterId(companionState.characterId)
+    } catch (error) {
+      setCompendiumError(formatErrorMessage(error, 'Failed to load compendium data.'))
+    } finally {
+      setIsCompendiumLoading(false)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    void refreshCompendium()
+  }, [refreshCompendium, user?.id])
 
   useEffect(() => {
     if (!user?.id) return
@@ -319,6 +364,10 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
               <Map className="size-4" />
               <span className="hidden sm:inline text-xs">{t('nav.map')}</span>
             </TabsTrigger>
+            <TabsTrigger value="compendium" className="flex-1 gap-1 px-2">
+              <Sparkles className="size-4" />
+              <span className="hidden sm:inline text-xs">{t('nav.compendium')}</span>
+            </TabsTrigger>
           </TabsList>
         </header>
 
@@ -337,7 +386,116 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         <TabsContent value="map" className="mt-0 flex-1 overflow-hidden">
           {activeTab === 'map' && <PlayerMapViewer settings={mapSettings} onSettingsChange={setMapSettings} />}
         </TabsContent>
+        <TabsContent value="compendium" className="mt-0 flex-1 overflow-y-auto px-4 py-4">
+          <div className="mx-auto w-full max-w-4xl space-y-6">
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">{t('compendium.creaturesTitle')}</h2>
+                <Button variant="outline" size="sm" onClick={() => void refreshCompendium()}>{t('fight.refresh')}</Button>
+              </div>
+              {compendiumError ? <p className="text-sm text-destructive">{compendiumError}</p> : null}
+              {isCompendiumLoading ? <p className="text-sm text-muted-foreground">{t('common.loading')}</p> : null}
+              {creatureCompendium.length === 0 && !isCompendiumLoading ? (
+                <p className="text-sm text-muted-foreground">{t('compendium.emptyCreatures')}</p>
+              ) : null}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {creatureCompendium.map((row) => (
+                  <button
+                    key={row.entry_id}
+                    type="button"
+                    onClick={() => setSelectedCreature(row.entry)}
+                    className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/50"
+                  >
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <h3 className="font-medium">{row.entry.name}</h3>
+                      <Badge variant={row.is_unlocked ? 'default' : 'secondary'}>
+                        {row.is_unlocked ? t('compendium.unlocked') : t('compendium.unknown')}
+                      </Badge>
+                    </div>
+                    <p className="text-xs uppercase text-muted-foreground">{row.entry.subtype ?? 'creature'}</p>
+                    <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{row.entry.description || t('compendium.noSummary')}</p>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <h2 className="text-lg font-semibold">{t('compendium.companionsTitle')}</h2>
+              <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3 sm:flex-row sm:items-center">
+                <select
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  value={selectedCompanionEntryId}
+                  onChange={(e) => setSelectedCompanionEntryId(e.target.value)}
+                >
+                  <option value="">{t('compendium.chooseCompanion')}</option>
+                  {companionEntries.map((entry) => (
+                    <option key={entry.id} value={entry.id}>{entry.name}</option>
+                  ))}
+                </select>
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    if (!companionCharacterId || !selectedCompanionEntryId) return
+                    const selected = companionEntries.find((entry) => entry.id === selectedCompanionEntryId)
+                    const kind = (selected?.subtype ?? 'pet') as CompanionKind
+                    await assignCompanion({
+                      characterId: companionCharacterId,
+                      entryId: selectedCompanionEntryId,
+                      kind,
+                    })
+                    setSelectedCompanionEntryId('')
+                    await refreshCompendium()
+                  }}
+                  disabled={!companionCharacterId || !selectedCompanionEntryId}
+                >
+                  {t('compendium.assignCompanion')}
+                </Button>
+              </div>
+              {companions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t('compendium.emptyCompanions')}</p>
+              ) : (
+                <div className="space-y-2">
+                  {companions.map((companion) => (
+                    <div key={companion.id} className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
+                      <div>
+                        <p className="font-medium">{companion.name_override || companion.entry?.name || t('compendium.unnamedCompanion')}</p>
+                        <p className="text-xs text-muted-foreground">{companion.kind}</p>
+                      </div>
+                      <Button
+                        variant={companion.is_active ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={async () => {
+                          await activateCompanion(companion.id, !companion.is_active)
+                          await refreshCompendium()
+                        }}
+                      >
+                        {companion.is_active ? t('compendium.active') : t('compendium.inactive')}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        </TabsContent>
       </Tabs>
+
+      <Drawer open={!!selectedCreature} onOpenChange={(open) => !open && setSelectedCreature(null)} direction="right">
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>{selectedCreature?.name}</DrawerTitle>
+            <DrawerDescription>{selectedCreature?.subtype ?? 'creature'}</DrawerDescription>
+          </DrawerHeader>
+          <div className="space-y-3 px-4 pb-6">
+            <img
+              src={typeof selectedCreature?.data?.image === 'string' ? selectedCreature.data.image : '/logo.svg'}
+              alt={selectedCreature?.name ?? 'Creature'}
+              className="h-40 w-full rounded-md border border-border object-cover"
+            />
+            <p className="text-sm text-muted-foreground">{selectedCreature?.description || t('compendium.noSummary')}</p>
+          </div>
+        </DrawerContent>
+      </Drawer>
 
       <AlertDialog open={!!initiativePrompt} onOpenChange={() => {}}>
         <AlertDialogContent>
