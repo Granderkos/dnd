@@ -463,6 +463,10 @@ export async function startCombatForCampaign(campaignId: string) {
     supabase
       .from('profiles')
       .select('id')
+      .neq('id', campaignId),
+    supabase
+      .from('profiles')
+      .select('id')
       .eq('role', 'player'),
     supabase
       .from('profiles')
