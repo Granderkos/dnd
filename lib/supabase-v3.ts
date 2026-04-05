@@ -468,6 +468,10 @@ export async function startCombatForCampaign(campaignId: string) {
       .from('profiles')
       .select('id')
       .eq('role', 'player'),
+    supabase
+      .from('profiles')
+      .select('id')
+      .eq('role', 'player'),
     supabase.from('fight_entities').delete().eq('fight_id', fight.id).eq('entity_type', 'player'),
     supabase.from('fight_initiative_requests').delete().eq('fight_id', fight.id),
   ])
@@ -521,11 +525,10 @@ export async function finalizeInitiativeCollectionForFight(fightId: string) {
   return true
 }
 
-export async function getPendingInitiativeForUser(userId: string) {
+export async function getPendingInitiativeForUser(_userId: string) {
   const { data, error } = await supabase
     .from('fight_initiative_requests')
     .select('id, fight_id, status')
-    .eq('user_id', userId)
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
     .limit(1)
@@ -548,24 +551,22 @@ export async function getPendingInitiativeForUser(userId: string) {
   const { data: character, error: characterError } = await supabase
     .from('characters')
     .select('dex_score')
-    .eq('user_id', userId)
     .limit(1)
     .maybeSingle()
 
   if (characterError) {
-    console.warn('[initiative] failed to load character dex modifier, defaulting to +0', { userId, error: characterError })
+    console.warn('[initiative] failed to load character dex modifier, defaulting to +0', { userId: _userId, error: characterError })
   }
   const initiativeMod = abilityModifier(character?.dex_score ?? 10)
 
   return { requestId: data.id as string, fightId: data.fight_id as string, initiativeMod }
 }
 
-export async function submitPlayerInitiative(userId: string, requestId: string, roll: number) {
+export async function submitPlayerInitiative(_userId: string, requestId: string, roll: number) {
   const { data: request, error: requestError } = await supabase
     .from('fight_initiative_requests')
     .select('id, fight_id, user_id, status')
     .eq('id', requestId)
-    .eq('user_id', userId)
     .single()
 
   if (requestError) throw requestError
@@ -576,7 +577,6 @@ export async function submitPlayerInitiative(userId: string, requestId: string, 
   const { data: character, error: characterError } = await supabase
     .from('characters')
     .select('id, name, dex_score, hp_current, hp_max')
-    .eq('user_id', userId)
     .limit(1)
     .maybeSingle()
 
