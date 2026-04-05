@@ -180,10 +180,19 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     }
   }, [user?.id])
 
+  const scheduleInitiativeRefreshBurst = useCallback(() => {
+    const retryDelays = [0, 350, 1000, 2500]
+    retryDelays.forEach((delay) => {
+      window.setTimeout(() => {
+        void refreshInitiativePrompt()
+      }, delay)
+    })
+  }, [refreshInitiativePrompt])
+
   useEffect(() => {
-    if (!isLoaded || !user?.id) return
+    if (!user?.id) return
     void refreshInitiativePrompt()
-  }, [isLoaded, refreshInitiativePrompt, user?.id])
+  }, [refreshInitiativePrompt, user?.id])
 
   useEffect(() => {
     if (!user?.id) return
@@ -203,25 +212,37 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       .on(
         'postgres_changes',
         {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'fights',
+          filter: 'status=eq.collecting_initiative',
+        },
+        () => {
+          scheduleInitiativeRefreshBurst()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
           event: '*',
           schema: 'public',
           table: 'fight_initiative_requests',
           filter: `user_id=eq.${user.id}`,
         },
         () => {
-          void refreshInitiativePrompt()
+          scheduleInitiativeRefreshBurst()
         }
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          void refreshInitiativePrompt()
+          scheduleInitiativeRefreshBurst()
         }
       })
 
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [refreshInitiativePrompt, user?.id])
+  }, [scheduleInitiativeRefreshBurst, user?.id])
 
   const flushSave = useDebouncedRemoteSave(
     { character, spellbook, inventory, notes },
