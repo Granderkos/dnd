@@ -467,6 +467,10 @@ export async function startCombatForCampaign(campaignId: string) {
     supabase
       .from('profiles')
       .select('id')
+      .neq('id', campaignId),
+    supabase
+      .from('profiles')
+      .select('id')
       .eq('role', 'player'),
     supabase
       .from('profiles')
@@ -502,6 +506,15 @@ export async function startCombatForCampaign(campaignId: string) {
   const characterUserIds = (characterUsers ?? []).map((row) => row.user_id).filter(Boolean)
   const activityUserIds = (activityUsers ?? []).map((row) => row.user_id).filter(Boolean)
   const uniquePlayerIds = [...new Set([...profileIds, ...characterUserIds, ...activityUserIds])]
+  console.info('[fight:start] seed participants', {
+    campaignId,
+    fightId: fight.id,
+    profileCount: profileIds.length,
+    characterUserCount: characterUserIds.length,
+    activityUserCount: activityUserIds.length,
+    uniqueCount: uniquePlayerIds.length,
+    uniquePlayerIds,
+  })
   const requests = uniquePlayerIds.map((playerId) => ({
     fight_id: fight.id,
     user_id: playerId,
@@ -515,9 +528,13 @@ export async function startCombatForCampaign(campaignId: string) {
       .from('fight_initiative_requests')
       .insert(requests)
     if (requestError) throw requestError
+    console.info('[fight:start] inserted initiative requests', { fightId: fight.id, inserted: requests.length })
+  } else {
+    console.warn('[fight:start] no participants resolved for initiative requests', { campaignId, fightId: fight.id })
   }
 
   await setFightStatus(fight.id, 'collecting_initiative')
+  console.info('[fight:start] set fight status collecting_initiative', { fightId: fight.id })
   return fight
 }
 
@@ -553,7 +570,10 @@ export async function getPendingInitiativeForUser(_userId: string) {
     .maybeSingle()
 
   if (error) throw error
-  if (!data) return null
+  if (!data) {
+    console.info('[initiative:pending] no pending request visible for current auth user', { requestedUserId: _userId })
+    return null
+  }
 
   const { data: fight, error: fightError } = await supabase
     .from('fights')
@@ -576,6 +596,12 @@ export async function getPendingInitiativeForUser(_userId: string) {
     console.warn('[initiative] failed to load character dex modifier, defaulting to +0', { userId: _userId, error: characterError })
   }
   const initiativeMod = abilityModifier(character?.dex_score ?? 10)
+  console.info('[initiative:pending] resolved pending request', {
+    requestedUserId: _userId,
+    requestId: data.id,
+    fightId: data.fight_id,
+    initiativeMod,
+  })
 
   return { requestId: data.id as string, fightId: data.fight_id as string, initiativeMod }
 }
@@ -591,6 +617,7 @@ export async function submitPlayerInitiative(_userId: string, requestId: string,
   if (request.status !== 'pending') {
     throw new Error('Initiative already submitted for this fight.')
   }
+  console.info('[initiative:submit] request visible, submitting', { requestedUserId: _userId, requestId, fightId: request.fight_id, roll })
 
   const { data: character, error: characterError } = await supabase
     .from('characters')
@@ -651,6 +678,7 @@ export async function submitPlayerInitiative(_userId: string, requestId: string,
     })
     .eq('id', requestId)
   if (updateRequestError) throw updateRequestError
+  console.info('[initiative:submit] success', { requestedUserId: _userId, requestId, fightId: request.fight_id, finalInitiative })
 
   return finalInitiative
 }
