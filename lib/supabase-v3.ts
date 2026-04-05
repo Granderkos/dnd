@@ -508,6 +508,9 @@ export async function startCombatForCampaign(campaignId: string) {
       .from('fight_initiative_requests')
       .insert(requests)
     if (requestError) throw requestError
+    console.info('[fight:start] inserted initiative requests', { fightId: fight.id, inserted: requests.length })
+  } else {
+    console.warn('[fight:start] no participants resolved for initiative requests', { campaignId, fightId: fight.id })
   }
 
   await unlockFightCreaturesForCampaign(campaignId, fight.id)
@@ -583,7 +586,10 @@ export async function getPendingInitiativeForUser(_userId: string) {
     .maybeSingle()
 
   if (error) throw error
-  if (!data) return null
+  if (!data) {
+    console.info('[initiative:pending] no pending request visible for current auth user', { requestedUserId: _userId })
+    return null
+  }
 
   const { data: character, error: characterError } = await supabase
     .from('characters')
@@ -614,6 +620,7 @@ export async function submitPlayerInitiative(_userId: string, requestId: string,
   if (request.status !== 'pending') {
     throw new Error('Initiative already submitted for this fight.')
   }
+  console.info('[initiative:submit] request visible, submitting', { requestedUserId: _userId, requestId, fightId: request.fight_id, roll })
 
   const { data: character, error: characterError } = await supabase
     .from('characters')
