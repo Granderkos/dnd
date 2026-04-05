@@ -465,9 +465,29 @@ export async function startCombatForCampaign(campaignId: string) {
       .select('id')
       .neq('id', campaignId),
     supabase
-      .from('characters')
-      .select('user_id')
-      .not('user_id', 'is', null),
+      .from('profiles')
+      .select('id')
+      .neq('id', campaignId),
+    supabase
+      .from('profiles')
+      .select('id')
+      .neq('id', campaignId),
+    supabase
+      .from('profiles')
+      .select('id')
+      .eq('role', 'player'),
+    supabase
+      .from('profiles')
+      .select('id')
+      .eq('role', 'player'),
+    supabase
+      .from('profiles')
+      .select('id')
+      .eq('role', 'player'),
+    supabase
+      .from('profiles')
+      .select('id')
+      .eq('role', 'player'),
     supabase.from('fight_entities').delete().eq('fight_id', fight.id).eq('entity_type', 'player'),
     supabase.from('fight_initiative_requests').delete().eq('fight_id', fight.id),
   ])
