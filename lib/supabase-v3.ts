@@ -29,6 +29,10 @@ function abilityModifier(score: number) {
   return Math.floor((score - 10) / 2)
 }
 
+function activeSinceIso(minutes = 2) {
+  return new Date(Date.now() - minutes * 60_000).toISOString()
+}
+
 export async function listCreatures() {
   const { data, error } = await supabase
     .from('compendium_entries')
@@ -85,6 +89,7 @@ export async function getActiveFight(campaignId: string) {
     .select('id, campaign_id, is_active, status, created_at')
     .eq('campaign_id', campaignId)
     .eq('is_active', true)
+    .neq('status', 'ended')
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -311,7 +316,7 @@ export async function getUnlockedCreatures(campaignId: string, playerId?: string
 export async function listCharacterCompanions(characterId: string) {
   const { data, error } = await supabase
     .from('character_companions')
-    .select('id, character_id, entry_id, kind, name_override, notes, is_active, created_at')
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, created_at')
     .eq('character_id', characterId)
     .order('created_at', { ascending: true })
 
@@ -325,6 +330,7 @@ export async function assignCompanion(input: {
   kind: CompanionKind
   nameOverride?: string
   notes?: string
+  customData?: Record<string, unknown>
 }) {
   const { data, error } = await supabase
     .from('character_companions')
@@ -335,8 +341,9 @@ export async function assignCompanion(input: {
       name_override: input.nameOverride ?? null,
       notes: input.notes ?? null,
       is_active: true,
+      custom_data: input.customData ?? {},
     })
-    .select('id, character_id, entry_id, kind, name_override, notes, is_active, created_at')
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, created_at')
     .single()
 
   if (error) throw error
@@ -348,7 +355,7 @@ export async function activateCompanion(companionId: string, isActive: boolean) 
     .from('character_companions')
     .update({ is_active: isActive })
     .eq('id', companionId)
-    .select('id, character_id, entry_id, kind, name_override, notes, is_active, created_at')
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, created_at')
     .single()
 
   if (error) throw error
@@ -402,9 +409,10 @@ export async function listFightEntities(fightId: string) {
 }
 
 export async function setFightStatus(fightId: string, status: FightStatus) {
+  const isActive = status === 'ended' ? false : true
   const { data, error } = await supabase
     .from('fights')
-    .update({ status })
+    .update({ status, is_active: isActive })
     .eq('id', fightId)
     .select('id, campaign_id, is_active, status, created_at')
     .single()
@@ -457,18 +465,36 @@ export async function preparePlayerEntitiesForFight(fightId: string) {
 
 export async function startCombatForCampaign(campaignId: string) {
   const fight = await createOrGetDraftFight(campaignId)
-  const [{ data: playerCharacters, error: playersError }, { error: clearPlayerEntitiesError }] = await Promise.all([
+  const [{ data: playerProfiles, error: playersError }, { data: characterUsers, error: characterUsersError }, { data: activityUsers, error: activityUsersError }, { error: clearPlayerEntitiesError }, { error: clearRequestsError }] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id')
+      .neq('id', campaignId),
     supabase
       .from('characters')
       .select('user_id')
       .not('user_id', 'is', null),
+    supabase
+      .from('activity_status')
+      .select('user_id, is_online, last_seen')
+      .eq('is_online', true)
+      .gte('last_seen', activeSinceIso(2)),
     supabase.from('fight_entities').delete().eq('fight_id', fight.id).eq('entity_type', 'player'),
+    supabase.from('fight_initiative_requests').delete().eq('fight_id', fight.id),
   ])
 
   if (playersError) throw playersError
+  if (characterUsersError) throw characterUsersError
+  if (activityUsersError) throw activityUsersError
   if (clearPlayerEntitiesError) throw clearPlayerEntitiesError
+  if (clearRequestsError) throw clearRequestsError
 
-  const uniquePlayerIds = [...new Set((playerCharacters ?? []).map((character) => character.user_id).filter(Boolean))]
+  const profileIds = (playerProfiles ?? []).map((profile) => profile.id).filter(Boolean)
+  const characterUserIds = (characterUsers ?? []).map((row) => row.user_id).filter(Boolean)
+  const activityUserIds = (activityUsers ?? []).map((row) => row.user_id).filter(Boolean)
+  const knownPlayerIds = new Set([...profileIds, ...characterUserIds])
+  const activePlayerIds = activityUserIds.filter((id) => knownPlayerIds.has(id))
+  const uniquePlayerIds = [...new Set(activePlayerIds)]
   const requests = uniquePlayerIds.map((playerId) => ({
     fight_id: fight.id,
     user_id: playerId,
@@ -480,25 +506,77 @@ export async function startCombatForCampaign(campaignId: string) {
   if (requests.length > 0) {
     const { error: requestError } = await supabase
       .from('fight_initiative_requests')
-      .upsert(requests, { onConflict: 'fight_id,user_id' })
+      .insert(requests)
     if (requestError) throw requestError
   }
 
-  await setFightStatus(fight.id, 'collecting_initiative')
+  await unlockFightCreaturesForCampaign(campaignId, fight.id)
+  await setFightStatus(fight.id, requests.length > 0 ? 'collecting_initiative' : 'active')
   return fight
+}
+
+export async function unlockFightCreaturesForCampaign(campaignId: string, fightId: string) {
+  const { data: fightCreatures, error: fightCreatureError } = await supabase
+    .from('fight_entities')
+    .select('entry_id')
+    .eq('fight_id', fightId)
+    .eq('entity_type', 'monster')
+    .not('entry_id', 'is', null)
+
+  if (fightCreatureError) throw fightCreatureError
+  const candidateEntryIds = [...new Set((fightCreatures ?? []).map((row) => row.entry_id).filter(Boolean))]
+  if (candidateEntryIds.length === 0) return 0
+
+  const { data: existing, error: existingError } = await supabase
+    .from('campaign_entry_unlocks')
+    .select('entry_id')
+    .eq('campaign_id', campaignId)
+    .is('player_id', null)
+    .in('entry_id', candidateEntryIds)
+  if (existingError) throw existingError
+
+  const existingEntryIds = new Set((existing ?? []).map((row) => row.entry_id))
+  const missing = candidateEntryIds.filter((entryId) => !existingEntryIds.has(entryId))
+  if (missing.length === 0) return 0
+
+  const rows = missing.map((entryId) => ({
+    campaign_id: campaignId,
+    entry_id: entryId,
+    player_id: null as string | null,
+    is_unlocked: true,
+  }))
+
+  const { error: insertError } = await supabase.from('campaign_entry_unlocks').insert(rows)
+  if (insertError) throw insertError
+  return rows.length
 }
 
 export async function endCombatForFight(fightId: string) {
   const result = await setFightStatus(fightId, 'ended')
-  await supabase.from('fight_initiative_requests').delete().eq('fight_id', fightId)
+  const { error } = await supabase.from('fight_initiative_requests').delete().eq('fight_id', fightId)
+  if (error) throw error
   return result
 }
 
-export async function getPendingInitiativeForUser(userId: string) {
+export async function finalizeInitiativeCollectionForFight(fightId: string) {
+  const { count, error: pendingCountError } = await supabase
+    .from('fight_initiative_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('fight_id', fightId)
+    .eq('status', 'pending')
+
+  if (pendingCountError) throw pendingCountError
+  if ((count ?? 0) > 0) return false
+
+  await setFightStatus(fightId, 'active')
+  await sortInitiative(fightId)
+  return true
+}
+
+export async function getPendingInitiativeForUser(_userId: string) {
   const { data, error } = await supabase
     .from('fight_initiative_requests')
     .select('id, fight_id, status')
-    .eq('user_id', userId)
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
     .limit(1)
@@ -510,21 +588,26 @@ export async function getPendingInitiativeForUser(userId: string) {
   const { data: character, error: characterError } = await supabase
     .from('characters')
     .select('dex_score')
-    .eq('user_id', userId)
+    .limit(1)
     .maybeSingle()
 
-  if (characterError) throw characterError
+  if (characterError) console.warn('[initiative] failed to load character dex modifier, defaulting to +0', { userId: _userId, error: characterError })
   const initiativeMod = abilityModifier(character?.dex_score ?? 10)
+  console.info('[initiative:pending] resolved pending request', {
+    requestedUserId: _userId,
+    requestId: data.id,
+    fightId: data.fight_id,
+    initiativeMod,
+  })
 
   return { requestId: data.id as string, fightId: data.fight_id as string, initiativeMod }
 }
 
-export async function submitPlayerInitiative(userId: string, requestId: string, roll: number) {
+export async function submitPlayerInitiative(_userId: string, requestId: string, roll: number) {
   const { data: request, error: requestError } = await supabase
     .from('fight_initiative_requests')
     .select('id, fight_id, user_id, status')
     .eq('id', requestId)
-    .eq('user_id', userId)
     .single()
 
   if (requestError) throw requestError
@@ -535,10 +618,11 @@ export async function submitPlayerInitiative(userId: string, requestId: string, 
   const { data: character, error: characterError } = await supabase
     .from('characters')
     .select('id, name, dex_score, hp_current, hp_max')
-    .eq('user_id', userId)
-    .single()
+    .limit(1)
+    .maybeSingle()
 
   if (characterError) throw characterError
+  if (!character) throw new Error('Character not found for initiative submission.')
 
   const initiativeMod = abilityModifier(character.dex_score ?? 10)
   const finalInitiative = roll + initiativeMod
@@ -590,21 +674,126 @@ export async function submitPlayerInitiative(userId: string, requestId: string, 
     })
     .eq('id', requestId)
   if (updateRequestError) throw updateRequestError
-
-  const { count, error: pendingCountError } = await supabase
-    .from('fight_initiative_requests')
-    .select('id', { count: 'exact', head: true })
-    .eq('fight_id', request.fight_id)
-    .eq('status', 'pending')
-
-  if (pendingCountError) throw pendingCountError
-
-  if ((count ?? 0) === 0) {
-    await setFightStatus(request.fight_id, 'active')
-  }
-
-  await sortInitiative(request.fight_id)
   return finalInitiative
+}
+
+export async function ensureActivePlayerInitiativeRequest(fightId: string, userId: string) {
+  const { data: request, error: requestError } = await supabase
+    .from('fight_initiative_requests')
+    .select('id')
+    .eq('fight_id', fightId)
+    .eq('user_id', userId)
+    .limit(1)
+    .maybeSingle()
+  if (requestError) throw requestError
+  if (request) return false
+
+  const { error: insertError } = await supabase
+    .from('fight_initiative_requests')
+    .insert({
+      fight_id: fightId,
+      user_id: userId,
+      status: 'pending',
+      initiative_roll: null,
+      submitted_at: null,
+    })
+  if (insertError) throw insertError
+  return true
+}
+
+export async function listCampaignCreatureCompendium(campaignId: string) {
+  const { data, error } = await supabase
+    .from('campaign_entry_unlocks')
+    .select('entry_id, is_unlocked, compendium_entries!inner(id, type, subtype, slug, name, description, data)')
+    .eq('campaign_id', campaignId)
+    .is('player_id', null)
+    .eq('compendium_entries.type', 'creature')
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+  return (data ?? []).map((row) => ({
+    entry_id: row.entry_id as string,
+    is_unlocked: Boolean(row.is_unlocked),
+    entry: Array.isArray(row.compendium_entries) ? row.compendium_entries[0] : row.compendium_entries,
+  })) as Array<{
+    entry_id: string
+    is_unlocked: boolean
+    entry: Pick<CompendiumEntry, 'id' | 'type' | 'subtype' | 'slug' | 'name' | 'description' | 'data'>
+  }>
+}
+
+export async function listCreatureCompendiumForUser(userId: string) {
+  const { data, error } = await supabase
+    .from('campaign_entry_unlocks')
+    .select('entry_id, is_unlocked, compendium_entries!inner(id, type, subtype, slug, name, description, data)')
+    .or(`player_id.is.null,player_id.eq.${userId}`)
+    .eq('compendium_entries.type', 'creature')
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+
+  const rows = (data ?? []).map((row) => ({
+    entry_id: row.entry_id as string,
+    is_unlocked: Boolean(row.is_unlocked),
+    entry: Array.isArray(row.compendium_entries) ? row.compendium_entries[0] : row.compendium_entries,
+  })) as Array<{
+    entry_id: string
+    is_unlocked: boolean
+    entry: Pick<CompendiumEntry, 'id' | 'type' | 'subtype' | 'slug' | 'name' | 'description' | 'data'>
+  }>
+
+  const merged = new Map<string, (typeof rows)[number]>()
+  for (const row of rows) {
+    const existing = merged.get(row.entry_id)
+    if (!existing || row.is_unlocked) merged.set(row.entry_id, row)
+  }
+  return [...merged.values()]
+}
+
+export async function listCompanionEntries() {
+  const { data, error } = await supabase
+    .from('compendium_entries')
+    .select('id, type, subtype, slug, name, description, data')
+    .eq('type', 'companion')
+    .order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as Array<Pick<CompendiumEntry, 'id' | 'type' | 'subtype' | 'slug' | 'name' | 'description' | 'data'>>
+}
+
+export async function listCompanionsForUser(userId: string) {
+  const { data: character, error: characterError } = await supabase
+    .from('characters')
+    .select('id')
+    .eq('user_id', userId)
+    .limit(1)
+    .maybeSingle()
+  if (characterError) throw characterError
+  if (!character) return { characterId: null, companions: [] as Array<CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }> }
+
+  const { data, error } = await supabase
+    .from('character_companions')
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, created_at, compendium_entries(id, name, subtype, description)')
+    .eq('character_id', character.id)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+
+  const companions = (data ?? []).map((row) => ({
+    id: row.id as string,
+    character_id: row.character_id as string,
+    entry_id: row.entry_id as string,
+    kind: row.kind as CompanionKind,
+    name_override: row.name_override as string | null,
+    notes: row.notes as string | null,
+    is_active: Boolean(row.is_active),
+    custom_data: (row.custom_data as Record<string, unknown>) ?? {},
+    created_at: row.created_at as string,
+    entry: Array.isArray(row.compendium_entries) ? row.compendium_entries[0] : row.compendium_entries,
+  }))
+
+  return {
+    characterId: character.id as string,
+    companions,
+  }
 }
 
 export async function getPlayerCombatState(userId: string): Promise<'none' | 'collecting_initiative' | 'active'> {

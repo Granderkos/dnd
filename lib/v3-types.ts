@@ -34,6 +34,7 @@ export interface CharacterCompanion {
   name_override: string | null
   notes: string | null
   is_active: boolean
+  custom_data: Record<string, unknown>
   created_at: string
 }
 
