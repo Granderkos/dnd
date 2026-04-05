@@ -544,7 +544,9 @@ export async function getPendingInitiativeForUser(userId: string) {
     .limit(1)
     .maybeSingle()
 
-  if (characterError) throw characterError
+  if (characterError) {
+    console.warn('[initiative] failed to load character dex modifier, defaulting to +0', { userId, error: characterError })
+  }
   const initiativeMod = abilityModifier(character?.dex_score ?? 10)
 
   return { requestId: data.id as string, fightId: data.fight_id as string, initiativeMod }
