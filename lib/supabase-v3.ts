@@ -472,6 +472,10 @@ export async function startCombatForCampaign(campaignId: string) {
       .from('profiles')
       .select('id')
       .eq('role', 'player'),
+    supabase
+      .from('profiles')
+      .select('id')
+      .eq('role', 'player'),
     supabase.from('fight_entities').delete().eq('fight_id', fight.id).eq('entity_type', 'player'),
     supabase.from('fight_initiative_requests').delete().eq('fight_id', fight.id),
   ])
@@ -481,9 +485,19 @@ export async function startCombatForCampaign(campaignId: string) {
   if (clearPlayerEntitiesError) throw clearPlayerEntitiesError
   if (clearRequestsError) throw clearRequestsError
 
+  const { data: activityUsers, error: activityUsersError } = await supabase
+    .from('activity_status')
+    .select('user_id')
+    .not('user_id', 'is', null)
+
+  if (activityUsersError) {
+    console.warn('[fight:start] failed to read activity_status user ids', { campaignId, error: activityUsersError })
+  }
+
   const profileIds = (playerProfiles ?? []).map((profile) => profile.id).filter(Boolean)
   const characterUserIds = (characterUsers ?? []).map((row) => row.user_id).filter(Boolean)
-  const uniquePlayerIds = [...new Set([...profileIds, ...characterUserIds])]
+  const activityUserIds = (activityUsers ?? []).map((row) => row.user_id).filter(Boolean)
+  const uniquePlayerIds = [...new Set([...profileIds, ...characterUserIds, ...activityUserIds])]
   const requests = uniquePlayerIds.map((playerId) => ({
     fight_id: fight.id,
     user_id: playerId,
