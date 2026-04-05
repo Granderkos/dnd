@@ -181,9 +181,9 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   }, [user?.id])
 
   useEffect(() => {
-    if (!isLoaded || !user?.id) return
+    if (!user?.id) return
     void refreshInitiativePrompt()
-  }, [isLoaded, refreshInitiativePrompt, user?.id])
+  }, [refreshInitiativePrompt, user?.id])
 
   useEffect(() => {
     if (!user?.id) return
@@ -203,6 +203,18 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       .on(
         'postgres_changes',
         {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'fights',
+          filter: 'status=eq.collecting_initiative',
+        },
+        () => {
+          void refreshInitiativePrompt()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
           event: '*',
           schema: 'public',
           table: 'fight_initiative_requests',
@@ -215,6 +227,9 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           void refreshInitiativePrompt()
+          window.setTimeout(() => {
+            void refreshInitiativePrompt()
+          }, 500)
         }
       })
 
