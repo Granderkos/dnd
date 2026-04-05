@@ -316,7 +316,7 @@ export async function getUnlockedCreatures(campaignId: string, playerId?: string
 export async function listCharacterCompanions(characterId: string) {
   const { data, error } = await supabase
     .from('character_companions')
-    .select('id, character_id, entry_id, kind, name_override, notes, is_active, created_at')
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, created_at')
     .eq('character_id', characterId)
     .order('created_at', { ascending: true })
 
@@ -330,6 +330,7 @@ export async function assignCompanion(input: {
   kind: CompanionKind
   nameOverride?: string
   notes?: string
+  customData?: Record<string, unknown>
 }) {
   const { data, error } = await supabase
     .from('character_companions')
@@ -340,8 +341,9 @@ export async function assignCompanion(input: {
       name_override: input.nameOverride ?? null,
       notes: input.notes ?? null,
       is_active: true,
+      custom_data: input.customData ?? {},
     })
-    .select('id, character_id, entry_id, kind, name_override, notes, is_active, created_at')
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, created_at')
     .single()
 
   if (error) throw error
@@ -353,7 +355,7 @@ export async function activateCompanion(companionId: string, isActive: boolean) 
     .from('character_companions')
     .update({ is_active: isActive })
     .eq('id', companionId)
-    .select('id, character_id, entry_id, kind, name_override, notes, is_active, created_at')
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, created_at')
     .single()
 
   if (error) throw error
@@ -511,8 +513,45 @@ export async function startCombatForCampaign(campaignId: string) {
     console.warn('[fight:start] no participants resolved for initiative requests', { campaignId, fightId: fight.id })
   }
 
+  await unlockFightCreaturesForCampaign(campaignId, fight.id)
   await setFightStatus(fight.id, requests.length > 0 ? 'collecting_initiative' : 'active')
   return fight
+}
+
+export async function unlockFightCreaturesForCampaign(campaignId: string, fightId: string) {
+  const { data: fightCreatures, error: fightCreatureError } = await supabase
+    .from('fight_entities')
+    .select('entry_id')
+    .eq('fight_id', fightId)
+    .eq('entity_type', 'monster')
+    .not('entry_id', 'is', null)
+
+  if (fightCreatureError) throw fightCreatureError
+  const candidateEntryIds = [...new Set((fightCreatures ?? []).map((row) => row.entry_id).filter(Boolean))]
+  if (candidateEntryIds.length === 0) return 0
+
+  const { data: existing, error: existingError } = await supabase
+    .from('campaign_entry_unlocks')
+    .select('entry_id')
+    .eq('campaign_id', campaignId)
+    .is('player_id', null)
+    .in('entry_id', candidateEntryIds)
+  if (existingError) throw existingError
+
+  const existingEntryIds = new Set((existing ?? []).map((row) => row.entry_id))
+  const missing = candidateEntryIds.filter((entryId) => !existingEntryIds.has(entryId))
+  if (missing.length === 0) return 0
+
+  const rows = missing.map((entryId) => ({
+    campaign_id: campaignId,
+    entry_id: entryId,
+    player_id: null as string | null,
+    is_unlocked: true,
+  }))
+
+  const { error: insertError } = await supabase.from('campaign_entry_unlocks').insert(rows)
+  if (insertError) throw insertError
+  return rows.length
 }
 
 export async function endCombatForFight(fightId: string) {
@@ -667,6 +706,73 @@ export async function ensureActivePlayerInitiativeRequest(fightId: string, userI
     })
   if (insertError) throw insertError
   return true
+}
+
+export async function listCampaignCreatureCompendium(campaignId: string) {
+  const { data, error } = await supabase
+    .from('campaign_entry_unlocks')
+    .select('entry_id, is_unlocked, compendium_entries!inner(id, type, subtype, slug, name, description, data)')
+    .eq('campaign_id', campaignId)
+    .is('player_id', null)
+    .eq('compendium_entries.type', 'creature')
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+  return (data ?? []).map((row) => ({
+    entry_id: row.entry_id as string,
+    is_unlocked: Boolean(row.is_unlocked),
+    entry: Array.isArray(row.compendium_entries) ? row.compendium_entries[0] : row.compendium_entries,
+  })) as Array<{
+    entry_id: string
+    is_unlocked: boolean
+    entry: Pick<CompendiumEntry, 'id' | 'type' | 'subtype' | 'slug' | 'name' | 'description' | 'data'>
+  }>
+}
+
+export async function listCompanionEntries() {
+  const { data, error } = await supabase
+    .from('compendium_entries')
+    .select('id, type, subtype, slug, name, description, data')
+    .eq('type', 'companion')
+    .order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as Array<Pick<CompendiumEntry, 'id' | 'type' | 'subtype' | 'slug' | 'name' | 'description' | 'data'>>
+}
+
+export async function listCompanionsForUser(userId: string) {
+  const { data: character, error: characterError } = await supabase
+    .from('characters')
+    .select('id')
+    .eq('user_id', userId)
+    .limit(1)
+    .maybeSingle()
+  if (characterError) throw characterError
+  if (!character) return { characterId: null, companions: [] as Array<CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }> }
+
+  const { data, error } = await supabase
+    .from('character_companions')
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, created_at, compendium_entries(id, name, subtype, description)')
+    .eq('character_id', character.id)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+
+  const companions = (data ?? []).map((row) => ({
+    id: row.id as string,
+    character_id: row.character_id as string,
+    entry_id: row.entry_id as string,
+    kind: row.kind as CompanionKind,
+    name_override: row.name_override as string | null,
+    notes: row.notes as string | null,
+    is_active: Boolean(row.is_active),
+    custom_data: (row.custom_data as Record<string, unknown>) ?? {},
+    created_at: row.created_at as string,
+    entry: Array.isArray(row.compendium_entries) ? row.compendium_entries[0] : row.compendium_entries,
+  }))
+
+  return {
+    characterId: character.id as string,
+    companions,
+  }
 }
 
 export async function getPlayerCombatState(userId: string): Promise<'none' | 'collecting_initiative' | 'active'> {
