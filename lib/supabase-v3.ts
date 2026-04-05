@@ -500,15 +500,12 @@ export async function preparePlayerEntitiesForFight(fightId: string) {
 
 export async function startCombatForCampaign(campaignId: string) {
   const fight = await createOrGetDraftFight(campaignId)
-  const [{ data: playerProfiles, error: playersError }, { data: characterUsers, error: characterUsersError }, { data: activityUsers, error: activityUsersError }, { error: clearPlayerEntitiesError }, { error: clearRequestsError }] = await Promise.all([
+  const [{ data: playerProfiles, error: playersError }, { data: activityUsers, error: activityUsersError }, { error: clearPlayerEntitiesError }, { error: clearRequestsError }] = await Promise.all([
     supabase
       .from('profiles')
       .select('id')
+      .eq('role', 'player')
       .neq('id', campaignId),
-    supabase
-      .from('characters')
-      .select('user_id')
-      .not('user_id', 'is', null),
     supabase
       .from('activity_status')
       .select('user_id, is_online, last_seen')
@@ -519,15 +516,13 @@ export async function startCombatForCampaign(campaignId: string) {
   ])
 
   if (playersError) throw playersError
-  if (characterUsersError) throw characterUsersError
   if (activityUsersError) throw activityUsersError
   if (clearPlayerEntitiesError) throw clearPlayerEntitiesError
   if (clearRequestsError) throw clearRequestsError
 
   const profileIds = (playerProfiles ?? []).map((profile) => profile.id).filter(Boolean)
-  const characterUserIds = (characterUsers ?? []).map((row) => row.user_id).filter(Boolean)
   const activityUserIds = (activityUsers ?? []).map((row) => row.user_id).filter(Boolean)
-  const knownPlayerIds = new Set([...profileIds, ...characterUserIds])
+  const knownPlayerIds = new Set(profileIds)
   const activePlayerIds = activityUserIds.filter((id) => knownPlayerIds.has(id))
   const uniquePlayerIds = [...new Set(activePlayerIds)]
   const requests = uniquePlayerIds.map((playerId) => ({

@@ -16,6 +16,23 @@ const characterSaveSignatures = new Map<string, {
   blob: string
 }>()
 
+async function withRetry<T>(operation: () => Promise<T>, retries = 2, delayMs = 250): Promise<T> {
+  let attempt = 0
+  let lastError: unknown
+  while (attempt <= retries) {
+    try {
+      return await operation()
+    } catch (error) {
+      lastError = error
+      if (attempt === retries) break
+      const wait = delayMs * (attempt + 1)
+      await new Promise((resolve) => setTimeout(resolve, wait))
+      attempt += 1
+    }
+  }
+  throw lastError
+}
+
 export interface StoredMap {
   id: string
   name: string
@@ -192,7 +209,11 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
   const characterId = await ensureCharacterRecord(userId)
 
   const [{ data: row, error: charError }, { data: inventoryData, error: inventoryError }, { data: spellsData, error: spellsError }, blob] = await Promise.all([
-    supabase.from('characters').select('*').eq('id', characterId).single(),
+    supabase
+      .from('characters')
+      .select('id, name, class_name, subclass, race, background, alignment, level, xp, proficiency_bonus, armor_class, initiative, speed, hp_max, hp_current, hp_temp, hit_dice_type, death_successes, death_failures, str_score, dex_score, con_score, int_score, wis_score, cha_score, save_str_prof, save_dex_prof, save_con_prof, save_int_prof, save_wis_prof, save_cha_prof, skill_acrobatics_prof, skill_animal_handling_prof, skill_arcana_prof, skill_athletics_prof, skill_deception_prof, skill_history_prof, skill_insight_prof, skill_intimidation_prof, skill_investigation_prof, skill_medicine_prof, skill_nature_prof, skill_perception_prof, skill_performance_prof, skill_persuasion_prof, skill_religion_prof, skill_sleight_of_hand_prof, skill_stealth_prof, skill_survival_prof, features, languages')
+      .eq('id', characterId)
+      .single(),
     supabase.from('inventory_items').select('*').eq('character_id', characterId).order('sort_order', { ascending: true }),
     supabase.from('spells').select('*').eq('character_id', characterId).order('sort_order', { ascending: true }),
     getCharacterBlob(characterId),
@@ -727,7 +748,7 @@ export async function saveDmNotes(userId: string, content: string) {
 }
 
 export async function loadMaps() {
-  const { data, error } = await supabase.from('maps').select('*').order('created_at', { ascending: false })
+  const { data, error } = await withRetry(async () => await supabase.from('maps').select('*').order('created_at', { ascending: false }))
   if (error) throw error
   return (data ?? []).map((map) => ({
     id: map.id,
@@ -772,7 +793,8 @@ export async function deleteMap(mapId: string) {
 }
 
 export async function setActiveMap(mapId: string | null) {
-  await supabase.from('maps').update({ is_active: false }).neq('id', '')
+  const { error: clearError } = await supabase.from('maps').update({ is_active: false }).eq('is_active', true)
+  if (clearError) throw clearError
   if (mapId) {
     const { error } = await supabase.from('maps').update({ is_active: true }).eq('id', mapId)
     if (error) throw error
@@ -780,7 +802,7 @@ export async function setActiveMap(mapId: string | null) {
 }
 
 export async function getActiveMap() {
-  const { data, error } = await supabase.from('maps').select('*').eq('is_active', true).maybeSingle()
+  const { data, error } = await withRetry(async () => await supabase.from('maps').select('*').eq('is_active', true).maybeSingle())
   if (error) throw error
   if (!data) return null
   return {
