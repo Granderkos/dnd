@@ -415,30 +415,11 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       languages: character.languages,
     }
 
-  const allSpells = [...spellbook.cantrips.map((s) => ({ ...s, level: 0 })), ...spellbook.spells]
-
-  await upsertCharacterBlob(characterId, {
-    notes,
-    inventoryCurrency: inventory.currency,
-    spellbookMeta: {
-      spellcastingClass: spellbook.spellcastingClass,
-      spellcastingAbility: spellbook.spellcastingAbility,
-      spellSaveDC: spellbook.spellSaveDC,
-      spellAttackBonus: spellbook.spellAttackBonus,
-      slots: spellbook.slots,
-    },
-    spellbookEntries: {
-      cantrips: spellbook.cantrips,
-      spells: spellbook.spells,
-    },
-    inventoryItems: inventory.items,
-    attacks: character.attacks,
-    portraitUrl: character.info.portraitUrl,
-    featuresText: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n\n'),
-    raceFeatures: character.raceFeatures,
-    classFeatures: character.classFeatures,
-    backgroundFeatures: character.backgroundFeatures,
-  } satisfies CharacterNotesBlob)
+    const allSpells = [...spellbook.cantrips.map((s) => ({ ...s, level: 0 })), ...spellbook.spells]
+    const normalizedInventory = inventory.items.map((item) => ({
+      ...item,
+      quantity: Number.isFinite(item.quantity) ? Math.max(0, Math.floor(item.quantity)) : 0,
+    }))
 
     const { error: attacksDeleteError } = await supabase.from('attacks').delete().eq('character_id', characterId)
     if (attacksDeleteError) throw attacksDeleteError
@@ -645,7 +626,7 @@ export async function listPlayerCharacters() {
   const results = await Promise.all((players ?? []).map(async (player: any) => {
     const row = Array.isArray(player.characters) ? player.characters[0] : player.characters
     if (!row) {
-      return { username: player.username, character: emptyCharacter, activity: player.activity_status }
+      return { id: player.id, username: player.username, character: emptyCharacter, activity: player.activity_status }
     }
 
     const blob = await getCharacterBlob(row.id)
@@ -696,6 +677,7 @@ export async function listPlayerCharacters() {
     character.passivePerception = 10 + getPerceptionModifier(character)
 
     return {
+      id: player.id,
       username: player.username,
       character,
       activity: Array.isArray(player.activity_status) ? player.activity_status[0] : player.activity_status,
