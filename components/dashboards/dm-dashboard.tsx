@@ -328,7 +328,9 @@ export const DMDashboard = memo(function DMDashboard() {
     const maxTurnOrder = fightEntities.reduce((max, entity) => Math.max(max, entity.turn_order ?? 0), 0)
     const nextTurnOrder = maxTurnOrder + 1
     const rotated = [...rest, { ...current, turn_order: nextTurnOrder }]
-    setFightEntities(rotated)
+    window.setTimeout(() => {
+      setFightEntities(rotated)
+    }, 120)
     setIsAdvancingTurn(true)
     try {
       await moveFightTurnToEnd(current.id, nextTurnOrder)
@@ -706,10 +708,10 @@ function DMFightPanel({
             <Card
               key={entity.id}
               className={`transition-all ${
-                entity.id === activeEntityId ? 'border-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.45)]' : ''
+                entity.id === activeEntityId ? 'border-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.45)] scale-[1.01]' : ''
               } ${isDownedEntity(entity) ? 'border-destructive/40 bg-destructive/5' : ''}`}
             >
-              <CardContent className={`py-2.5 transition-colors ${activePulseId === entity.id ? 'bg-primary/15' : ''}`}>
+              <CardContent className={`py-2.5 transition-all duration-300 ease-out ${activePulseId === entity.id ? 'bg-primary/15' : ''}`}>
                 <div
                   ref={(node) => { rowRefs.current[entity.id] = node }}
                   className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 scroll-mt-24"
@@ -734,20 +736,38 @@ function DMFightPanel({
                       <span>{labels.initiative}: <span className="font-semibold text-foreground">{entity.initiative ?? '—'}</span></span>
                       <span>{labels.ac}: <span className="font-semibold text-foreground">{entity.notes?.startsWith('ac:') ? entity.notes.replace('ac:', '') : '—'}</span></span>
                     </div>
-                    <div className="mt-1.5 flex items-center justify-end gap-1">
-                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 5))} disabled={pendingHpIds.includes(entity.id)}>-5</Button>
-                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 1))} disabled={pendingHpIds.includes(entity.id)}>-1</Button>
+                    <div className="mt-2 w-full max-w-[280px] ml-auto">
+                      <div className="mb-1.5 flex items-center justify-between text-[11px]">
+                        <span className="text-muted-foreground">{labels.hp}</span>
+                        <span className="font-semibold text-foreground">{entity.current_hp ?? 0} / {entity.max_hp ?? 0}</span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            (entity.current_hp ?? 0) <= 0 ? 'bg-destructive' : 'bg-primary'
+                          }`}
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              Math.max(0, Math.round(((entity.current_hp ?? 0) / Math.max(1, entity.max_hp ?? 1)) * 100))
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-1.5 flex items-center justify-end gap-1.5">
+                      <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 5))} disabled={pendingHpIds.includes(entity.id)}>-5</Button>
+                      <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 1))} disabled={pendingHpIds.includes(entity.id)}>-1</Button>
                       <input
                         type="number"
                         inputMode="numeric"
                         value={entity.current_hp ?? 0}
                         onChange={(e) => onSetEntityHp(entity.id, Number.parseInt(e.target.value, 10) || 0)}
-                        className="h-6 w-14 rounded border border-border bg-background px-1 text-center text-xs font-semibold"
+                        className="h-6 w-16 rounded-md border border-border bg-background px-1 text-center text-xs font-semibold"
                         aria-label={labels.hpCurrent}
                       />
-                      <span className="text-[11px] text-muted-foreground">/ {entity.max_hp ?? 0}</span>
-                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 1)} disabled={pendingHpIds.includes(entity.id)}>+1</Button>
-                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 5)} disabled={pendingHpIds.includes(entity.id)}>+5</Button>
+                      <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 1)} disabled={pendingHpIds.includes(entity.id)}>+1</Button>
+                      <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 5)} disabled={pendingHpIds.includes(entity.id)}>+5</Button>
                     </div>
                     <div className="mt-1 flex justify-end">
                       <Button
