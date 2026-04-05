@@ -203,6 +203,18 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       .on(
         'postgres_changes',
         {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'fights',
+          filter: 'status=eq.collecting_initiative',
+        },
+        () => {
+          void refreshInitiativePrompt()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
           event: '*',
           schema: 'public',
           table: 'fight_initiative_requests',

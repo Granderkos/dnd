@@ -85,6 +85,7 @@ export async function getActiveFight(campaignId: string) {
     .select('id, campaign_id, is_active, status, created_at')
     .eq('campaign_id', campaignId)
     .eq('is_active', true)
+    .neq('status', 'ended')
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -402,9 +403,10 @@ export async function listFightEntities(fightId: string) {
 }
 
 export async function setFightStatus(fightId: string, status: FightStatus) {
+  const isActive = status === 'ended' ? false : true
   const { data, error } = await supabase
     .from('fights')
-    .update({ status })
+    .update({ status, is_active: isActive })
     .eq('id', fightId)
     .select('id, campaign_id, is_active, status, created_at')
     .single()
@@ -457,18 +459,20 @@ export async function preparePlayerEntitiesForFight(fightId: string) {
 
 export async function startCombatForCampaign(campaignId: string) {
   const fight = await createOrGetDraftFight(campaignId)
-  const [{ data: playerCharacters, error: playersError }, { error: clearPlayerEntitiesError }] = await Promise.all([
+  const [{ data: playerProfiles, error: playersError }, { error: clearPlayerEntitiesError }, { error: clearRequestsError }] = await Promise.all([
     supabase
-      .from('characters')
-      .select('user_id')
-      .not('user_id', 'is', null),
+      .from('profiles')
+      .select('id')
+      .eq('role', 'player'),
     supabase.from('fight_entities').delete().eq('fight_id', fight.id).eq('entity_type', 'player'),
+    supabase.from('fight_initiative_requests').delete().eq('fight_id', fight.id),
   ])
 
   if (playersError) throw playersError
   if (clearPlayerEntitiesError) throw clearPlayerEntitiesError
+  if (clearRequestsError) throw clearRequestsError
 
-  const uniquePlayerIds = [...new Set((playerCharacters ?? []).map((character) => character.user_id).filter(Boolean))]
+  const uniquePlayerIds = [...new Set((playerProfiles ?? []).map((profile) => profile.id).filter(Boolean))]
   const requests = uniquePlayerIds.map((playerId) => ({
     fight_id: fight.id,
     user_id: playerId,
@@ -480,7 +484,7 @@ export async function startCombatForCampaign(campaignId: string) {
   if (requests.length > 0) {
     const { error: requestError } = await supabase
       .from('fight_initiative_requests')
-      .upsert(requests, { onConflict: 'fight_id,user_id' })
+      .insert(requests)
     if (requestError) throw requestError
   }
 
@@ -492,6 +496,21 @@ export async function endCombatForFight(fightId: string) {
   const result = await setFightStatus(fightId, 'ended')
   await supabase.from('fight_initiative_requests').delete().eq('fight_id', fightId)
   return result
+}
+
+export async function finalizeInitiativeCollectionForFight(fightId: string) {
+  const { count, error: pendingCountError } = await supabase
+    .from('fight_initiative_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('fight_id', fightId)
+    .eq('status', 'pending')
+
+  if (pendingCountError) throw pendingCountError
+  if ((count ?? 0) > 0) return false
+
+  await setFightStatus(fightId, 'active')
+  await sortInitiative(fightId)
+  return true
 }
 
 export async function getPendingInitiativeForUser(userId: string) {
@@ -507,10 +526,22 @@ export async function getPendingInitiativeForUser(userId: string) {
   if (error) throw error
   if (!data) return null
 
+  const { data: fight, error: fightError } = await supabase
+    .from('fights')
+    .select('id, is_active, status')
+    .eq('id', data.fight_id)
+    .maybeSingle()
+
+  if (fightError) throw fightError
+  if (!fight || !fight.is_active || fight.status !== 'collecting_initiative') {
+    return null
+  }
+
   const { data: character, error: characterError } = await supabase
     .from('characters')
     .select('dex_score')
     .eq('user_id', userId)
+    .limit(1)
     .maybeSingle()
 
   if (characterError) throw characterError
@@ -536,9 +567,11 @@ export async function submitPlayerInitiative(userId: string, requestId: string, 
     .from('characters')
     .select('id, name, dex_score, hp_current, hp_max')
     .eq('user_id', userId)
-    .single()
+    .limit(1)
+    .maybeSingle()
 
   if (characterError) throw characterError
+  if (!character) throw new Error('Character not found for initiative submission.')
 
   const initiativeMod = abilityModifier(character.dex_score ?? 10)
   const finalInitiative = roll + initiativeMod
@@ -591,19 +624,6 @@ export async function submitPlayerInitiative(userId: string, requestId: string, 
     .eq('id', requestId)
   if (updateRequestError) throw updateRequestError
 
-  const { count, error: pendingCountError } = await supabase
-    .from('fight_initiative_requests')
-    .select('id', { count: 'exact', head: true })
-    .eq('fight_id', request.fight_id)
-    .eq('status', 'pending')
-
-  if (pendingCountError) throw pendingCountError
-
-  if ((count ?? 0) === 0) {
-    await setFightStatus(request.fight_id, 'active')
-  }
-
-  await sortInitiative(request.fight_id)
   return finalInitiative
 }
 
