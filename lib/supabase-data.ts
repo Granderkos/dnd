@@ -645,7 +645,7 @@ export async function listPlayerCharacters() {
   const results = await Promise.all((players ?? []).map(async (player: any) => {
     const row = Array.isArray(player.characters) ? player.characters[0] : player.characters
     if (!row) {
-      return { username: player.username, character: emptyCharacter, activity: player.activity_status }
+      return { id: player.id, username: player.username, character: emptyCharacter, activity: player.activity_status }
     }
 
     const blob = await getCharacterBlob(row.id)
@@ -696,6 +696,7 @@ export async function listPlayerCharacters() {
     character.passivePerception = 10 + getPerceptionModifier(character)
 
     return {
+      id: player.id,
       username: player.username,
       character,
       activity: Array.isArray(player.activity_status) ? player.activity_status[0] : player.activity_status,

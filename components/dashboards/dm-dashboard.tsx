@@ -31,6 +31,7 @@ import { useI18n } from '@/lib/i18n'
 import { supabase } from '@/lib/supabase'
 
 interface PlayerCharacterData {
+  id: string
   username: string
   character: Character
   activity?: { last_seen?: string; current_page?: string; is_online?: boolean } | null
@@ -154,17 +155,6 @@ export const DMDashboard = memo(function DMDashboard() {
   }, [getAllPlayerCharacters])
 
   useEffect(() => {
-    let active = true
-    const reloadPlayers = async () => {
-      try {
-        const playersData = await getAllPlayerCharacters()
-        if (!active) return
-        setPlayers(playersData as PlayerCharacterData[])
-      } catch (e) {
-        console.error('Failed to refresh player activity', e)
-      }
-    }
-
     const channel = supabase
       .channel('dm-player-activity')
       .on(
@@ -174,17 +164,34 @@ export const DMDashboard = memo(function DMDashboard() {
           schema: 'public',
           table: 'activity_status',
         },
-        () => {
-          void reloadPlayers()
+        (payload) => {
+          const next = payload.new as { user_id?: string; last_seen?: string; current_page?: string; is_online?: boolean } | null
+          const userId = next?.user_id
+          if (!userId) return
+          setPlayers((prev) => {
+            let changed = false
+            const updated = prev.map((player) => {
+              if (player.id !== userId) return player
+              changed = true
+              return {
+                ...player,
+                activity: {
+                  last_seen: next.last_seen,
+                  current_page: next.current_page,
+                  is_online: next.is_online,
+                },
+              }
+            })
+            return changed ? updated : prev
+          })
         }
       )
       .subscribe()
 
     return () => {
-      active = false
       void supabase.removeChannel(channel)
     }
-  }, [getAllPlayerCharacters])
+  }, [])
 
   const loadFightState = async (showLoader = true) => {
     if (!user?.id) return
