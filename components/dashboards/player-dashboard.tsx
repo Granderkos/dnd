@@ -165,25 +165,43 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const refreshInitiativePrompt = useCallback(async () => {
     if (!user?.id) return
     try {
+      console.info('[ui:initiative] refresh prompt start', { userId: user.id })
       const pending = await getPendingInitiativeForUser(user.id)
       if (!pending) {
+        console.info('[ui:initiative] no pending request, clearing modal', { userId: user.id })
         setInitiativePrompt(null)
         setInitiativeRollInput('')
         setInitiativeError(null)
         return
       }
+      console.info('[ui:initiative] pending request found, opening modal', {
+        userId: user.id,
+        requestId: pending.requestId,
+        fightId: pending.fightId,
+        initiativeMod: pending.initiativeMod,
+      })
       setInitiativePrompt({ requestId: pending.requestId, initiativeMod: pending.initiativeMod })
       setInitiativeError(null)
     } catch (error) {
       const message = formatErrorMessage(error, 'Failed to check initiative request.')
+      console.error('[ui:initiative] refresh failed', { userId: user.id, error, message })
       setInitiativeError(message)
     }
   }, [user?.id])
 
+  const scheduleInitiativeRefreshBurst = useCallback(() => {
+    const retryDelays = [0, 350, 1000, 2500]
+    retryDelays.forEach((delay) => {
+      window.setTimeout(() => {
+        void refreshInitiativePrompt()
+      }, delay)
+    })
+  }, [refreshInitiativePrompt])
+
   useEffect(() => {
-    if (!isLoaded || !user?.id) return
+    if (!user?.id) return
     void refreshInitiativePrompt()
-  }, [isLoaded, refreshInitiativePrompt, user?.id])
+  }, [refreshInitiativePrompt, user?.id])
 
   useEffect(() => {
     if (!user?.id) return
@@ -203,25 +221,40 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       .on(
         'postgres_changes',
         {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'fights',
+          filter: 'status=eq.collecting_initiative',
+        },
+        () => {
+          console.info('[ui:initiative] fights UPDATE event -> refresh prompt', { userId: user.id })
+          scheduleInitiativeRefreshBurst()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
           event: '*',
           schema: 'public',
           table: 'fight_initiative_requests',
           filter: `user_id=eq.${user.id}`,
         },
         () => {
-          void refreshInitiativePrompt()
+          console.info('[ui:initiative] fight_initiative_requests event -> refresh prompt', { userId: user.id })
+          scheduleInitiativeRefreshBurst()
         }
       )
       .subscribe((status) => {
+        console.info('[ui:initiative] subscription status', { userId: user.id, status })
         if (status === 'SUBSCRIBED') {
-          void refreshInitiativePrompt()
+          scheduleInitiativeRefreshBurst()
         }
       })
 
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [refreshInitiativePrompt, user?.id])
+  }, [scheduleInitiativeRefreshBurst, user?.id])
 
   const flushSave = useDebouncedRemoteSave(
     { character, spellbook, inventory, notes },
@@ -342,12 +375,15 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
                 }
                 setIsSubmittingInitiative(true)
                 try {
+                  console.info('[ui:initiative] submit clicked', { userId: user.id, requestId: initiativePrompt.requestId, roll: parsed })
                   await submitPlayerInitiative(user.id, initiativePrompt.requestId, parsed)
                   setInitiativePrompt(null)
                   setInitiativeRollInput('')
                   setInitiativeError(null)
+                  console.info('[ui:initiative] submit completed, modal closed', { userId: user.id, requestId: initiativePrompt.requestId })
                 } catch (error) {
                   const message = formatErrorMessage(error, 'Failed to submit initiative.')
+                  console.error('[ui:initiative] submit failed', { userId: user.id, requestId: initiativePrompt.requestId, error, message })
                   setInitiativeError(message)
                 } finally {
                   setIsSubmittingInitiative(false)
