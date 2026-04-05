@@ -205,17 +205,26 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const refreshInitiativePrompt = useCallback(async () => {
     if (!user?.id) return
     try {
+      console.info('[ui:initiative] refresh prompt start', { userId: user.id })
       const pending = await getPendingInitiativeForUser(user.id)
       if (!pending) {
+        console.info('[ui:initiative] no pending request, clearing modal', { userId: user.id })
         setInitiativePrompt(null)
         setInitiativeRollInput('')
         setInitiativeError(null)
         return
       }
+      console.info('[ui:initiative] pending request found, opening modal', {
+        userId: user.id,
+        requestId: pending.requestId,
+        fightId: pending.fightId,
+        initiativeMod: pending.initiativeMod,
+      })
       setInitiativePrompt({ requestId: pending.requestId, initiativeMod: pending.initiativeMod })
       setInitiativeError(null)
     } catch (error) {
       const message = formatErrorMessage(error, 'Failed to check initiative request.')
+      console.error('[ui:initiative] refresh failed', { userId: user.id, error, message })
       setInitiativeError(message)
     }
   }, [user?.id])
@@ -306,6 +315,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         }
       )
       .subscribe((status) => {
+        console.info('[ui:initiative] subscription status', { userId: user.id, status })
         if (status === 'SUBSCRIBED') {
           scheduleInitiativeRefreshBurst()
         }
@@ -640,12 +650,15 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
                 }
                 setIsSubmittingInitiative(true)
                 try {
+                  console.info('[ui:initiative] submit clicked', { userId: user.id, requestId: initiativePrompt.requestId, roll: parsed })
                   await submitPlayerInitiative(user.id, initiativePrompt.requestId, parsed)
                   setInitiativePrompt(null)
                   setInitiativeRollInput('')
                   setInitiativeError(null)
+                  console.info('[ui:initiative] submit completed, modal closed', { userId: user.id, requestId: initiativePrompt.requestId })
                 } catch (error) {
                   const message = formatErrorMessage(error, 'Failed to submit initiative.')
+                  console.error('[ui:initiative] submit failed', { userId: user.id, requestId: initiativePrompt.requestId, error, message })
                   setInitiativeError(message)
                 } finally {
                   setIsSubmittingInitiative(false)
