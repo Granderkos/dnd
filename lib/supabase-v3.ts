@@ -526,6 +526,17 @@ export async function getPendingInitiativeForUser(userId: string) {
   if (error) throw error
   if (!data) return null
 
+  const { data: fight, error: fightError } = await supabase
+    .from('fights')
+    .select('id, is_active, status')
+    .eq('id', data.fight_id)
+    .maybeSingle()
+
+  if (fightError) throw fightError
+  if (!fight || !fight.is_active || fight.status !== 'collecting_initiative') {
+    return null
+  }
+
   const { data: character, error: characterError } = await supabase
     .from('characters')
     .select('dex_score')
