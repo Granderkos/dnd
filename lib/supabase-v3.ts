@@ -465,9 +465,25 @@ export async function startCombatForCampaign(campaignId: string) {
       .select('id')
       .neq('id', campaignId),
     supabase
-      .from('characters')
-      .select('user_id')
-      .not('user_id', 'is', null),
+      .from('profiles')
+      .select('id')
+      .neq('id', campaignId),
+    supabase
+      .from('profiles')
+      .select('id')
+      .eq('role', 'player'),
+    supabase
+      .from('profiles')
+      .select('id')
+      .eq('role', 'player'),
+    supabase
+      .from('profiles')
+      .select('id')
+      .eq('role', 'player'),
+    supabase
+      .from('profiles')
+      .select('id')
+      .eq('role', 'player'),
     supabase.from('fight_entities').delete().eq('fight_id', fight.id).eq('entity_type', 'player'),
     supabase.from('fight_initiative_requests').delete().eq('fight_id', fight.id),
   ])
@@ -556,6 +572,17 @@ export async function getPendingInitiativeForUser(_userId: string) {
   if (error) throw error
   if (!data) {
     console.info('[initiative:pending] no pending request visible for current auth user', { requestedUserId: _userId })
+    return null
+  }
+
+  const { data: fight, error: fightError } = await supabase
+    .from('fights')
+    .select('id, is_active, status')
+    .eq('id', data.fight_id)
+    .maybeSingle()
+
+  if (fightError) throw fightError
+  if (!fight || !fight.is_active || fight.status !== 'collecting_initiative') {
     return null
   }
 
