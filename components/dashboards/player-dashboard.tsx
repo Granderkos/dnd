@@ -189,6 +189,15 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     }
   }, [user?.id])
 
+  const scheduleInitiativeRefreshBurst = useCallback(() => {
+    const retryDelays = [0, 350, 1000, 2500]
+    retryDelays.forEach((delay) => {
+      window.setTimeout(() => {
+        void refreshInitiativePrompt()
+      }, delay)
+    })
+  }, [refreshInitiativePrompt])
+
   useEffect(() => {
     if (!user?.id) return
     void refreshInitiativePrompt()
@@ -219,7 +228,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         },
         () => {
           console.info('[ui:initiative] fights UPDATE event -> refresh prompt', { userId: user.id })
-          void refreshInitiativePrompt()
+          scheduleInitiativeRefreshBurst()
         }
       )
       .on(
@@ -232,23 +241,20 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         },
         () => {
           console.info('[ui:initiative] fight_initiative_requests event -> refresh prompt', { userId: user.id })
-          void refreshInitiativePrompt()
+          scheduleInitiativeRefreshBurst()
         }
       )
       .subscribe((status) => {
         console.info('[ui:initiative] subscription status', { userId: user.id, status })
         if (status === 'SUBSCRIBED') {
-          void refreshInitiativePrompt()
-          window.setTimeout(() => {
-            void refreshInitiativePrompt()
-          }, 500)
+          scheduleInitiativeRefreshBurst()
         }
       })
 
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [refreshInitiativePrompt, user?.id])
+  }, [scheduleInitiativeRefreshBurst, user?.id])
 
   const flushSave = useDebouncedRemoteSave(
     { character, spellbook, inventory, notes },

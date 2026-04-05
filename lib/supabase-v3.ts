@@ -471,6 +471,10 @@ export async function startCombatForCampaign(campaignId: string) {
     supabase
       .from('profiles')
       .select('id')
+      .neq('id', campaignId),
+    supabase
+      .from('profiles')
+      .select('id')
       .eq('role', 'player'),
     supabase
       .from('profiles')
@@ -572,17 +576,6 @@ export async function getPendingInitiativeForUser(_userId: string) {
   if (error) throw error
   if (!data) {
     console.info('[initiative:pending] no pending request visible for current auth user', { requestedUserId: _userId })
-    return null
-  }
-
-  const { data: fight, error: fightError } = await supabase
-    .from('fights')
-    .select('id, is_active, status')
-    .eq('id', data.fight_id)
-    .maybeSingle()
-
-  if (fightError) throw fightError
-  if (!fight || !fight.is_active || fight.status !== 'collecting_initiative') {
     return null
   }
 
