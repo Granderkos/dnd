@@ -27,7 +27,6 @@ import {
   assignCompanion,
   createCompanionEntry,
   getPendingInitiativeForUser,
-  listCompanionEntries,
   listCompanionsForUser,
   listCreatureCompendiumForUser,
   submitPlayerInitiative,
@@ -160,10 +159,8 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [isSubmittingInitiative, setIsSubmittingInitiative] = useState(false)
   const [initiativeError, setInitiativeError] = useState<string | null>(null)
   const [creatureCompendium, setCreatureCompendium] = useState<Array<{ entry_id: string; is_unlocked: boolean; entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'> }>>([])
-  const [companionEntries, setCompanionEntries] = useState<Array<Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'>>>([])
   const [companions, setCompanions] = useState<Array<CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }>>([])
   const [companionCharacterId, setCompanionCharacterId] = useState<string | null>(null)
-  const [selectedCompanionEntryId, setSelectedCompanionEntryId] = useState('')
   const [compendiumSearch, setCompendiumSearch] = useState('')
   const [isCreateCompanionOpen, setIsCreateCompanionOpen] = useState(false)
   const [customCompanionName, setCustomCompanionName] = useState('')
@@ -248,9 +245,8 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     setIsCompendiumLoading(true)
     setCompendiumError(null)
     try {
-      const [creatures, allCompanionEntries, companionState] = await Promise.all([
+      const [creatures, companionState] = await Promise.all([
         listCreatureCompendiumForUser(user.id),
-        listCompanionEntries(),
         listCompanionsForUser(user.id),
       ])
       console.info('[compendium:player] refresh success', {
@@ -259,7 +255,6 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         companions: companionState.companions.length,
       })
       setCreatureCompendium(creatures)
-      setCompanionEntries(allCompanionEntries)
       setCompanions(companionState.companions)
       setCompanionCharacterId(companionState.characterId)
     } catch (error) {
@@ -424,6 +419,42 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
           <div className="mx-auto w-full max-w-4xl space-y-6">
             <section className="space-y-3">
               <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">{t('compendium.companionsTitle')}</h2>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setIsCreateCompanionOpen(true)}>
+                    <Plus className="mr-1 size-4" />
+                    {t('compendium.addCustom')}
+                  </Button>
+                </div>
+              </div>
+              {companions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t('compendium.emptyCompanions')}</p>
+              ) : (
+                <div className="space-y-2">
+                  {companions.map((companion) => (
+                    <div key={companion.id} className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
+                      <div>
+                        <p className="font-medium">{companion.name_override || companion.entry?.name || t('compendium.unnamedCompanion')}</p>
+                        <p className="text-xs text-muted-foreground">{companion.kind}</p>
+                      </div>
+                      <Button
+                        variant={companion.is_active ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={async () => {
+                          await activateCompanion(companion.id, !companion.is_active)
+                          await refreshCompendium()
+                        }}
+                      >
+                        {companion.is_active ? t('compendium.active') : t('compendium.inactive')}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">{t('compendium.creaturesTitle')}</h2>
                 <Button variant="outline" size="sm" onClick={() => void refreshCompendium()}>{t('fight.refresh')}</Button>
               </div>
@@ -458,57 +489,6 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
               </div>
             </section>
 
-            <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">{t('compendium.companionsTitle')}</h2>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setIsCreateCompanionOpen(true)}>
-                    <Plus className="mr-1 size-4" />
-                    {t('compendium.addCustom')}
-                  </Button>
-                </div>
-              </div>
-              <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3 sm:flex-row sm:items-center">
-                <select className="h-9 rounded-md border border-input bg-background px-3 text-sm" value={selectedCompanionEntryId} onChange={(e) => setSelectedCompanionEntryId(e.target.value)}>
-                  <option value="">{t('compendium.chooseCompanion')}</option>
-                  {companionEntries.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
-                </select>
-                <Button size="sm" onClick={async () => {
-                  if (!companionCharacterId || !selectedCompanionEntryId) return
-                  const selected = companionEntries.find((entry) => entry.id === selectedCompanionEntryId)
-                  const kind = (selected?.subtype ?? 'pet') as CompanionKind
-                  await assignCompanion({ characterId: companionCharacterId, entryId: selectedCompanionEntryId, kind })
-                  setSelectedCompanionEntryId('')
-                  await refreshCompendium()
-                }} disabled={!companionCharacterId || !selectedCompanionEntryId}>
-                  {t('compendium.assignCompanion')}
-                </Button>
-              </div>
-              {companions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{t('compendium.emptyCompanions')}</p>
-              ) : (
-                <div className="space-y-2">
-                  {companions.map((companion) => (
-                    <div key={companion.id} className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
-                      <div>
-                        <p className="font-medium">{companion.name_override || companion.entry?.name || t('compendium.unnamedCompanion')}</p>
-                        <p className="text-xs text-muted-foreground">{companion.kind}</p>
-                      </div>
-                      <Button
-                        variant={companion.is_active ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={async () => {
-                          await activateCompanion(companion.id, !companion.is_active)
-                          await refreshCompendium()
-                        }}
-                      >
-                        {companion.is_active ? t('compendium.active') : t('compendium.inactive')}
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
           </div>
         </TabsContent>
       </Tabs>
