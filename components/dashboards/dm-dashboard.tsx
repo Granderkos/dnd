@@ -21,15 +21,17 @@ import { useAuth } from '@/lib/auth-context'
 import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
-import { clearFightEntities, endCombatForFight, getActiveFight, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, startCombatForCampaign } from '@/lib/supabase-v3'
+import { clearFightEntities, endCombatForFight, finalizeInitiativeCollectionForFight, getActiveFight, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, startCombatForCampaign } from '@/lib/supabase-v3'
 import type { FightStatus } from '@/lib/v3-types'
 import type { FightEntity } from '@/lib/v3-types'
 import { Character, calculateModifier, formatModifier } from '@/lib/dnd-types'
 import { AppControls } from '@/components/app/app-controls'
 import { APP_VERSION } from '@/lib/app-config'
 import { useI18n } from '@/lib/i18n'
+import { supabase } from '@/lib/supabase'
 
 interface PlayerCharacterData {
+  id: string
   username: string
   character: Character
   activity?: { last_seen?: string; current_page?: string; is_online?: boolean } | null
@@ -123,15 +125,21 @@ export const DMDashboard = memo(function DMDashboard() {
 
   useEffect(() => {
     let mounted = true
-    const load = async () => {
+    const loadPlayers = async () => {
       try {
-        const [playersData, notesData] = await Promise.all([
-          getAllPlayerCharacters(),
-          loadDmNotes(),
-        ])
+        const playersData = await getAllPlayerCharacters()
         if (!mounted) return
         setPlayers(playersData as PlayerCharacterData[])
+      } catch (e) {
+        console.error('Failed to load DM players', e)
+      }
+    }
+    const load = async () => {
+      try {
+        const notesData = await loadDmNotes()
+        if (!mounted) return
         setDmNotes(notesData)
+        void loadPlayers()
       } catch (e) {
         console.error('Failed to load DM data', e)
       } finally {
@@ -144,9 +152,48 @@ export const DMDashboard = memo(function DMDashboard() {
     }
   }, [getAllPlayerCharacters])
 
-  const loadFightState = async () => {
+  useEffect(() => {
+    const channel = supabase
+      .channel('dm-player-activity')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'activity_status',
+        },
+        (payload) => {
+          const next = payload.new as { user_id?: string; last_seen?: string; current_page?: string; is_online?: boolean } | null
+          const userId = next?.user_id
+          if (!userId) return
+          setPlayers((prev) => {
+            let changed = false
+            const updated = prev.map((player) => {
+              if (player.id !== userId) return player
+              changed = true
+              return {
+                ...player,
+                activity: {
+                  last_seen: next.last_seen,
+                  current_page: next.current_page,
+                  is_online: next.is_online,
+                },
+              }
+            })
+            return changed ? updated : prev
+          })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [])
+
+  const loadFightState = async (showLoader = true) => {
     if (!user?.id) return
-    setIsLoadingFight(true)
+    if (showLoader) setIsLoadingFight(true)
     setFightError(null)
     try {
       const activeFight = await getActiveFight(user.id)
@@ -167,7 +214,7 @@ export const DMDashboard = memo(function DMDashboard() {
       const message = formatErrorMessage(e, t('common.unknownError'))
       setFightError(message)
     } finally {
-      setIsLoadingFight(false)
+      if (showLoader) setIsLoadingFight(false)
     }
   }
 
@@ -176,6 +223,65 @@ export const DMDashboard = memo(function DMDashboard() {
       void loadFightState()
     }
   }, [activeTab, user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    let channel = supabase
+      .channel(`dm-fight-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'fight_initiative_requests',
+        },
+        () => {
+          if (!fightId) return
+          void (async () => {
+            try {
+              await finalizeInitiativeCollectionForFight(fightId)
+            } catch {
+              // Ignore race conditions from simultaneous DM tabs.
+            } finally {
+              await loadFightState(false)
+            }
+          })()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'fights',
+          filter: `campaign_id=eq.${user.id}`,
+        },
+        () => {
+          void loadFightState(false)
+        }
+      )
+
+    if (fightId) {
+      channel = channel.on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'fight_entities',
+          filter: `fight_id=eq.${fightId}`,
+        },
+        () => {
+          void loadFightState(false)
+        }
+      )
+    }
+
+    channel = channel.subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [fightId, user?.id])
 
   useDebouncedRemoteText(dmNotes, 3000, isLoaded && !!user?.id, async (value) => {
     if (!user?.id) return
@@ -278,7 +384,7 @@ export const DMDashboard = memo(function DMDashboard() {
       const fight = await startCombatForCampaign(user.id)
       setFightId(fight.id)
       setFightStatus('collecting_initiative')
-      void loadFightState()
+      void loadFightState(false)
     } catch (error) {
       console.error('Failed to start combat', error)
       setFightError(formatErrorMessage(error, 'Failed to start combat'))
@@ -292,7 +398,9 @@ export const DMDashboard = memo(function DMDashboard() {
     setIsEndingCombat(true)
     try {
       await endCombatForFight(fightId)
-      setFightStatus('ended')
+      setFightStatus('draft')
+      setFightId(null)
+      setFightEntities([])
     } catch (error) {
       setFightError(formatErrorMessage(error, t('common.unknownError')))
     } finally {
@@ -523,7 +631,9 @@ function DMFightPanel({
     ? labels.noEntitiesCollecting
     : fightStatus === 'draft'
       ? labels.noEntitiesDraft
-      : labels.noEntities
+      : fightStatus === 'ended'
+        ? labels.noActive
+        : labels.noEntities
   const fightStateLabel = fightStatus === 'active'
     ? labels.stateActive
     : fightStatus === 'collecting_initiative'
