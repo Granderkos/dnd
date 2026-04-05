@@ -313,11 +313,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     if (user) {
-      try {
-        await setOffline(user.id)
-      } catch (e) {
+      void setOffline(user.id).catch((e) => {
         console.error('Failed to set offline during logout', e)
-      }
+      })
     }
 
     const { error } = await supabase.auth.signOut({ scope: 'local' })

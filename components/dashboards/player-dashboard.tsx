@@ -181,9 +181,9 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   }, [user?.id])
 
   useEffect(() => {
-    if (!isLoaded || !user?.id) return
+    if (!user?.id) return
     void refreshInitiativePrompt()
-  }, [isLoaded, refreshInitiativePrompt, user?.id])
+  }, [refreshInitiativePrompt, user?.id])
 
   useEffect(() => {
     if (!user?.id) return
@@ -227,6 +227,9 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           void refreshInitiativePrompt()
+          window.setTimeout(() => {
+            void refreshInitiativePrompt()
+          }, 500)
         }
       })
 

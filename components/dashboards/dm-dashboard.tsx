@@ -136,12 +136,10 @@ export const DMDashboard = memo(function DMDashboard() {
     }
     const load = async () => {
       try {
-        const [notesData] = await Promise.all([
-          loadDmNotes(),
-          loadPlayers(),
-        ])
+        const notesData = await loadDmNotes()
         if (!mounted) return
         setDmNotes(notesData)
+        void loadPlayers()
       } catch (e) {
         console.error('Failed to load DM data', e)
       } finally {
