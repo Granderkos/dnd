@@ -330,7 +330,7 @@ export const DMDashboard = memo(function DMDashboard() {
     const rotated = [...rest, { ...current, turn_order: nextTurnOrder }]
     window.setTimeout(() => {
       setFightEntities(rotated)
-    }, 120)
+    }, 180)
     setIsAdvancingTurn(true)
     try {
       await moveFightTurnToEnd(current.id, nextTurnOrder)
@@ -627,7 +627,6 @@ function DMFightPanel({
     clearConfirmDescription: string
   }
 }) {
-  const [activePulseId, setActivePulseId] = useState<string | null>(null)
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   const activeEntity = entities.find((entity) => !isDownedEntity(entity)) ?? null
@@ -650,10 +649,7 @@ function DMFightPanel({
 
   useEffect(() => {
     if (!activeEntityId) return
-    setActivePulseId(activeEntityId)
     rowRefs.current[activeEntityId]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    const timeout = window.setTimeout(() => setActivePulseId((current) => (current === activeEntityId ? null : current)), 750)
-    return () => window.clearTimeout(timeout)
   }, [activeEntityId])
 
   if (isLoading) {
@@ -707,11 +703,13 @@ function DMFightPanel({
           {entities.map((entity, index) => (
             <Card
               key={entity.id}
-              className={`transition-all ${
-                entity.id === activeEntityId ? 'border-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.45)] scale-[1.01]' : ''
+              className={`transition-all duration-500 ease-out ${
+                entity.id === activeEntityId
+                  ? 'border-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.45)] scale-100'
+                  : 'scale-[0.98] opacity-95'
               } ${isDownedEntity(entity) ? 'border-destructive/40 bg-destructive/5' : ''}`}
             >
-              <CardContent className={`py-2.5 transition-all duration-300 ease-out ${activePulseId === entity.id ? 'bg-primary/15' : ''}`}>
+              <CardContent className="py-2.5 transition-all duration-500 ease-out">
                 <div
                   ref={(node) => { rowRefs.current[entity.id] = node }}
                   className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 scroll-mt-24"
@@ -755,9 +753,11 @@ function DMFightPanel({
                         />
                       </div>
                     </div>
-                    <div className="mt-1.5 flex items-center justify-end gap-1.5">
-                      <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 5))} disabled={pendingHpIds.includes(entity.id)}>-5</Button>
-                      <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 1))} disabled={pendingHpIds.includes(entity.id)}>-1</Button>
+                    <div className="mt-1.5 flex items-center justify-end gap-2">
+                      <div className="flex items-center rounded-md border border-border bg-background/70 p-0.5">
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 5))} disabled={pendingHpIds.includes(entity.id)}>-5</Button>
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 1))} disabled={pendingHpIds.includes(entity.id)}>-1</Button>
+                      </div>
                       <input
                         type="number"
                         inputMode="numeric"
@@ -766,8 +766,10 @@ function DMFightPanel({
                         className="h-6 w-16 rounded-md border border-border bg-background px-1 text-center text-xs font-semibold"
                         aria-label={labels.hpCurrent}
                       />
-                      <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 1)} disabled={pendingHpIds.includes(entity.id)}>+1</Button>
-                      <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 5)} disabled={pendingHpIds.includes(entity.id)}>+5</Button>
+                      <div className="flex items-center rounded-md border border-border bg-background/70 p-0.5">
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-primary hover:text-primary" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 1)} disabled={pendingHpIds.includes(entity.id)}>+1</Button>
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-primary hover:text-primary" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 5)} disabled={pendingHpIds.includes(entity.id)}>+5</Button>
+                      </div>
                     </div>
                     <div className="mt-1 flex justify-end">
                       <Button
