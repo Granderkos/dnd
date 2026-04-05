@@ -60,6 +60,40 @@ export async function createCreature(input: Omit<CompendiumEntry, 'id' | 'create
   return data as CompendiumEntry
 }
 
+function createSlug(value: string) {
+  const normalized = value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return normalized || `entry-${Date.now()}`
+}
+
+export async function createCompanionEntry(input: {
+  name: string
+  kind: CompanionKind
+  description?: string
+  data?: Record<string, unknown>
+}) {
+  const slug = `${createSlug(input.name)}-${Date.now()}`
+  const { data, error } = await supabase
+    .from('compendium_entries')
+    .insert({
+      type: 'companion',
+      subtype: input.kind,
+      slug,
+      name: input.name,
+      description: input.description ?? null,
+      data: input.data ?? {},
+      is_system: false,
+    })
+    .select('id, type, subtype, slug, name, description, data')
+    .single()
+
+  if (error) throw error
+  return data as Pick<CompendiumEntry, 'id' | 'type' | 'subtype' | 'slug' | 'name' | 'description' | 'data'>
+}
+
 export async function updateCreature(id: string, patch: Partial<CompendiumEntry>) {
   const { data, error } = await supabase
     .from('compendium_entries')

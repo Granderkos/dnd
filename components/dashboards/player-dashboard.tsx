@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,6 +25,7 @@ import { loadCurrentPlayerData, saveCurrentPlayerData } from '@/lib/supabase-dat
 import {
   activateCompanion,
   assignCompanion,
+  createCompanionEntry,
   getPendingInitiativeForUser,
   listCompanionEntries,
   listCompanionsForUser,
@@ -37,7 +40,7 @@ import {
   MapSettings,
 } from '@/lib/dnd-types'
 import type { CharacterCompanion, CompanionKind, CompendiumEntry } from '@/lib/v3-types'
-import { User, BookOpen, Package, FileText, Map, LogOut, Sparkles } from 'lucide-react'
+import { User, BookOpen, Package, FileText, Map, LogOut, Sparkles, Plus } from 'lucide-react'
 import { AppControls } from '@/components/app/app-controls'
 import { APP_VERSION } from '@/lib/app-config'
 import { useI18n } from '@/lib/i18n'
@@ -129,6 +132,19 @@ function formatErrorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
+function statValue(entry: Pick<CompendiumEntry, 'data'>, key: string, fallback = '—') {
+  const value = entry.data?.[key]
+  if (typeof value === 'number') return String(value)
+  if (typeof value === 'string' && value.trim()) return value
+  return fallback
+}
+
+function normalizeList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((v) => (typeof v === 'string' ? v.trim() : '')).filter(Boolean)
+  if (typeof value === 'string') return value.split('\n').map((v) => v.trim()).filter(Boolean)
+  return []
+}
+
 export const PlayerDashboard = memo(function PlayerDashboard() {
   const { user, logout, updateCurrentPage } = useAuth()
   const { t } = useI18n()
@@ -148,6 +164,14 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [companions, setCompanions] = useState<Array<CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }>>([])
   const [companionCharacterId, setCompanionCharacterId] = useState<string | null>(null)
   const [selectedCompanionEntryId, setSelectedCompanionEntryId] = useState('')
+  const [compendiumSearch, setCompendiumSearch] = useState('')
+  const [isCreateCompanionOpen, setIsCreateCompanionOpen] = useState(false)
+  const [customCompanionName, setCustomCompanionName] = useState('')
+  const [customCompanionKind, setCustomCompanionKind] = useState<CompanionKind>('pet')
+  const [customCompanionAc, setCustomCompanionAc] = useState('')
+  const [customCompanionHp, setCustomCompanionHp] = useState('')
+  const [customCompanionSpeed, setCustomCompanionSpeed] = useState('')
+  const [customCompanionNotes, setCustomCompanionNotes] = useState('')
   const [compendiumError, setCompendiumError] = useState<string | null>(null)
   const [isCompendiumLoading, setIsCompendiumLoading] = useState(false)
   const [selectedCreature, setSelectedCreature] = useState<{ entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'>; isUnlocked: boolean } | null>(null)
@@ -316,6 +340,13 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     }
   )
 
+  const creatureRows = creatureCompendium.filter((row) => {
+    const query = compendiumSearch.trim().toLowerCase()
+    if (!query) return true
+    if (!row.is_unlocked) return false
+    return row.entry.name.toLowerCase().includes(query) || (row.entry.description ?? '').toLowerCase().includes(query)
+  })
+
   if (!isLoaded) {
     return (
       <div className="flex min-h-dvh items-center justify-center">
@@ -396,63 +427,60 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
                 <h2 className="text-lg font-semibold">{t('compendium.creaturesTitle')}</h2>
                 <Button variant="outline" size="sm" onClick={() => void refreshCompendium()}>{t('fight.refresh')}</Button>
               </div>
+              <Input
+                value={compendiumSearch}
+                onChange={(e) => setCompendiumSearch(e.target.value)}
+                placeholder={t('compendium.searchPlaceholder')}
+              />
               {compendiumError ? <p className="text-sm text-destructive">{compendiumError}</p> : null}
               {isCompendiumLoading ? <p className="text-sm text-muted-foreground">{t('common.loading')}</p> : null}
-              {creatureCompendium.length === 0 && !isCompendiumLoading ? (
+              {creatureRows.length === 0 && !isCompendiumLoading ? (
                 <p className="text-sm text-muted-foreground">{t('compendium.emptyCreatures')}</p>
               ) : null}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {creatureCompendium.map((row) => (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {creatureRows.map((row) => (
                   <button
                     key={row.entry_id}
                     type="button"
                     onClick={() => setSelectedCreature({ entry: row.entry, isUnlocked: row.is_unlocked })}
                     className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/50"
                   >
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <h3 className="font-medium">{row.is_unlocked ? row.entry.name : t('compendium.unknownName')}</h3>
+                    <div className="mb-1 flex items-center justify-between gap-1">
+                      <h3 className="truncate text-sm font-medium">{row.is_unlocked ? row.entry.name : t('compendium.unknownName')}</h3>
                       <Badge variant={row.is_unlocked ? 'default' : 'secondary'}>
                         {row.is_unlocked ? t('compendium.unlocked') : t('compendium.unknown')}
                       </Badge>
                     </div>
-                    <p className="text-xs uppercase text-muted-foreground">{row.is_unlocked ? (row.entry.subtype ?? 'creature') : '???'}</p>
-                    <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
-                      {row.is_unlocked ? (row.entry.description || t('compendium.noSummary')) : t('compendium.lockedHint')}
-                    </p>
+                    <p className="text-[11px] uppercase text-muted-foreground">{row.is_unlocked ? (row.entry.subtype ?? 'creature') : '???'}</p>
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{row.is_unlocked ? (row.entry.description || t('compendium.noSummary')) : t('compendium.lockedHint')}</p>
                   </button>
                 ))}
               </div>
             </section>
 
             <section className="space-y-3">
-              <h2 className="text-lg font-semibold">{t('compendium.companionsTitle')}</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">{t('compendium.companionsTitle')}</h2>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setIsCreateCompanionOpen(true)}>
+                    <Plus className="mr-1 size-4" />
+                    {t('compendium.addCustom')}
+                  </Button>
+                </div>
+              </div>
               <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3 sm:flex-row sm:items-center">
-                <select
-                  className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                  value={selectedCompanionEntryId}
-                  onChange={(e) => setSelectedCompanionEntryId(e.target.value)}
-                >
+                <select className="h-9 rounded-md border border-input bg-background px-3 text-sm" value={selectedCompanionEntryId} onChange={(e) => setSelectedCompanionEntryId(e.target.value)}>
                   <option value="">{t('compendium.chooseCompanion')}</option>
-                  {companionEntries.map((entry) => (
-                    <option key={entry.id} value={entry.id}>{entry.name}</option>
-                  ))}
+                  {companionEntries.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
                 </select>
-                <Button
-                  size="sm"
-                  onClick={async () => {
-                    if (!companionCharacterId || !selectedCompanionEntryId) return
-                    const selected = companionEntries.find((entry) => entry.id === selectedCompanionEntryId)
-                    const kind = (selected?.subtype ?? 'pet') as CompanionKind
-                    await assignCompanion({
-                      characterId: companionCharacterId,
-                      entryId: selectedCompanionEntryId,
-                      kind,
-                    })
-                    setSelectedCompanionEntryId('')
-                    await refreshCompendium()
-                  }}
-                  disabled={!companionCharacterId || !selectedCompanionEntryId}
-                >
+                <Button size="sm" onClick={async () => {
+                  if (!companionCharacterId || !selectedCompanionEntryId) return
+                  const selected = companionEntries.find((entry) => entry.id === selectedCompanionEntryId)
+                  const kind = (selected?.subtype ?? 'pet') as CompanionKind
+                  await assignCompanion({ characterId: companionCharacterId, entryId: selectedCompanionEntryId, kind })
+                  setSelectedCompanionEntryId('')
+                  await refreshCompendium()
+                }} disabled={!companionCharacterId || !selectedCompanionEntryId}>
                   {t('compendium.assignCompanion')}
                 </Button>
               </div>
@@ -489,7 +517,9 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>{selectedCreature?.isUnlocked ? selectedCreature.entry.name : t('compendium.unknownName')}</DrawerTitle>
-            <DrawerDescription>{selectedCreature?.isUnlocked ? (selectedCreature.entry.subtype ?? 'creature') : '???'}</DrawerDescription>
+            <DrawerDescription>
+              {selectedCreature?.isUnlocked ? `${statValue(selectedCreature.entry, 'size', 'Medium')} ${selectedCreature.entry.subtype ?? 'creature'}, ${statValue(selectedCreature.entry, 'alignment', 'Unaligned')}` : '???'}
+            </DrawerDescription>
           </DrawerHeader>
           <div className="space-y-3 px-4 pb-6">
             <img
@@ -497,12 +527,94 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
               alt={selectedCreature?.isUnlocked ? selectedCreature.entry.name : t('compendium.unknownName')}
               className="h-40 w-full rounded-md border border-border object-cover"
             />
-            <p className="text-sm text-muted-foreground">
-              {selectedCreature?.isUnlocked ? (selectedCreature.entry.description || t('compendium.noSummary')) : t('compendium.lockedHint')}
-            </p>
+            {selectedCreature?.isUnlocked ? (
+              <div className="space-y-2 rounded-md border border-border p-3 text-sm">
+                <div><span className="font-semibold">{t('compendium.stat.ac')}:</span> {statValue(selectedCreature.entry, 'ac')}</div>
+                <div><span className="font-semibold">{t('compendium.stat.hp')}:</span> {statValue(selectedCreature.entry, 'hp')}</div>
+                <div><span className="font-semibold">{t('compendium.stat.speed')}:</span> {statValue(selectedCreature.entry, 'speed')}</div>
+                <div className="grid grid-cols-3 gap-1 text-xs">
+                  {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map((key) => (
+                    <div key={key} className="rounded bg-muted px-2 py-1 uppercase">
+                      {key}: {statValue(selectedCreature.entry, key)}
+                    </div>
+                  ))}
+                </div>
+                {!!normalizeList(selectedCreature.entry.data?.skills).length && (
+                  <div><span className="font-semibold">{t('compendium.stat.skills')}:</span> {normalizeList(selectedCreature.entry.data?.skills).join(', ')}</div>
+                )}
+                {!!normalizeList(selectedCreature.entry.data?.senses).length && (
+                  <div><span className="font-semibold">{t('compendium.stat.senses')}:</span> {normalizeList(selectedCreature.entry.data?.senses).join(', ')}</div>
+                )}
+                {!!normalizeList(selectedCreature.entry.data?.traits).length && (
+                  <div>
+                    <div className="font-semibold">{t('compendium.stat.traits')}</div>
+                    <ul className="list-disc pl-5">{normalizeList(selectedCreature.entry.data?.traits).map((trait) => <li key={trait}>{trait}</li>)}</ul>
+                  </div>
+                )}
+                {!!normalizeList(selectedCreature.entry.data?.actions).length && (
+                  <div>
+                    <div className="font-semibold">{t('compendium.stat.actions')}</div>
+                    <ul className="list-disc pl-5">{normalizeList(selectedCreature.entry.data?.actions).map((action) => <li key={action}>{action}</li>)}</ul>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">{t('compendium.lockedHint')}</p>
+            )}
+            <p className="text-sm text-muted-foreground">{selectedCreature?.isUnlocked ? (selectedCreature.entry.description || t('compendium.noSummary')) : null}</p>
           </div>
         </DrawerContent>
       </Drawer>
+
+      <Dialog open={isCreateCompanionOpen} onOpenChange={setIsCreateCompanionOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('compendium.createCompanionTitle')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input value={customCompanionName} onChange={(e) => setCustomCompanionName(e.target.value)} placeholder={t('compendium.customName')} />
+            <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={customCompanionKind} onChange={(e) => setCustomCompanionKind(e.target.value as CompanionKind)}>
+              <option value="pet">Pet</option>
+              <option value="mount">Mount</option>
+              <option value="summon">Summon</option>
+              <option value="familiar">Familiar</option>
+            </select>
+            <div className="grid grid-cols-3 gap-2">
+              <Input value={customCompanionAc} onChange={(e) => setCustomCompanionAc(e.target.value)} placeholder="AC" />
+              <Input value={customCompanionHp} onChange={(e) => setCustomCompanionHp(e.target.value)} placeholder="HP" />
+              <Input value={customCompanionSpeed} onChange={(e) => setCustomCompanionSpeed(e.target.value)} placeholder="Speed" />
+            </div>
+            <Textarea value={customCompanionNotes} onChange={(e) => setCustomCompanionNotes(e.target.value)} placeholder={t('compendium.customNotes')} />
+            <Button onClick={async () => {
+              if (!companionCharacterId || !customCompanionName.trim()) return
+              const entry = await createCompanionEntry({
+                name: customCompanionName.trim(),
+                kind: customCompanionKind,
+                description: customCompanionNotes.trim() || undefined,
+                data: {
+                  ac: customCompanionAc || null,
+                  hp: customCompanionHp || null,
+                  speed: customCompanionSpeed || null,
+                },
+              })
+              await assignCompanion({
+                characterId: companionCharacterId,
+                entryId: entry.id,
+                kind: customCompanionKind,
+                notes: customCompanionNotes.trim() || undefined,
+                customData: { source: 'custom' },
+              })
+              setIsCreateCompanionOpen(false)
+              setCustomCompanionName('')
+              setCustomCompanionAc('')
+              setCustomCompanionHp('')
+              setCustomCompanionSpeed('')
+              setCustomCompanionNotes('')
+              await refreshCompendium()
+            }}>{t('compendium.createCompanionAction')}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!initiativePrompt} onOpenChange={() => {}}>
         <AlertDialogContent>
