@@ -520,6 +520,12 @@ export async function startCombatForCampaign(campaignId: string) {
 }
 
 export async function unlockFightCreaturesForCampaign(campaignId: string, fightId: string) {
+  const { data: rpcCount, error: rpcError } = await supabase.rpc('unlock_fight_creatures_for_campaign', {
+    p_campaign_id: campaignId,
+    p_fight_id: fightId,
+  })
+  if (!rpcError) return Number(rpcCount ?? 0)
+
   const { data: fightCreatures, error: fightCreatureError } = await supabase
     .from('fight_entities')
     .select('entry_id')
