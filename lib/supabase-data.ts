@@ -448,6 +448,8 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
   const characterId = await ensureCharacterRecord(userId)
   const previous = characterSaveQueue.get(characterId) ?? Promise.resolve()
   const saveTask = previous.then(async () => {
+    const startedAt = Date.now()
+    const timings: Partial<Record<'attacksMs' | 'inventoryMs' | 'spellsMs' | 'blobMs' | 'rowMs', number>> = {}
     const { character, spellbook, inventory, notes } = payload
     const spellcastingScore = character.abilities[spellbook.spellcastingAbility]?.value ?? 10
     const derivedSpellSaveDC = calculateSpellSaveDC(character.proficiencyBonus, spellcastingScore)
@@ -551,6 +553,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
 
     try {
       if (!previousSignatures || previousSignatures.attacks !== signatures.attacks) {
+        const tSection = Date.now()
         const { error: attacksDeleteError } = await supabase.from('attacks').delete().eq('character_id', characterId)
         if (attacksDeleteError) throw new Error(`attacks.delete: ${attacksDeleteError.message ?? 'failed'}`)
 
@@ -566,29 +569,55 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
           )
           if (error) throw new Error(`attacks.insert: ${error.message ?? 'failed'}`)
         }
+        timings.attacksMs = Date.now() - tSection
       }
 
       if (!previousSignatures || previousSignatures.inventory !== signatures.inventory) {
+        const tSection = Date.now()
         await syncInventoryRows(characterId, normalizedInventory)
+        timings.inventoryMs = Date.now() - tSection
       }
       if (!previousSignatures || previousSignatures.spells !== signatures.spells) {
+        const tSection = Date.now()
         await syncSpellRows(characterId, allSpells)
+        timings.spellsMs = Date.now() - tSection
       }
       if (!previousSignatures || previousSignatures.blob !== signatures.blob) {
+        const tSection = Date.now()
         await upsertCharacterBlob(characterId, blobPayload)
+        timings.blobMs = Date.now() - tSection
       }
       if (!previousSignatures || previousSignatures.row !== signatures.row) {
+        const tSection = Date.now()
         let { error: characterUpsertError } = await supabase.from('characters').upsert(row, { onConflict: 'id' })
         if (characterUpsertError && isMissingColumnError(characterUpsertError, 'portrait_original_url')) {
           const { portrait_original_url, ...legacyRow } = row
           ;({ error: characterUpsertError } = await supabase.from('characters').upsert(legacyRow, { onConflict: 'id' }))
         }
         if (characterUpsertError) throw new Error(`characters.upsert: ${characterUpsertError.message ?? 'failed'}`)
+        timings.rowMs = Date.now() - tSection
       }
     } catch (error) {
+      console.log('[perf] saveCurrentPlayerData:failed', {
+        characterId,
+        totalMs: Date.now() - startedAt,
+        timings,
+      })
       throw new Error(`[saveCurrentPlayerData] ${error instanceof Error ? error.message : String(error)}`)
     }
 
+    console.log('[perf] saveCurrentPlayerData', {
+      characterId,
+      totalMs: Date.now() - startedAt,
+      timings,
+      changed: {
+        row: !previousSignatures || previousSignatures.row !== signatures.row,
+        attacks: !previousSignatures || previousSignatures.attacks !== signatures.attacks,
+        inventory: !previousSignatures || previousSignatures.inventory !== signatures.inventory,
+        spells: !previousSignatures || previousSignatures.spells !== signatures.spells,
+        blob: !previousSignatures || previousSignatures.blob !== signatures.blob,
+      },
+    })
     characterSaveSignatures.set(characterId, signatures)
   })
 
@@ -857,7 +886,10 @@ export async function saveDmNotes(userId: string, content: string) {
 
 export async function loadMaps() {
   const { data, error } = await withRetryQuery(async () =>
-    await supabase.from('maps').select('*').order('created_at', { ascending: false })
+    await supabase
+      .from('maps')
+      .select('id, name, storage_path, created_at, grid_enabled, grid_size, grid_opacity, uploaded_by, is_active')
+      .order('created_at', { ascending: false })
   )
   if (error) throw error
   return (data ?? []).map((map) => ({
@@ -882,7 +914,7 @@ export async function createMap(userId: string, map: Omit<StoredMap, 'id' | 'cre
     grid_enabled: map.gridEnabled ?? false,
     grid_size: map.gridSize ?? 50,
     grid_opacity: map.gridOpacity ?? 0.3,
-  }).select('*').single()
+  }).select('id, name, storage_path, created_at, grid_enabled, grid_size, grid_opacity, uploaded_by, is_active').single()
   if (error) throw error
   return {
     id: data.id,
@@ -913,7 +945,11 @@ export async function setActiveMap(mapId: string | null) {
 
 export async function getActiveMap() {
   const { data, error } = await withRetryQuery(async () =>
-    await supabase.from('maps').select('*').eq('is_active', true).maybeSingle()
+    await supabase
+      .from('maps')
+      .select('id, name, storage_path, created_at, grid_enabled, grid_size, grid_opacity, uploaded_by, is_active')
+      .eq('is_active', true)
+      .maybeSingle()
   )
   if (error) throw error
   if (!data) return null
