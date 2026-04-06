@@ -274,6 +274,10 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
 
   const hasNormalizedSpells = Boolean(spellsData?.length)
   const hasNormalizedInventory = Boolean(inventoryData?.length)
+  const hasNormalizedAttacks = Boolean(attacksData?.length)
+  const fallbackSpellEntries = blob.spellbookEntries ?? emptyBlob().spellbookEntries ?? { cantrips: [], spells: [] }
+  const fallbackInventoryItems = dedupeByClientId(blob.inventoryItems ?? [])
+  const fallbackAttacks = dedupeByClientId(blob.attacks ?? [])
   const hasSeparatedFeatures = Boolean(blob.raceFeatures || blob.classFeatures || blob.backgroundFeatures)
 
   const character: Character = {
@@ -315,7 +319,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
         failures: [0, 1, 2].map((i) => i < (row.death_failures ?? 0)) as [boolean, boolean, boolean],
       },
     },
-    attacks: (attacksData ?? []).map((attack) => {
+    attacks: (hasNormalizedAttacks ? (attacksData ?? []).map((attack) => {
       const damageText = attack.damage ?? ''
       const [damage = '', ...damageType] = damageText.split(' ')
       return {
@@ -325,7 +329,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
         damage,
         damageType: damageType.join(' '),
       }
-    }),
+    }) : fallbackAttacks),
     attackNotes: '',
     raceFeatures: hasSeparatedFeatures ? (blob.raceFeatures ?? '') : '',
     classFeatures: hasSeparatedFeatures ? (blob.classFeatures ?? '') : (row.features ?? blob.featuresText ?? ''),
@@ -358,7 +362,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       description: s.description,
       damage: s.dice,
       prepared: true,
-    })) : []),
+    })) : fallbackSpellEntries.cantrips ?? []),
     spells: (hasNormalizedSpells ? (spellsData ?? []).filter((s) => !s.is_cantrip).map((s) => ({
       id: s.client_id ?? s.id,
       name: s.title,
@@ -372,7 +376,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       description: s.description,
       damage: s.dice,
       prepared: true,
-    })) : []),
+    })) : fallbackSpellEntries.spells ?? []),
     slots: spellMeta.slots ?? emptySpellbook.slots,
   }
 
@@ -385,7 +389,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
         description: item.description,
         category: 'Other',
       }
-    }) : []),
+    }) : fallbackInventoryItems),
     currency: blob.inventoryCurrency ?? emptyInventory.currency,
   }
 
