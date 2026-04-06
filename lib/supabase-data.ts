@@ -8,6 +8,7 @@ import { supabase } from './supabase'
 import { generateClientId } from './client-id'
 
 const characterSaveQueue = new Map<string, Promise<void>>()
+const characterBlobCache = new Map<string, CharacterNotesBlob>()
 const characterSaveSignatures = new Map<string, {
   row: string
   attacks: string
@@ -225,6 +226,8 @@ function getPerceptionModifier(character: Character): number {
 }
 
 async function getCharacterBlob(characterId: string): Promise<CharacterNotesBlob> {
+  const cached = characterBlobCache.get(characterId)
+  if (cached) return cached
   const { data, error } = await supabase
     .from('character_notes')
     .select('notes')
@@ -232,7 +235,9 @@ async function getCharacterBlob(characterId: string): Promise<CharacterNotesBlob
     .maybeSingle()
 
   if (error) throw error
-  return safeJsonParse<CharacterNotesBlob>(data?.notes, emptyBlob())
+  const parsed = safeJsonParse<CharacterNotesBlob>(data?.notes, emptyBlob())
+  characterBlobCache.set(characterId, parsed)
+  return parsed
 }
 
 async function upsertCharacterBlob(characterId: string, blob: CharacterNotesBlob) {
@@ -241,6 +246,7 @@ async function upsertCharacterBlob(characterId: string, blob: CharacterNotesBlob
     notes: notesBlobToText(blob),
   })
   if (error) throw error
+  characterBlobCache.set(characterId, blob)
 }
 
 export async function loadCurrentPlayerData(userId: string): Promise<{ character: Character; spellbook: Spellbook; inventory: Inventory; notes: Note[] }> {
@@ -278,6 +284,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
   const fallbackSpellEntries = blob.spellbookEntries ?? emptyBlob().spellbookEntries ?? { cantrips: [], spells: [] }
   const fallbackInventoryItems = dedupeByClientId(blob.inventoryItems ?? [])
   const fallbackAttacks = dedupeByClientId(blob.attacks ?? [])
+  const fallbackCategoryById = new Map(fallbackInventoryItems.map((item) => [item.id, item.category]))
   const hasSeparatedFeatures = Boolean(blob.raceFeatures || blob.classFeatures || blob.backgroundFeatures)
 
   const character: Character = {
@@ -382,12 +389,15 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
 
   const inventory: Inventory = {
     items: (hasNormalizedInventory ? (inventoryData ?? []).map((item) => {
+      const normalizedId = item.client_id ?? item.id
       return {
-        id: item.client_id ?? item.id,
+        id: normalizedId,
         name: item.title,
         quantity: item.quantity,
         description: item.description,
-        category: 'Other',
+        category: (typeof item.category === 'string' && item.category.trim())
+          ? item.category
+          : (fallbackCategoryById.get(normalizedId) || 'Other'),
       }
     }) : fallbackInventoryItems),
     currency: blob.inventoryCurrency ?? emptyInventory.currency,
@@ -492,6 +502,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
     const blobPayload: CharacterNotesBlob = {
       notes: persistedNotes,
       inventoryCurrency: inventory.currency,
+      inventoryItems: normalizedInventory,
       spellbookMeta: {
         spellcastingClass: spellbook.spellcastingClass,
         spellcastingAbility: spellbook.spellcastingAbility,
@@ -499,9 +510,12 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
         spellAttackBonus: derivedSpellAttackBonus,
         slots: spellbook.slots,
       },
+      spellbookEntries: {
+        cantrips: allSpells.filter((s) => s.level === 0),
+        spells: allSpells.filter((s) => s.level > 0),
+      },
+      attacks: character.attacks,
       featuresText: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n'),
-      portraitUrl: character.info.portraitUrl,
-      portraitOriginalUrl: character.info.portraitOriginalUrl,
       raceFeatures: character.raceFeatures,
       classFeatures: character.classFeatures,
       backgroundFeatures: character.backgroundFeatures,
