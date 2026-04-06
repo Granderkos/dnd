@@ -9,6 +9,7 @@ import { generateClientId } from './client-id'
 
 const characterSaveQueue = new Map<string, Promise<void>>()
 const characterBlobCache = new Map<string, CharacterNotesBlob>()
+const portraitUploadCache = new Map<string, string>()
 const characterSaveSignatures = new Map<string, {
   row: string
   attacks: string
@@ -83,6 +84,31 @@ function isMissingColumnError(error: unknown, columnName: string) {
     ? String((error as { message?: unknown }).message ?? '')
     : String(error ?? '')
   return message.includes(columnName) && (message.includes('column') || message.includes('schema cache'))
+}
+
+function isDataUrl(value: string | null | undefined) {
+  return typeof value === 'string' && value.startsWith('data:')
+}
+
+async function uploadPortraitDataUrl(userId: string, characterId: string, kind: 'preview' | 'original', dataUrl: string) {
+  const cached = portraitUploadCache.get(dataUrl)
+  if (cached) return cached
+
+  const response = await fetch(dataUrl)
+  const blob = await response.blob()
+  const mime = blob.type || 'image/jpeg'
+  const ext = mime.includes('webp') ? 'webp' : mime.includes('png') ? 'png' : 'jpg'
+  const filePath = `${userId}/${characterId}/${kind}-${Date.now()}.${ext}`
+  const bucket = supabase.storage.from('portraits')
+  const { error } = await bucket.upload(filePath, blob, {
+    upsert: true,
+    contentType: mime,
+    cacheControl: '31536000',
+  })
+  if (error) throw error
+  const { data } = bucket.getPublicUrl(filePath)
+  portraitUploadCache.set(dataUrl, data.publicUrl)
+  return data.publicUrl
 }
 
 const skillColumnByName: Record<string, string> = {
@@ -460,6 +486,12 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
 
     const existingBlob = notes ? null : await getCharacterBlob(characterId)
     const persistedNotes = notes ?? existingBlob?.notes ?? []
+    const portraitPreviewUrl = isDataUrl(character.info.portraitUrl)
+      ? await uploadPortraitDataUrl(userId, characterId, 'preview', character.info.portraitUrl as string)
+      : (character.info.portraitUrl ?? '')
+    const portraitOriginalUrl = isDataUrl(character.info.portraitOriginalUrl)
+      ? await uploadPortraitDataUrl(userId, characterId, 'original', character.info.portraitOriginalUrl as string)
+      : (character.info.portraitOriginalUrl ?? null)
 
     const row = {
       id: characterId,
@@ -515,8 +547,8 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       skill_survival_prof: findSkill(character, 'Survival'),
       features: character.classFeatures ?? '',
       languages: character.languages,
-      portrait_preview_url: character.info.portraitUrl ?? '',
-      portrait_original_url: character.info.portraitOriginalUrl ?? null,
+      portrait_preview_url: portraitPreviewUrl,
+      portrait_original_url: portraitOriginalUrl,
     }
 
     const allSpells = [...spellbook.cantrips.map((s) => ({ ...s, level: 0 })), ...spellbook.spells]
