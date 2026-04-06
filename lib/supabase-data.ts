@@ -393,7 +393,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       description: s.description,
       damage: s.dice,
       prepared: true,
-    })) : []),
+    })) : fallbackSpellEntries.cantrips ?? []),
     spells: (hasNormalizedSpells ? (spellsData ?? []).filter((s) => !s.is_cantrip).map((s) => ({
       id: s.client_id ?? s.id,
       name: s.title,
@@ -528,6 +528,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
     const blobPayload: CharacterNotesBlob = {
       notes: persistedNotes,
       inventoryCurrency: inventory.currency,
+      inventoryItems: normalizedInventory,
       spellbookMeta: {
         spellcastingClass: spellbook.spellcastingClass,
         spellcastingAbility: spellbook.spellcastingAbility,
