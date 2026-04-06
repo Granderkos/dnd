@@ -21,15 +21,17 @@ import { useAuth } from '@/lib/auth-context'
 import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
-import { clearFightEntities, endCombatForFight, getActiveFight, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, startCombatForCampaign } from '@/lib/supabase-v3'
+import { clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, startCombatForCampaign } from '@/lib/supabase-v3'
 import type { FightStatus } from '@/lib/v3-types'
 import type { FightEntity } from '@/lib/v3-types'
-import { Character, calculateModifier, formatModifier } from '@/lib/dnd-types'
+import { Character, calculateModifier, formatFeetWithSquares, formatModifier } from '@/lib/dnd-types'
 import { AppControls } from '@/components/app/app-controls'
 import { APP_VERSION } from '@/lib/app-config'
 import { useI18n } from '@/lib/i18n'
+import { supabase } from '@/lib/supabase'
 
 interface PlayerCharacterData {
+  id: string
   username: string
   character: Character
   activity?: { last_seen?: string; current_page?: string; is_online?: boolean } | null
@@ -106,11 +108,15 @@ export const DMDashboard = memo(function DMDashboard() {
   const fightLoadedRef = useRef(false)
   const hpPersistTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const confirmedHpRef = useRef<Record<string, number>>({})
+  const fightRefreshInFlightRef = useRef(false)
+  const fightRefreshQueuedRef = useRef(false)
+  const fightRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     return () => {
       Object.values(hpPersistTimersRef.current).forEach((timeout) => clearTimeout(timeout))
       hpPersistTimersRef.current = {}
+      if (fightRefreshTimerRef.current) clearTimeout(fightRefreshTimerRef.current)
     }
   }, [])
 
@@ -123,15 +129,24 @@ export const DMDashboard = memo(function DMDashboard() {
 
   useEffect(() => {
     let mounted = true
-    const load = async () => {
+    const loadPlayers = async () => {
+      const t0 = Date.now()
       try {
-        const [playersData, notesData] = await Promise.all([
-          getAllPlayerCharacters(),
-          loadDmNotes(),
-        ])
+        const playersData = await getAllPlayerCharacters()
         if (!mounted) return
         setPlayers(playersData as PlayerCharacterData[])
+      } catch (e) {
+        console.error('Failed to load DM players', e)
+      } finally {
+        console.log('[perf]', 'dm.loadPlayers', Date.now() - t0)
+      }
+    }
+    const load = async () => {
+      try {
+        const notesData = await loadDmNotes()
+        if (!mounted) return
         setDmNotes(notesData)
+        void loadPlayers()
       } catch (e) {
         console.error('Failed to load DM data', e)
       } finally {
@@ -144,9 +159,58 @@ export const DMDashboard = memo(function DMDashboard() {
     }
   }, [getAllPlayerCharacters])
 
-  const loadFightState = async () => {
+  useEffect(() => {
+    const channel = supabase
+      .channel('dm-player-activity')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'activity_status',
+        },
+        (payload) => {
+          const next = payload.new as { user_id?: string; last_seen?: string; current_page?: string; is_online?: boolean } | null
+          const userId = next?.user_id
+          if (!userId) return
+          setPlayers((prev) => {
+            let changed = false
+            const updated = prev.map((player) => {
+              if (player.id !== userId) return player
+              changed = true
+              return {
+                ...player,
+                activity: {
+                  last_seen: next.last_seen,
+                  current_page: next.current_page,
+                  is_online: next.is_online,
+                },
+              }
+            })
+            return changed ? updated : prev
+          })
+
+          if (fightId && fightStatus === 'collecting_initiative' && next?.is_online) {
+            void ensureActivePlayerInitiativeRequest(fightId, userId)
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [fightId, fightStatus])
+
+  const loadFightState = useCallback(async (showLoader = true) => {
+    const t0 = Date.now()
     if (!user?.id) return
-    setIsLoadingFight(true)
+    if (fightRefreshInFlightRef.current) {
+      fightRefreshQueuedRef.current = true
+      return
+    }
+    fightRefreshInFlightRef.current = true
+    if (showLoader) setIsLoadingFight(true)
     setFightError(null)
     try {
       const activeFight = await getActiveFight(user.id)
@@ -167,15 +231,87 @@ export const DMDashboard = memo(function DMDashboard() {
       const message = formatErrorMessage(e, t('common.unknownError'))
       setFightError(message)
     } finally {
-      setIsLoadingFight(false)
+      console.log('[perf]', 'dm.loadFightState', Date.now() - t0)
+      if (showLoader) setIsLoadingFight(false)
+      fightRefreshInFlightRef.current = false
+      if (fightRefreshQueuedRef.current) {
+        fightRefreshQueuedRef.current = false
+        void loadFightState(false)
+      }
     }
-  }
+  }, [t, user?.id])
+
+  const scheduleFightRefresh = useCallback((delayMs = 120, showLoader = false) => {
+    if (fightRefreshTimerRef.current) clearTimeout(fightRefreshTimerRef.current)
+    fightRefreshTimerRef.current = setTimeout(() => {
+      void loadFightState(showLoader)
+    }, delayMs)
+  }, [loadFightState])
 
   useEffect(() => {
     if (activeTab === 'fight' && !fightLoadedRef.current) {
-      void loadFightState()
+      void loadFightState(true)
     }
-  }, [activeTab, user?.id])
+  }, [activeTab, loadFightState, user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    let channel = supabase
+      .channel(`dm-fight-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'fight_initiative_requests',
+        },
+        () => {
+          if (!fightId) return
+          void (async () => {
+            try {
+              await finalizeInitiativeCollectionForFight(fightId)
+            } catch {
+              // Ignore race conditions from simultaneous DM tabs.
+            } finally {
+              scheduleFightRefresh(80)
+            }
+          })()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'fights',
+          filter: `campaign_id=eq.${user.id}`,
+        },
+        () => {
+          scheduleFightRefresh()
+        }
+      )
+
+    if (fightId) {
+      channel = channel.on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'fight_entities',
+          filter: `fight_id=eq.${fightId}`,
+        },
+        () => {
+          scheduleFightRefresh()
+        }
+      )
+    }
+
+    channel = channel.subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [fightId, scheduleFightRefresh, user?.id])
 
   useDebouncedRemoteText(dmNotes, 3000, isLoaded && !!user?.id, async (value) => {
     if (!user?.id) return
@@ -218,7 +354,9 @@ export const DMDashboard = memo(function DMDashboard() {
     const maxTurnOrder = fightEntities.reduce((max, entity) => Math.max(max, entity.turn_order ?? 0), 0)
     const nextTurnOrder = maxTurnOrder + 1
     const rotated = [...rest, { ...current, turn_order: nextTurnOrder }]
-    setFightEntities(rotated)
+    window.setTimeout(() => {
+      setFightEntities(rotated)
+    }, 180)
     setIsAdvancingTurn(true)
     try {
       await moveFightTurnToEnd(current.id, nextTurnOrder)
@@ -278,7 +416,7 @@ export const DMDashboard = memo(function DMDashboard() {
       const fight = await startCombatForCampaign(user.id)
       setFightId(fight.id)
       setFightStatus('collecting_initiative')
-      void loadFightState()
+      void loadFightState(false)
     } catch (error) {
       console.error('Failed to start combat', error)
       setFightError(formatErrorMessage(error, 'Failed to start combat'))
@@ -292,7 +430,9 @@ export const DMDashboard = memo(function DMDashboard() {
     setIsEndingCombat(true)
     try {
       await endCombatForFight(fightId)
-      setFightStatus('ended')
+      setFightStatus('draft')
+      setFightId(null)
+      setFightEntities([])
     } catch (error) {
       setFightError(formatErrorMessage(error, t('common.unknownError')))
     } finally {
@@ -513,7 +653,6 @@ function DMFightPanel({
     clearConfirmDescription: string
   }
 }) {
-  const [activePulseId, setActivePulseId] = useState<string | null>(null)
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   const activeEntity = entities.find((entity) => !isDownedEntity(entity)) ?? null
@@ -523,7 +662,9 @@ function DMFightPanel({
     ? labels.noEntitiesCollecting
     : fightStatus === 'draft'
       ? labels.noEntitiesDraft
-      : labels.noEntities
+      : fightStatus === 'ended'
+        ? labels.noActive
+        : labels.noEntities
   const fightStateLabel = fightStatus === 'active'
     ? labels.stateActive
     : fightStatus === 'collecting_initiative'
@@ -534,10 +675,7 @@ function DMFightPanel({
 
   useEffect(() => {
     if (!activeEntityId) return
-    setActivePulseId(activeEntityId)
     rowRefs.current[activeEntityId]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    const timeout = window.setTimeout(() => setActivePulseId((current) => (current === activeEntityId ? null : current)), 750)
-    return () => window.clearTimeout(timeout)
   }, [activeEntityId])
 
   if (isLoading) {
@@ -591,11 +729,13 @@ function DMFightPanel({
           {entities.map((entity, index) => (
             <Card
               key={entity.id}
-              className={`transition-all ${
-                entity.id === activeEntityId ? 'border-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.45)]' : ''
+              className={`transition-all duration-500 ease-out ${
+                entity.id === activeEntityId
+                  ? 'border-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.45)] scale-100'
+                  : 'scale-[0.98] opacity-95'
               } ${isDownedEntity(entity) ? 'border-destructive/40 bg-destructive/5' : ''}`}
             >
-              <CardContent className={`py-2.5 transition-colors ${activePulseId === entity.id ? 'bg-primary/15' : ''}`}>
+              <CardContent className="py-2.5 transition-all duration-500 ease-out">
                 <div
                   ref={(node) => { rowRefs.current[entity.id] = node }}
                   className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 scroll-mt-24"
@@ -620,20 +760,42 @@ function DMFightPanel({
                       <span>{labels.initiative}: <span className="font-semibold text-foreground">{entity.initiative ?? '—'}</span></span>
                       <span>{labels.ac}: <span className="font-semibold text-foreground">{entity.notes?.startsWith('ac:') ? entity.notes.replace('ac:', '') : '—'}</span></span>
                     </div>
-                    <div className="mt-1.5 flex items-center justify-end gap-1">
-                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 5))} disabled={pendingHpIds.includes(entity.id)}>-5</Button>
-                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 1))} disabled={pendingHpIds.includes(entity.id)}>-1</Button>
+                    <div className="mt-2 w-full max-w-[280px] ml-auto">
+                      <div className="mb-1.5 flex items-center justify-between text-[11px]">
+                        <span className="text-muted-foreground">{labels.hp}</span>
+                        <span className="font-semibold text-foreground">{entity.current_hp ?? 0} / {entity.max_hp ?? 0}</span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            (entity.current_hp ?? 0) <= 0 ? 'bg-destructive' : 'bg-primary'
+                          }`}
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              Math.max(0, Math.round(((entity.current_hp ?? 0) / Math.max(1, entity.max_hp ?? 1)) * 100))
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-1.5 flex items-center justify-end gap-2">
+                      <div className="flex items-center rounded-md border border-border bg-background/70 p-0.5">
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 5))} disabled={pendingHpIds.includes(entity.id)}>-5</Button>
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 1))} disabled={pendingHpIds.includes(entity.id)}>-1</Button>
+                      </div>
                       <input
                         type="number"
                         inputMode="numeric"
                         value={entity.current_hp ?? 0}
                         onChange={(e) => onSetEntityHp(entity.id, Number.parseInt(e.target.value, 10) || 0)}
-                        className="h-6 w-14 rounded border border-border bg-background px-1 text-center text-xs font-semibold"
+                        className="h-6 w-16 rounded-md border border-border bg-background px-1 text-center text-xs font-semibold"
                         aria-label={labels.hpCurrent}
                       />
-                      <span className="text-[11px] text-muted-foreground">/ {entity.max_hp ?? 0}</span>
-                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 1)} disabled={pendingHpIds.includes(entity.id)}>+1</Button>
-                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 5)} disabled={pendingHpIds.includes(entity.id)}>+5</Button>
+                      <div className="flex items-center rounded-md border border-border bg-background/70 p-0.5">
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-primary hover:text-primary" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 1)} disabled={pendingHpIds.includes(entity.id)}>+1</Button>
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-primary hover:text-primary" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 5)} disabled={pendingHpIds.includes(entity.id)}>+5</Button>
+                      </div>
                     </div>
                     <div className="mt-1 flex justify-end">
                       <Button
