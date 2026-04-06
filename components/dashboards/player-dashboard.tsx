@@ -21,7 +21,7 @@ import {
 import type { Note } from '@/components/dnd/notes'
 import { useAuth } from '@/lib/auth-context'
 import { emptyCharacter, emptyInventory, emptySpellbook } from '@/lib/auth-types'
-import { loadCurrentPlayerData, saveCurrentPlayerData } from '@/lib/supabase-data'
+import { loadCurrentPlayerData, loadCurrentPlayerNotes, saveCurrentPlayerData } from '@/lib/supabase-data'
 import {
   activateCompanion,
   assignCompanion,
@@ -162,6 +162,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [spellbook, setSpellbook] = useState<SpellbookType>(emptySpellbook)
   const [inventory, setInventory] = useState<InventoryType>(emptyInventory)
   const [notes, setNotes] = useState<Note[]>([])
+  const [notesLoaded, setNotesLoaded] = useState(false)
   const [mapSettings, setMapSettings] = useState<MapSettings>(defaultMapSettings)
   const [initiativePrompt, setInitiativePrompt] = useState<{ requestId: string; initiativeMod: number } | null>(null)
   const [initiativeRollInput, setInitiativeRollInput] = useState('')
@@ -194,13 +195,11 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       character: Character
       spellbook: SpellbookType
       inventory: InventoryType
-      notes: Note[]
     }>(sessionStorage.getItem(playerDataCacheKey))
     if (!cached) return
     setCharacter(cached.character)
     setSpellbook(cached.spellbook)
     setInventory(cached.inventory)
-    setNotes(cached.notes)
     setIsLoaded(true)
     playerCacheHydratedRef.current = true
   }, [playerDataCacheKey])
@@ -215,9 +214,12 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         setCharacter(data.character)
         setSpellbook(data.spellbook)
         setInventory(data.inventory)
-        setNotes(data.notes)
         if (playerDataCacheKey) {
-          sessionStorage.setItem(playerDataCacheKey, JSON.stringify(data))
+          sessionStorage.setItem(playerDataCacheKey, JSON.stringify({
+            character: data.character,
+            spellbook: data.spellbook,
+            inventory: data.inventory,
+          }))
         }
       } catch (e) {
         console.error('Failed to load player data', e)
@@ -229,6 +231,24 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       mounted = false
     }
   }, [playerDataCacheKey, user?.id])
+
+  useEffect(() => {
+    if (!user?.id || activeTab !== 'notes' || notesLoaded) return
+    let mounted = true
+    void (async () => {
+      try {
+        const loadedNotes = await loadCurrentPlayerNotes(user.id)
+        if (!mounted) return
+        setNotes(loadedNotes)
+        setNotesLoaded(true)
+      } catch (error) {
+        console.error('Failed to load notes', error)
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [activeTab, notesLoaded, user?.id])
 
   useEffect(() => {
     void updateCurrentPage(activeTab)
@@ -386,7 +406,10 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     async (payload) => {
       if (!user?.id) return
       try {
-        await saveCurrentPlayerData(user.id, payload)
+        await saveCurrentPlayerData(user.id, {
+          ...payload,
+          notes: notesLoaded ? payload.notes : undefined,
+        })
       } catch (e) {
         console.error('Failed to save player data', e)
       }

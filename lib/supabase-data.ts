@@ -241,20 +241,22 @@ async function upsertCharacterBlob(characterId: string, blob: CharacterNotesBlob
 }
 
 export async function loadCurrentPlayerData(userId: string): Promise<{ character: Character; spellbook: Spellbook; inventory: Inventory; notes: Note[] }> {
+  const t0 = Date.now()
   const characterId = await ensureCharacterRecord(userId)
 
-  const [{ data: row, error: charError }, { data: inventoryData, error: inventoryError }, { data: spellsData, error: spellsError }, blob] = await Promise.all([
+  const [{ data: row, error: charError }, { data: attacksData, error: attacksError }, { data: inventoryData, error: inventoryError }, { data: spellsData, error: spellsError }] = await Promise.all([
     supabase
       .from('characters')
       .select('id, name, class_name, subclass, race, background, alignment, level, xp, proficiency_bonus, armor_class, initiative, speed, hp_max, hp_current, hp_temp, hit_dice_type, death_successes, death_failures, str_score, dex_score, con_score, int_score, wis_score, cha_score, save_str_prof, save_dex_prof, save_con_prof, save_int_prof, save_wis_prof, save_cha_prof, skill_acrobatics_prof, skill_animal_handling_prof, skill_arcana_prof, skill_athletics_prof, skill_deception_prof, skill_history_prof, skill_insight_prof, skill_intimidation_prof, skill_investigation_prof, skill_medicine_prof, skill_nature_prof, skill_perception_prof, skill_performance_prof, skill_persuasion_prof, skill_religion_prof, skill_sleight_of_hand_prof, skill_stealth_prof, skill_survival_prof, features, languages')
       .eq('id', characterId)
       .single(),
+    supabase.from('attacks').select('id, name, attack_bonus, damage').eq('character_id', characterId).order('sort_order', { ascending: true }),
     supabase.from('inventory_items').select('*').eq('character_id', characterId).order('sort_order', { ascending: true }),
     supabase.from('spells').select('*').eq('character_id', characterId).order('sort_order', { ascending: true }),
-    getCharacterBlob(characterId),
   ])
 
   if (charError) throw charError
+  if (attacksError) throw attacksError
   if (inventoryError) throw inventoryError
   if (spellsError) throw spellsError
 
@@ -266,15 +268,8 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
     }
   })
 
-  const fallbackSpellEntries = blob.spellbookEntries ?? emptyBlob().spellbookEntries!
-  const fallbackInventoryItems = blob.inventoryItems ?? emptyInventory.items
-  const fallbackAttacks = blob.attacks ?? emptyCharacter.attacks
   const hasNormalizedSpells = Boolean(spellsData?.length)
   const hasNormalizedInventory = Boolean(inventoryData?.length)
-  const fallbackPreparedById = new Map(
-    [...fallbackSpellEntries.cantrips, ...fallbackSpellEntries.spells]
-      .map((spell) => [spell.id, spell.prepared] as const)
-  )
 
   const character: Character = {
     info: {
@@ -286,7 +281,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       alignment: row.alignment ?? '',
       level: row.level ?? 1,
       xp: row.xp ?? 0,
-      portraitUrl: blob.portraitUrl ?? '',
+      portraitUrl: '',
     },
     abilities: {
       STR: { value: row.str_score ?? 10, proficient: row.save_str_prof ?? false },
@@ -314,26 +309,36 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
         failures: [0, 1, 2].map((i) => i < (row.death_failures ?? 0)) as [boolean, boolean, boolean],
       },
     },
-    attacks: fallbackAttacks,
+    attacks: (attacksData ?? []).map((attack) => {
+      const damageText = attack.damage ?? ''
+      const [damage = '', ...damageType] = damageText.split(' ')
+      return {
+        id: attack.id,
+        name: attack.name ?? '',
+        attackBonus: attack.attack_bonus ?? '',
+        damage,
+        damageType: damageType.join(' '),
+      }
+    }),
     attackNotes: '',
-    raceFeatures: blob.raceFeatures ?? '',
-    classFeatures: blob.classFeatures ?? blob.featuresText ?? row.features ?? '',
-    backgroundFeatures: blob.backgroundFeatures ?? '',
+    raceFeatures: '',
+    classFeatures: row.features ?? '',
+    backgroundFeatures: '',
     languages: row.languages ?? '',
     passivePerception: 10,
   }
   character.passivePerception = 10 + getPerceptionModifier(character)
 
-  const spellMeta = blob.spellbookMeta ?? emptyBlob().spellbookMeta
-  const spellAbility = spellMeta.spellcastingAbility || 'INT'
+  const spellMeta = emptyBlob().spellbookMeta
+  const spellAbility = spellMeta.spellcastingAbility
   const spellAbilityScore = row[`${spellAbility.toLowerCase()}_score` as keyof typeof row] as number | null
   const fallbackSpellSaveDC = calculateSpellSaveDC(row.proficiency_bonus ?? 2, spellAbilityScore ?? 10)
   const fallbackSpellAttackBonus = calculateSpellAttackBonus(row.proficiency_bonus ?? 2, spellAbilityScore ?? 10)
   const spellbook: Spellbook = {
-    spellcastingClass: spellMeta.spellcastingClass || row.class_name || '',
+    spellcastingClass: row.class_name || '',
     spellcastingAbility: spellAbility,
-    spellSaveDC: spellMeta.spellSaveDC ?? fallbackSpellSaveDC,
-    spellAttackBonus: spellMeta.spellAttackBonus ?? fallbackSpellAttackBonus,
+    spellSaveDC: fallbackSpellSaveDC,
+    spellAttackBonus: fallbackSpellAttackBonus,
     cantrips: (hasNormalizedSpells ? (spellsData ?? []).filter((s) => s.is_cantrip).map((s) => ({
       id: s.client_id ?? s.id,
       name: s.title,
@@ -346,8 +351,8 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       duration: s.duration_text,
       description: s.description,
       damage: s.dice,
-      prepared: fallbackPreparedById.get(s.client_id ?? s.id) ?? true,
-    })) : fallbackSpellEntries.cantrips),
+      prepared: true,
+    })) : []),
     spells: (hasNormalizedSpells ? (spellsData ?? []).filter((s) => !s.is_cantrip).map((s) => ({
       id: s.client_id ?? s.id,
       name: s.title,
@@ -360,34 +365,42 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       duration: s.duration_text,
       description: s.description,
       damage: s.dice,
-      prepared: fallbackPreparedById.get(s.client_id ?? s.id) ?? true,
-    })) : fallbackSpellEntries.spells),
-    slots: spellMeta.slots ?? emptySpellbook.slots,
+      prepared: true,
+    })) : []),
+    slots: emptySpellbook.slots,
   }
 
   const inventory: Inventory = {
-    items: (hasNormalizedInventory ? (inventoryData ?? []).map((item, index) => {
-      const fallbackMatch = fallbackInventoryItems.find((blobItem) => blobItem.name === item.title && blobItem.description === (item.description ?? '') && blobItem.quantity === item.quantity) ?? fallbackInventoryItems[index]
+    items: (hasNormalizedInventory ? (inventoryData ?? []).map((item) => {
       return {
         id: item.client_id ?? item.id,
         name: item.title,
         quantity: item.quantity,
         description: item.description,
-        category: fallbackMatch?.category || 'Other',
+        category: 'Other',
       }
-    }) : fallbackInventoryItems),
-    currency: blob.inventoryCurrency || emptyInventory.currency,
+    }) : []),
+    currency: emptyInventory.currency,
   }
 
+  console.log('[perf]', 'loadCurrentPlayerData', Date.now() - t0)
   return {
     character,
     spellbook,
     inventory,
-    notes: blob.notes || [],
+    notes: [],
   }
 }
 
-export async function saveCurrentPlayerData(userId: string, payload: { character: Character; spellbook: Spellbook; inventory: Inventory; notes: Note[] }) {
+export async function loadCurrentPlayerNotes(userId: string): Promise<Note[]> {
+  const t0 = Date.now()
+  const characterId = await ensureCharacterRecord(userId)
+  const blob = await getCharacterBlob(characterId)
+  console.log('[perf]', 'loadCurrentPlayerNotes', Date.now() - t0)
+  return blob.notes || []
+}
+
+export async function saveCurrentPlayerData(userId: string, payload: { character: Character; spellbook: Spellbook; inventory: Inventory; notes?: Note[] }) {
   const characterId = await ensureCharacterRecord(userId)
   const previous = characterSaveQueue.get(characterId) ?? Promise.resolve()
   const saveTask = previous.then(async () => {
@@ -462,7 +475,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
     }))
 
     const blobPayload: CharacterNotesBlob = {
-      notes,
+      notes: notes ?? [],
       inventoryCurrency: inventory.currency,
       spellbookMeta: {
         spellcastingClass: spellbook.spellcastingClass,
@@ -471,14 +484,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
         spellAttackBonus: derivedSpellAttackBonus,
         slots: spellbook.slots,
       },
-      spellbookEntries: {
-        cantrips: allSpells.filter((s) => s.level === 0),
-        spells: allSpells.filter((s) => s.level > 0),
-      },
-      inventoryItems: normalizedInventory,
-      attacks: character.attacks,
       portraitUrl: character.info.portraitUrl,
-      featuresText: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n\n'),
       raceFeatures: character.raceFeatures,
       classFeatures: character.classFeatures,
       backgroundFeatures: character.backgroundFeatures,
@@ -489,7 +495,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       attacks: JSON.stringify(character.attacks),
       inventory: JSON.stringify(normalizedInventory),
       spells: JSON.stringify(allSpells),
-      blob: JSON.stringify(blobPayload),
+      blob: notes ? JSON.stringify(blobPayload) : '',
     }
     const previousSignatures = characterSaveSignatures.get(characterId)
 
@@ -522,7 +528,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
     if (!previousSignatures || previousSignatures.spells !== signatures.spells) {
       await syncSpellRows(characterId, allSpells)
     }
-    if (!previousSignatures || previousSignatures.blob !== signatures.blob) {
+    if (notes && (!previousSignatures || previousSignatures.blob !== signatures.blob)) {
       await upsertCharacterBlob(characterId, blobPayload)
     }
 
@@ -662,27 +668,38 @@ async function deleteMissingSpellRows(characterId: string, keepClientIds: string
 }
 
 export async function listPlayerCharacters() {
+  const t0 = Date.now()
   const { data: players, error } = await supabase
     .from('profiles')
-    .select(`
-      id,
-      username,
-      role,
-      characters (*),
-      activity_status (last_seen, current_page, is_online)
-    `)
+    .select('id, username')
     .eq('role', 'player')
     .order('created_at', { ascending: true })
 
   if (error) throw error
+  const playerIds = (players ?? []).map((player) => player.id).filter(Boolean)
+  if (playerIds.length === 0) return []
 
-  const results = await Promise.all((players ?? []).map(async (player: any) => {
-    const row = Array.isArray(player.characters) ? player.characters[0] : player.characters
+  const [{ data: characterRows, error: charactersError }, { data: activityRows, error: activityError }] = await Promise.all([
+    supabase
+      .from('characters')
+      .select('id, user_id, name, class_name, subclass, race, background, alignment, level, xp, proficiency_bonus, armor_class, initiative, speed, hp_max, hp_current, hp_temp, hit_dice_type, str_score, dex_score, con_score, int_score, wis_score, cha_score, save_str_prof, save_dex_prof, save_con_prof, save_int_prof, save_wis_prof, save_cha_prof, features, languages')
+      .in('user_id', playerIds),
+    supabase
+      .from('activity_status')
+      .select('user_id, last_seen, current_page, is_online')
+      .in('user_id', playerIds),
+  ])
+  if (charactersError) throw charactersError
+  if (activityError) throw activityError
+
+  const characterByUserId = new Map((characterRows ?? []).map((row) => [row.user_id, row]))
+  const activityByUserId = new Map((activityRows ?? []).map((row) => [row.user_id, row]))
+
+  const results = (players ?? []).map((player) => {
+    const row = characterByUserId.get(player.id)
     if (!row) {
-      return { id: player.id, username: player.username, character: emptyCharacter, activity: player.activity_status }
+      return { id: player.id, username: player.username, character: emptyCharacter, activity: activityByUserId.get(player.id) ?? null }
     }
-
-    const blob = await getCharacterBlob(row.id)
 
     const character: Character = {
       info: {
@@ -694,7 +711,7 @@ export async function listPlayerCharacters() {
         alignment: row.alignment ?? '',
         level: row.level ?? 1,
         xp: row.xp ?? 0,
-        portraitUrl: blob.portraitUrl ?? '',
+        portraitUrl: '',
       },
       abilities: {
         STR: { value: row.str_score ?? 10, proficient: row.save_str_prof ?? false },
@@ -719,11 +736,11 @@ export async function listPlayerCharacters() {
         hitDice: row.hit_dice_type ?? '',
         deathSaves: { successes: [false, false, false], failures: [false, false, false] },
       },
-      attacks: blob.attacks ?? emptyCharacter.attacks,
+      attacks: emptyCharacter.attacks,
       attackNotes: '',
-      raceFeatures: blob.raceFeatures ?? '',
-      classFeatures: blob.classFeatures ?? blob.featuresText ?? row.features ?? '',
-      backgroundFeatures: blob.backgroundFeatures ?? '',
+      raceFeatures: '',
+      classFeatures: row.features ?? '',
+      backgroundFeatures: '',
       languages: row.languages ?? '',
       passivePerception: 10,
     }
@@ -733,10 +750,11 @@ export async function listPlayerCharacters() {
       id: player.id,
       username: player.username,
       character,
-      activity: Array.isArray(player.activity_status) ? player.activity_status[0] : player.activity_status,
+      activity: activityByUserId.get(player.id) ?? null,
     }
-  }))
+  })
 
+  console.log('[perf]', 'listPlayerCharacters', Date.now() - t0)
   return results
 }
 

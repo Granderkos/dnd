@@ -499,6 +499,7 @@ export async function preparePlayerEntitiesForFight(fightId: string) {
 }
 
 export async function startCombatForCampaign(campaignId: string) {
+  const t0 = Date.now()
   const fight = await createOrGetDraftFight(campaignId)
   const [{ data: playerProfiles, error: playersError }, { data: activityUsers, error: activityUsersError }, { error: clearPlayerEntitiesError }, { error: clearRequestsError }] = await Promise.all([
     supabase
@@ -544,6 +545,7 @@ export async function startCombatForCampaign(campaignId: string) {
 
   await unlockFightCreaturesForCampaign(campaignId, fight.id)
   await setFightStatus(fight.id, requests.length > 0 ? 'collecting_initiative' : 'active')
+  console.log('[perf]', 'startCombatForCampaign', Date.now() - t0)
   return fight
 }
 
@@ -789,6 +791,7 @@ export async function listCampaignCreatureCompendium(campaignId: string) {
 }
 
 export async function listCreatureCompendiumForUser(userId: string) {
+  const t0 = Date.now()
   const [{ data: entries, error: entriesError }, { data: unlockRows, error: unlockError }] = await Promise.all([
     supabase
       .from('compendium_entries')
@@ -805,7 +808,7 @@ export async function listCreatureCompendiumForUser(userId: string) {
   if (unlockError) throw unlockError
 
   const unlockedIds = new Set((unlockRows ?? []).map((row) => row.entry_id as string))
-  return (entries ?? []).map((entry) => ({
+  const mapped = (entries ?? []).map((entry) => ({
     entry_id: entry.id as string,
     is_unlocked: unlockedIds.has(entry.id as string),
     entry,
@@ -814,6 +817,8 @@ export async function listCreatureCompendiumForUser(userId: string) {
     is_unlocked: boolean
     entry: Pick<CompendiumEntry, 'id' | 'type' | 'subtype' | 'slug' | 'name' | 'description' | 'data'>
   }>
+  console.log('[perf]', 'listCreatureCompendiumForUser', Date.now() - t0)
+  return mapped
 }
 
 export async function listCompanionEntries() {
@@ -827,6 +832,7 @@ export async function listCompanionEntries() {
 }
 
 export async function listCompanionsForUser(userId: string) {
+  const t0 = Date.now()
   const { data: character, error: characterError } = await supabase
     .from('characters')
     .select('id')
@@ -834,7 +840,10 @@ export async function listCompanionsForUser(userId: string) {
     .limit(1)
     .maybeSingle()
   if (characterError) throw characterError
-  if (!character) return { characterId: null, companions: [] as Array<CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }> }
+  if (!character) {
+    console.log('[perf]', 'listCompanionsForUser', Date.now() - t0)
+    return { characterId: null, companions: [] as Array<CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }> }
+  }
 
   const { data, error } = await supabase
     .from('character_companions')
@@ -856,10 +865,12 @@ export async function listCompanionsForUser(userId: string) {
     entry: Array.isArray(row.compendium_entries) ? row.compendium_entries[0] : row.compendium_entries,
   }))
 
-  return {
+  const result = {
     characterId: character.id as string,
     companions,
   }
+  console.log('[perf]', 'listCompanionsForUser', Date.now() - t0)
+  return result
 }
 
 export async function getPlayerCombatState(userId: string): Promise<'none' | 'collecting_initiative' | 'active'> {

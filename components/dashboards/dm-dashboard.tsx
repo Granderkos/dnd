@@ -130,12 +130,15 @@ export const DMDashboard = memo(function DMDashboard() {
   useEffect(() => {
     let mounted = true
     const loadPlayers = async () => {
+      const t0 = Date.now()
       try {
         const playersData = await getAllPlayerCharacters()
         if (!mounted) return
         setPlayers(playersData as PlayerCharacterData[])
       } catch (e) {
         console.error('Failed to load DM players', e)
+      } finally {
+        console.log('[perf]', 'dm.loadPlayers', Date.now() - t0)
       }
     }
     const load = async () => {
@@ -200,6 +203,7 @@ export const DMDashboard = memo(function DMDashboard() {
   }, [fightId, fightStatus])
 
   const loadFightState = useCallback(async (showLoader = true) => {
+    const t0 = Date.now()
     if (!user?.id) return
     if (fightRefreshInFlightRef.current) {
       fightRefreshQueuedRef.current = true
@@ -227,6 +231,7 @@ export const DMDashboard = memo(function DMDashboard() {
       const message = formatErrorMessage(e, t('common.unknownError'))
       setFightError(message)
     } finally {
+      console.log('[perf]', 'dm.loadFightState', Date.now() - t0)
       if (showLoader) setIsLoadingFight(false)
       fightRefreshInFlightRef.current = false
       if (fightRefreshQueuedRef.current) {
