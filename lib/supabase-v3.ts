@@ -795,12 +795,12 @@ export async function listCreatureCompendiumForUser(userId: string) {
   const [{ data: entries, error: entriesError }, { data: unlockRows, error: unlockError }] = await Promise.all([
     supabase
       .from('compendium_entries')
-      .select('id, type, subtype, slug, name, description, data')
+      .select('id, type, subtype, slug, name, description')
       .eq('type', 'creature')
       .order('name', { ascending: true }),
     supabase
       .from('campaign_entry_unlocks')
-      .select('entry_id, is_unlocked')
+      .select('entry_id')
       .or(`player_id.is.null,player_id.eq.${userId}`)
       .eq('is_unlocked', true),
   ])
@@ -808,10 +808,26 @@ export async function listCreatureCompendiumForUser(userId: string) {
   if (unlockError) throw unlockError
 
   const unlockedIds = new Set((unlockRows ?? []).map((row) => row.entry_id as string))
+  const unlockedEntryIds = [...unlockedIds]
+  const unlockedDataById = new Map<string, Record<string, unknown>>()
+  if (unlockedEntryIds.length > 0) {
+    const { data: unlockedEntries, error: unlockedEntriesError } = await supabase
+      .from('compendium_entries')
+      .select('id, data')
+      .in('id', unlockedEntryIds)
+    if (unlockedEntriesError) throw unlockedEntriesError
+    for (const row of unlockedEntries ?? []) {
+      unlockedDataById.set(row.id as string, (row.data ?? {}) as Record<string, unknown>)
+    }
+  }
+
   const mapped = (entries ?? []).map((entry) => ({
     entry_id: entry.id as string,
     is_unlocked: unlockedIds.has(entry.id as string),
-    entry,
+    entry: {
+      ...entry,
+      data: unlockedDataById.get(entry.id as string) ?? {},
+    },
   })) as Array<{
     entry_id: string
     is_unlocked: boolean

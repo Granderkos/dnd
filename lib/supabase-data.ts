@@ -8,6 +8,7 @@ import { supabase } from './supabase'
 import { generateClientId } from './client-id'
 
 const characterSaveQueue = new Map<string, Promise<void>>()
+const characterBlobCache = new Map<string, CharacterNotesBlob>()
 const characterSaveSignatures = new Map<string, {
   row: string
   attacks: string
@@ -72,6 +73,16 @@ interface CharacterNotesBlob {
   raceFeatures?: string
   classFeatures?: string
   backgroundFeatures?: string
+}
+
+const characterSelectColumnsBase = 'id, name, class_name, subclass, race, background, alignment, level, xp, proficiency_bonus, armor_class, initiative, speed, hp_max, hp_current, hp_temp, hit_dice_type, death_successes, death_failures, str_score, dex_score, con_score, int_score, wis_score, cha_score, save_str_prof, save_dex_prof, save_con_prof, save_int_prof, save_wis_prof, save_cha_prof, skill_acrobatics_prof, skill_animal_handling_prof, skill_arcana_prof, skill_athletics_prof, skill_deception_prof, skill_history_prof, skill_insight_prof, skill_intimidation_prof, skill_investigation_prof, skill_medicine_prof, skill_nature_prof, skill_perception_prof, skill_performance_prof, skill_persuasion_prof, skill_religion_prof, skill_sleight_of_hand_prof, skill_stealth_prof, skill_survival_prof, features, languages, portrait_preview_url'
+const characterSelectColumnsWithOriginal = `${characterSelectColumnsBase}, portrait_original_url`
+
+function isMissingColumnError(error: unknown, columnName: string) {
+  const message = typeof error === 'object' && error !== null && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : String(error ?? '')
+  return message.includes(columnName) && (message.includes('column') || message.includes('schema cache'))
 }
 
 const skillColumnByName: Record<string, string> = {
@@ -143,71 +154,80 @@ async function ensureCharacterRecord(userId: string) {
   if (existingId) return existingId
 
   const c = emptyCharacter
-  const { data, error } = await supabase
+  const insertPayload = {
+    user_id: userId,
+    name: c.info.name,
+    class_name: c.info.class,
+    subclass: c.info.subclass,
+    race: c.info.race,
+    background: c.info.background,
+    alignment: c.info.alignment,
+    level: c.info.level,
+    xp: c.info.xp,
+    proficiency_bonus: c.proficiencyBonus,
+    armor_class: c.combat.armorClass,
+    initiative: c.combat.initiative,
+    speed: c.combat.speed,
+    hp_max: c.combat.maxHp,
+    hp_current: c.combat.currentHp,
+    hp_temp: c.combat.tempHp,
+    hit_dice_total: 0,
+    hit_dice_type: c.combat.hitDice,
+    death_successes: 0,
+    death_failures: 0,
+    str_score: c.abilities.STR.value,
+    dex_score: c.abilities.DEX.value,
+    con_score: c.abilities.CON.value,
+    int_score: c.abilities.INT.value,
+    wis_score: c.abilities.WIS.value,
+    cha_score: c.abilities.CHA.value,
+    save_str_prof: c.abilities.STR.proficient,
+    save_dex_prof: c.abilities.DEX.proficient,
+    save_con_prof: c.abilities.CON.proficient,
+    save_int_prof: c.abilities.INT.proficient,
+    save_wis_prof: c.abilities.WIS.proficient,
+    save_cha_prof: c.abilities.CHA.proficient,
+    skill_acrobatics_prof: false,
+    skill_animal_handling_prof: false,
+    skill_arcana_prof: false,
+    skill_athletics_prof: false,
+    skill_deception_prof: false,
+    skill_history_prof: false,
+    skill_insight_prof: false,
+    skill_intimidation_prof: false,
+    skill_investigation_prof: false,
+    skill_medicine_prof: false,
+    skill_nature_prof: false,
+    skill_perception_prof: false,
+    skill_performance_prof: false,
+    skill_persuasion_prof: false,
+    skill_religion_prof: false,
+    skill_sleight_of_hand_prof: false,
+    skill_stealth_prof: false,
+    skill_survival_prof: false,
+    features: '',
+    languages: '',
+    portrait_preview_url: '',
+    portrait_original_url: '',
+  }
+
+  let insertQuery = supabase
     .from('characters')
-    .insert({
-      user_id: userId,
-      name: c.info.name,
-      class_name: c.info.class,
-      subclass: c.info.subclass,
-      race: c.info.race,
-      background: c.info.background,
-      alignment: c.info.alignment,
-      level: c.info.level,
-      xp: c.info.xp,
-      proficiency_bonus: c.proficiencyBonus,
-      armor_class: c.combat.armorClass,
-      initiative: c.combat.initiative,
-      speed: c.combat.speed,
-      hp_max: c.combat.maxHp,
-      hp_current: c.combat.currentHp,
-      hp_temp: c.combat.tempHp,
-      hit_dice_total: 0,
-      hit_dice_type: c.combat.hitDice,
-      death_successes: 0,
-      death_failures: 0,
-      str_score: c.abilities.STR.value,
-      dex_score: c.abilities.DEX.value,
-      con_score: c.abilities.CON.value,
-      int_score: c.abilities.INT.value,
-      wis_score: c.abilities.WIS.value,
-      cha_score: c.abilities.CHA.value,
-      save_str_prof: c.abilities.STR.proficient,
-      save_dex_prof: c.abilities.DEX.proficient,
-      save_con_prof: c.abilities.CON.proficient,
-      save_int_prof: c.abilities.INT.proficient,
-      save_wis_prof: c.abilities.WIS.proficient,
-      save_cha_prof: c.abilities.CHA.proficient,
-      skill_acrobatics_prof: false,
-      skill_animal_handling_prof: false,
-      skill_arcana_prof: false,
-      skill_athletics_prof: false,
-      skill_deception_prof: false,
-      skill_history_prof: false,
-      skill_insight_prof: false,
-      skill_intimidation_prof: false,
-      skill_investigation_prof: false,
-      skill_medicine_prof: false,
-      skill_nature_prof: false,
-      skill_perception_prof: false,
-      skill_performance_prof: false,
-      skill_persuasion_prof: false,
-      skill_religion_prof: false,
-      skill_sleight_of_hand_prof: false,
-      skill_stealth_prof: false,
-      skill_survival_prof: false,
-      features: '',
-      languages: '',
-      portrait_preview_url: '',
-      portrait_original_url: '',
-    })
+    .insert(insertPayload)
     .select('id')
     .single()
+  let { data, error } = await insertQuery
+  if (error && isMissingColumnError(error, 'portrait_original_url')) {
+    const { portrait_original_url, ...legacyInsertPayload } = insertPayload
+    insertQuery = supabase.from('characters').insert(legacyInsertPayload).select('id').single()
+    ;({ data, error } = await insertQuery)
+  }
 
   if (error) throw error
+  if (!data?.id) throw new Error('Failed to create character record')
 
   await supabase.from('character_notes').upsert({
-    character_id: data.id,
+    character_id: data?.id,
     notes: JSON.stringify(emptyBlob()),
   })
 
@@ -225,6 +245,8 @@ function getPerceptionModifier(character: Character): number {
 }
 
 async function getCharacterBlob(characterId: string): Promise<CharacterNotesBlob> {
+  const cached = characterBlobCache.get(characterId)
+  if (cached) return cached
   const { data, error } = await supabase
     .from('character_notes')
     .select('notes')
@@ -232,7 +254,9 @@ async function getCharacterBlob(characterId: string): Promise<CharacterNotesBlob
     .maybeSingle()
 
   if (error) throw error
-  return safeJsonParse<CharacterNotesBlob>(data?.notes, emptyBlob())
+  const parsed = safeJsonParse<CharacterNotesBlob>(data?.notes, emptyBlob())
+  characterBlobCache.set(characterId, parsed)
+  return parsed
 }
 
 async function upsertCharacterBlob(characterId: string, blob: CharacterNotesBlob) {
@@ -241,21 +265,32 @@ async function upsertCharacterBlob(characterId: string, blob: CharacterNotesBlob
     notes: notesBlobToText(blob),
   })
   if (error) throw error
+  characterBlobCache.set(characterId, blob)
 }
 
 export async function loadCurrentPlayerData(userId: string): Promise<{ character: Character; spellbook: Spellbook; inventory: Inventory; notes: Note[] }> {
   const t0 = Date.now()
   const characterId = await ensureCharacterRecord(userId)
-
-  const [{ data: row, error: charError }, { data: attacksData, error: attacksError }, { data: inventoryData, error: inventoryError }, { data: spellsData, error: spellsError }] = await Promise.all([
-    supabase
+  const charSelectWithFallback = async () => {
+    const withOriginal = await supabase
       .from('characters')
-      .select('id, name, class_name, subclass, race, background, alignment, level, xp, proficiency_bonus, armor_class, initiative, speed, hp_max, hp_current, hp_temp, hit_dice_type, death_successes, death_failures, str_score, dex_score, con_score, int_score, wis_score, cha_score, save_str_prof, save_dex_prof, save_con_prof, save_int_prof, save_wis_prof, save_cha_prof, skill_acrobatics_prof, skill_animal_handling_prof, skill_arcana_prof, skill_athletics_prof, skill_deception_prof, skill_history_prof, skill_insight_prof, skill_intimidation_prof, skill_investigation_prof, skill_medicine_prof, skill_nature_prof, skill_perception_prof, skill_performance_prof, skill_persuasion_prof, skill_religion_prof, skill_sleight_of_hand_prof, skill_stealth_prof, skill_survival_prof, features, languages, portrait_preview_url')
+      .select(characterSelectColumnsWithOriginal)
       .eq('id', characterId)
-      .single(),
+      .single()
+    if (!withOriginal.error || !isMissingColumnError(withOriginal.error, 'portrait_original_url')) return withOriginal
+    return supabase
+      .from('characters')
+      .select(characterSelectColumnsBase)
+      .eq('id', characterId)
+      .single()
+  }
+
+  const [{ data: row, error: charError }, { data: attacksData, error: attacksError }, { data: inventoryData, error: inventoryError }, { data: spellsData, error: spellsError }, blob] = await Promise.all([
+    charSelectWithFallback(),
     supabase.from('attacks').select('id, name, attack_bonus, damage').eq('character_id', characterId).order('sort_order', { ascending: true }),
     supabase.from('inventory_items').select('*').eq('character_id', characterId).order('sort_order', { ascending: true }),
     supabase.from('spells').select('*').eq('character_id', characterId).order('sort_order', { ascending: true }),
+    getCharacterBlob(characterId),
   ])
 
   if (charError) throw charError
@@ -273,6 +308,12 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
 
   const hasNormalizedSpells = Boolean(spellsData?.length)
   const hasNormalizedInventory = Boolean(inventoryData?.length)
+  const hasNormalizedAttacks = Boolean(attacksData?.length)
+  const fallbackSpellEntries = blob.spellbookEntries ?? emptyBlob().spellbookEntries ?? { cantrips: [], spells: [] }
+  const fallbackInventoryItems = dedupeByClientId(blob.inventoryItems ?? [])
+  const fallbackAttacks = dedupeByClientId(blob.attacks ?? [])
+  const fallbackCategoryById = new Map(fallbackInventoryItems.map((item) => [item.id, item.category]))
+  const hasSeparatedFeatures = Boolean(blob.raceFeatures || blob.classFeatures || blob.backgroundFeatures)
 
   const character: Character = {
     info: {
@@ -284,7 +325,8 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       alignment: row.alignment ?? '',
       level: row.level ?? 1,
       xp: row.xp ?? 0,
-      portraitUrl: row.portrait_preview_url ?? '',
+      portraitUrl: blob.portraitUrl || row.portrait_preview_url || '',
+      portraitOriginalUrl: blob.portraitOriginalUrl || (row as { portrait_original_url?: string | null }).portrait_original_url || '',
     },
     abilities: {
       STR: { value: row.str_score ?? 10, proficient: row.save_str_prof ?? false },
@@ -312,7 +354,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
         failures: [0, 1, 2].map((i) => i < (row.death_failures ?? 0)) as [boolean, boolean, boolean],
       },
     },
-    attacks: (attacksData ?? []).map((attack) => {
+    attacks: (hasNormalizedAttacks ? (attacksData ?? []).map((attack) => {
       const damageText = attack.damage ?? ''
       const [damage = '', ...damageType] = damageText.split(' ')
       return {
@@ -322,26 +364,26 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
         damage,
         damageType: damageType.join(' '),
       }
-    }),
+    }) : fallbackAttacks),
     attackNotes: '',
-    raceFeatures: '',
-    classFeatures: row.features ?? '',
-    backgroundFeatures: '',
+    raceFeatures: hasSeparatedFeatures ? (blob.raceFeatures ?? '') : '',
+    classFeatures: hasSeparatedFeatures ? (blob.classFeatures ?? '') : (row.features ?? blob.featuresText ?? ''),
+    backgroundFeatures: hasSeparatedFeatures ? (blob.backgroundFeatures ?? '') : '',
     languages: row.languages ?? '',
     passivePerception: 10,
   }
   character.passivePerception = 10 + getPerceptionModifier(character)
 
-  const spellMeta = emptyBlob().spellbookMeta
+  const spellMeta = blob.spellbookMeta ?? emptyBlob().spellbookMeta
   const spellAbility = spellMeta.spellcastingAbility
   const spellAbilityScore = row[`${spellAbility.toLowerCase()}_score` as keyof typeof row] as number | null
   const fallbackSpellSaveDC = calculateSpellSaveDC(row.proficiency_bonus ?? 2, spellAbilityScore ?? 10)
   const fallbackSpellAttackBonus = calculateSpellAttackBonus(row.proficiency_bonus ?? 2, spellAbilityScore ?? 10)
   const spellbook: Spellbook = {
-    spellcastingClass: row.class_name || '',
+    spellcastingClass: spellMeta.spellcastingClass || row.class_name || '',
     spellcastingAbility: spellAbility,
-    spellSaveDC: fallbackSpellSaveDC,
-    spellAttackBonus: fallbackSpellAttackBonus,
+    spellSaveDC: spellMeta.spellSaveDC ?? fallbackSpellSaveDC,
+    spellAttackBonus: spellMeta.spellAttackBonus ?? fallbackSpellAttackBonus,
     cantrips: (hasNormalizedSpells ? (spellsData ?? []).filter((s) => s.is_cantrip).map((s) => ({
       id: s.client_id ?? s.id,
       name: s.title,
@@ -355,7 +397,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       description: s.description,
       damage: s.dice,
       prepared: true,
-    })) : []),
+    })) : fallbackSpellEntries.cantrips ?? []),
     spells: (hasNormalizedSpells ? (spellsData ?? []).filter((s) => !s.is_cantrip).map((s) => ({
       id: s.client_id ?? s.id,
       name: s.title,
@@ -369,21 +411,24 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       description: s.description,
       damage: s.dice,
       prepared: true,
-    })) : []),
-    slots: emptySpellbook.slots,
+    })) : fallbackSpellEntries.spells ?? []),
+    slots: spellMeta.slots ?? emptySpellbook.slots,
   }
 
   const inventory: Inventory = {
     items: (hasNormalizedInventory ? (inventoryData ?? []).map((item) => {
+      const normalizedId = item.client_id ?? item.id
       return {
-        id: item.client_id ?? item.id,
+        id: normalizedId,
         name: item.title,
         quantity: item.quantity,
         description: item.description,
-        category: 'Other',
+        category: (typeof item.category === 'string' && item.category.trim())
+          ? item.category
+          : (fallbackCategoryById.get(normalizedId) || 'Other'),
       }
-    }) : []),
-    currency: emptyInventory.currency,
+    }) : fallbackInventoryItems),
+    currency: blob.inventoryCurrency ?? emptyInventory.currency,
   }
 
   console.log('[perf]', 'loadCurrentPlayerData', Date.now() - t0)
@@ -414,6 +459,9 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
     const initiativeModifier = calculateModifier(character.abilities.DEX.value)
     const initiativeRoll = character.combat.initiativeRoll ?? 0
     const initiativeTotal = initiativeModifier + initiativeRoll
+
+    const existingBlob = notes ? null : await getCharacterBlob(characterId)
+    const persistedNotes = notes ?? existingBlob?.notes ?? []
 
     const row = {
       id: characterId,
@@ -467,7 +515,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       skill_sleight_of_hand_prof: findSkill(character, 'Sleight of Hand'),
       skill_stealth_prof: findSkill(character, 'Stealth'),
       skill_survival_prof: findSkill(character, 'Survival'),
-      features: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n'),
+      features: character.classFeatures ?? '',
       languages: character.languages,
       portrait_preview_url: character.info.portraitUrl ?? '',
       portrait_original_url: character.info.portraitOriginalUrl ?? null,
@@ -480,7 +528,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
     }))
 
     const blobPayload: CharacterNotesBlob = {
-      notes: notes ?? [],
+      notes: persistedNotes,
       inventoryCurrency: inventory.currency,
       spellbookMeta: {
         spellcastingClass: spellbook.spellcastingClass,
@@ -489,8 +537,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
         spellAttackBonus: derivedSpellAttackBonus,
         slots: spellbook.slots,
       },
-      portraitUrl: character.info.portraitUrl,
-      portraitOriginalUrl: character.info.portraitOriginalUrl,
+      featuresText: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n'),
       raceFeatures: character.raceFeatures,
       classFeatures: character.classFeatures,
       backgroundFeatures: character.backgroundFeatures,
@@ -501,12 +548,16 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       attacks: JSON.stringify(character.attacks),
       inventory: JSON.stringify(normalizedInventory),
       spells: JSON.stringify(allSpells),
-      blob: notes ? JSON.stringify(blobPayload) : '',
+      blob: JSON.stringify(blobPayload),
     }
     const previousSignatures = characterSaveSignatures.get(characterId)
 
     if (!previousSignatures || previousSignatures.row !== signatures.row) {
-      const { error: characterUpsertError } = await supabase.from('characters').upsert(row, { onConflict: 'id' })
+      let { error: characterUpsertError } = await supabase.from('characters').upsert(row, { onConflict: 'id' })
+      if (characterUpsertError && isMissingColumnError(characterUpsertError, 'portrait_original_url')) {
+        const { portrait_original_url, ...legacyRow } = row
+        ;({ error: characterUpsertError } = await supabase.from('characters').upsert(legacyRow, { onConflict: 'id' }))
+      }
       if (characterUpsertError) throw characterUpsertError
     }
 
@@ -534,7 +585,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
     if (!previousSignatures || previousSignatures.spells !== signatures.spells) {
       await syncSpellRows(characterId, allSpells)
     }
-    if (notes && (!previousSignatures || previousSignatures.blob !== signatures.blob)) {
+    if (!previousSignatures || previousSignatures.blob !== signatures.blob) {
       await upsertCharacterBlob(characterId, blobPayload)
     }
 
@@ -570,6 +621,7 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
     title: item.name,
     description: item.description,
     quantity: item.quantity,
+    category: item.category || 'Other',
   }))
   const { error: upsertError } = await supabase
     .from('inventory_items')
