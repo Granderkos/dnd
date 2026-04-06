@@ -159,8 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const heartbeat = async (force = false) => {
       const now = Date.now()
-      if (!force && now - lastPresenceWriteRef.current < 45000) return
-      if (!force && lastPresencePageRef.current === currentPageRef.current) return
+      if (!force && now - lastPresenceWriteRef.current < 55000) return
       try {
         await updateActivityStatus(user.id, currentPageRef.current, true)
         lastPresenceWriteRef.current = now
@@ -182,18 +181,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void heartbeat(true)
       }
     }
+    const handleFocus = () => {
+      void heartbeat(true)
+    }
+    const handlePageShow = () => {
+      void heartbeat(true)
+    }
+    const handleOnline = () => {
+      void heartbeat(true)
+    }
 
     const handleBeforeUnload = () => {
       void setOffline(user.id)
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+    window.addEventListener('pageshow', handlePageShow)
+    window.addEventListener('online', handleOnline)
     window.addEventListener('beforeunload', handleBeforeUnload)
 
     return () => {
       cancelled = true
       window.clearInterval(interval)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('pageshow', handlePageShow)
+      window.removeEventListener('online', handleOnline)
       window.removeEventListener('beforeunload', handleBeforeUnload)
       presenceStartedForRef.current = null
     }

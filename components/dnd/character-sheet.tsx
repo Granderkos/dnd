@@ -322,19 +322,40 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
     })
   }, [character, onChange])
 
+  const createPreviewDataUrl = useCallback(async (file: File): Promise<string> => {
+    const imageBitmap = await createImageBitmap(file)
+    const maxSize = 256
+    const scale = Math.min(1, maxSize / Math.max(imageBitmap.width, imageBitmap.height))
+    const targetWidth = Math.max(1, Math.round(imageBitmap.width * scale))
+    const targetHeight = Math.max(1, Math.round(imageBitmap.height * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = targetWidth
+    canvas.height = targetHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return ''
+    ctx.drawImage(imageBitmap, 0, 0, targetWidth, targetHeight)
+    return canvas.toDataURL('image/jpeg', 0.82)
+  }, [])
+
   const handlePortraitUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       const reader = new FileReader()
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
+        const originalDataUrl = reader.result as string
+        const previewDataUrl = await createPreviewDataUrl(file)
         onChange({
           ...character,
-          info: { ...character.info, portraitUrl: reader.result as string },
+          info: {
+            ...character.info,
+            portraitUrl: previewDataUrl || originalDataUrl,
+            portraitOriginalUrl: originalDataUrl,
+          },
         })
       }
       reader.readAsDataURL(file)
     }
-  }, [character, onChange])
+  }, [character, createPreviewDataUrl, onChange])
 
   const abilities: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']
   const speedInSquares = Math.floor(character.combat.speed / 5)
