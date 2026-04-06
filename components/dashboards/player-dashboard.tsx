@@ -49,6 +49,13 @@ const Spellbook = dynamic(() => import('@/components/dnd/spellbook').then((m) =>
 const Inventory = dynamic(() => import('@/components/dnd/inventory').then((m) => m.Inventory), { ssr: false })
 const Notes = dynamic(() => import('@/components/dnd/notes').then((m) => m.Notes), { ssr: false })
 const PlayerMapViewer = dynamic(() => import('@/components/dnd/player-map-viewer').then((m) => m.PlayerMapViewer), { ssr: false })
+const PLAYER_DASHBOARD_TABS = ['character', 'inventory', 'spellbook', 'notes', 'map', 'compendium'] as const
+
+function getInitialPlayerTab() {
+  if (typeof window === 'undefined') return 'character'
+  const saved = window.localStorage.getItem('player-dashboard-active-tab')
+  return saved && PLAYER_DASHBOARD_TABS.includes(saved as (typeof PLAYER_DASHBOARD_TABS)[number]) ? saved : 'character'
+}
 
 function useDebouncedRemoteSave<T>(value: T, delay: number, enabled: boolean, saveFn: (value: T) => Promise<void>) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -157,7 +164,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const { user, logout, updateCurrentPage } = useAuth()
   const { t } = useI18n()
   const [isLoaded, setIsLoaded] = useState(false)
-  const [activeTab, setActiveTab] = useState('character')
+  const [activeTab, setActiveTab] = useState(getInitialPlayerTab)
   const [character, setCharacter] = useState<Character>(emptyCharacter)
   const [spellbook, setSpellbook] = useState<SpellbookType>(emptySpellbook)
   const [inventory, setInventory] = useState<InventoryType>(emptyInventory)
@@ -253,6 +260,11 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   useEffect(() => {
     void updateCurrentPage(activeTab)
   }, [activeTab, updateCurrentPage])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem('player-dashboard-active-tab', activeTab)
+  }, [activeTab])
 
   const refreshInitiativePrompt = useCallback(async () => {
     if (!user?.id) return
