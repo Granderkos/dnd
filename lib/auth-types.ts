@@ -39,6 +39,7 @@ export const emptyCharacter: Character = {
     level: 1,
     xp: 0,
     portraitUrl: '',
+    portraitOriginalUrl: '',
   },
   abilities: {
     STR: { value: 10, proficient: false },

@@ -36,6 +36,7 @@ export interface CharacterInfo {
   level: number
   xp: number
   portraitUrl?: string
+  portraitOriginalUrl?: string
 }
 
 export interface CombatInfo {

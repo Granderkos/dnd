@@ -56,7 +56,7 @@ function useDebouncedRemoteText(value: string, delay: number, enabled: boolean, 
 function isRecentlyActive(activity?: PlayerCharacterData['activity']) {
   if (!activity?.last_seen) return false
   const age = Date.now() - new Date(activity.last_seen).getTime()
-  return Boolean(activity.is_online) && age < 45000
+  return Boolean(activity.is_online) && age < 180000
 }
 
 const DM_DASHBOARD_TABS = ['players', 'maps', 'notes', 'bestiary', 'fight'] as const

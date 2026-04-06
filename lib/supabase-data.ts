@@ -67,6 +67,7 @@ interface CharacterNotesBlob {
   inventoryItems?: Inventory['items']
   attacks?: Character['attacks']
   portraitUrl?: string
+  portraitOriginalUrl?: string
   featuresText?: string
   raceFeatures?: string
   classFeatures?: string
@@ -197,6 +198,8 @@ async function ensureCharacterRecord(userId: string) {
       skill_survival_prof: false,
       features: '',
       languages: '',
+      portrait_preview_url: '',
+      portrait_original_url: '',
     })
     .select('id')
     .single()
@@ -247,7 +250,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
   const [{ data: row, error: charError }, { data: attacksData, error: attacksError }, { data: inventoryData, error: inventoryError }, { data: spellsData, error: spellsError }] = await Promise.all([
     supabase
       .from('characters')
-      .select('id, name, class_name, subclass, race, background, alignment, level, xp, proficiency_bonus, armor_class, initiative, speed, hp_max, hp_current, hp_temp, hit_dice_type, death_successes, death_failures, str_score, dex_score, con_score, int_score, wis_score, cha_score, save_str_prof, save_dex_prof, save_con_prof, save_int_prof, save_wis_prof, save_cha_prof, skill_acrobatics_prof, skill_animal_handling_prof, skill_arcana_prof, skill_athletics_prof, skill_deception_prof, skill_history_prof, skill_insight_prof, skill_intimidation_prof, skill_investigation_prof, skill_medicine_prof, skill_nature_prof, skill_perception_prof, skill_performance_prof, skill_persuasion_prof, skill_religion_prof, skill_sleight_of_hand_prof, skill_stealth_prof, skill_survival_prof, features, languages')
+      .select('id, name, class_name, subclass, race, background, alignment, level, xp, proficiency_bonus, armor_class, initiative, speed, hp_max, hp_current, hp_temp, hit_dice_type, death_successes, death_failures, str_score, dex_score, con_score, int_score, wis_score, cha_score, save_str_prof, save_dex_prof, save_con_prof, save_int_prof, save_wis_prof, save_cha_prof, skill_acrobatics_prof, skill_animal_handling_prof, skill_arcana_prof, skill_athletics_prof, skill_deception_prof, skill_history_prof, skill_insight_prof, skill_intimidation_prof, skill_investigation_prof, skill_medicine_prof, skill_nature_prof, skill_perception_prof, skill_performance_prof, skill_persuasion_prof, skill_religion_prof, skill_sleight_of_hand_prof, skill_stealth_prof, skill_survival_prof, features, languages, portrait_preview_url')
       .eq('id', characterId)
       .single(),
     supabase.from('attacks').select('id, name, attack_bonus, damage').eq('character_id', characterId).order('sort_order', { ascending: true }),
@@ -281,7 +284,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       alignment: row.alignment ?? '',
       level: row.level ?? 1,
       xp: row.xp ?? 0,
-      portraitUrl: '',
+      portraitUrl: row.portrait_preview_url ?? '',
     },
     abilities: {
       STR: { value: row.str_score ?? 10, proficient: row.save_str_prof ?? false },
@@ -466,6 +469,8 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       skill_survival_prof: findSkill(character, 'Survival'),
       features: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n'),
       languages: character.languages,
+      portrait_preview_url: character.info.portraitUrl ?? '',
+      portrait_original_url: character.info.portraitOriginalUrl ?? null,
     }
 
     const allSpells = [...spellbook.cantrips.map((s) => ({ ...s, level: 0 })), ...spellbook.spells]
@@ -485,6 +490,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
         slots: spellbook.slots,
       },
       portraitUrl: character.info.portraitUrl,
+      portraitOriginalUrl: character.info.portraitOriginalUrl,
       raceFeatures: character.raceFeatures,
       classFeatures: character.classFeatures,
       backgroundFeatures: character.backgroundFeatures,
@@ -682,7 +688,7 @@ export async function listPlayerCharacters() {
   const [{ data: characterRows, error: charactersError }, { data: activityRows, error: activityError }] = await Promise.all([
     supabase
       .from('characters')
-      .select('id, user_id, name, class_name, subclass, race, background, alignment, level, xp, proficiency_bonus, armor_class, initiative, speed, hp_max, hp_current, hp_temp, hit_dice_type, str_score, dex_score, con_score, int_score, wis_score, cha_score, save_str_prof, save_dex_prof, save_con_prof, save_int_prof, save_wis_prof, save_cha_prof, features, languages')
+      .select('id, user_id, name, class_name, subclass, race, background, alignment, level, xp, proficiency_bonus, armor_class, initiative, speed, hp_max, hp_current, hp_temp, hit_dice_type, str_score, dex_score, con_score, int_score, wis_score, cha_score, save_str_prof, save_dex_prof, save_con_prof, save_int_prof, save_wis_prof, save_cha_prof, features, languages, portrait_preview_url')
       .in('user_id', playerIds),
     supabase
       .from('activity_status')
@@ -711,7 +717,7 @@ export async function listPlayerCharacters() {
         alignment: row.alignment ?? '',
         level: row.level ?? 1,
         xp: row.xp ?? 0,
-        portraitUrl: '',
+        portraitUrl: row.portrait_preview_url ?? '',
       },
       abilities: {
         STR: { value: row.str_score ?? 10, proficient: row.save_str_prof ?? false },
