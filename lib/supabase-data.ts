@@ -538,11 +538,6 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
         spellAttackBonus: derivedSpellAttackBonus,
         slots: spellbook.slots,
       },
-      spellbookEntries: {
-        cantrips: allSpells.filter((s) => s.level === 0),
-        spells: allSpells.filter((s) => s.level > 0),
-      },
-      attacks: character.attacks,
       featuresText: [character.raceFeatures, character.classFeatures, character.backgroundFeatures].filter(Boolean).join('\n'),
       raceFeatures: character.raceFeatures,
       classFeatures: character.classFeatures,
@@ -627,6 +622,7 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
     title: item.name,
     description: item.description,
     quantity: item.quantity,
+    category: item.category || 'Other',
   }))
   const { error: upsertError } = await supabase
     .from('inventory_items')
