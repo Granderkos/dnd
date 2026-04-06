@@ -530,6 +530,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
     const blobPayload: CharacterNotesBlob = {
       notes: persistedNotes,
       inventoryCurrency: inventory.currency,
+      inventoryItems: normalizedInventory,
       spellbookMeta: {
         spellcastingClass: spellbook.spellcastingClass,
         spellcastingAbility: spellbook.spellcastingAbility,
