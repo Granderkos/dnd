@@ -175,6 +175,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [initiativeRollInput, setInitiativeRollInput] = useState('')
   const [isSubmittingInitiative, setIsSubmittingInitiative] = useState(false)
   const [initiativeError, setInitiativeError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [creatureCompendium, setCreatureCompendium] = useState<Array<{ entry_id: string; is_unlocked: boolean; entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'> }>>([])
   const [companions, setCompanions] = useState<Array<CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }>>([])
   const [companionCharacterId, setCompanionCharacterId] = useState<string | null>(null)
@@ -422,8 +423,10 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
           ...payload,
           notes: notesLoaded ? payload.notes : undefined,
         })
+        setSaveError(null)
       } catch (e) {
         console.error('Failed to save player data', e)
+        setSaveError(formatErrorMessage(e, 'Failed to save changes.'))
       }
     }
   )
@@ -491,6 +494,11 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
               <span className="hidden sm:inline text-xs">{t('nav.compendium')}</span>
             </TabsTrigger>
           </TabsList>
+          {saveError && (
+            <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs text-destructive">
+              {saveError}
+            </div>
+          )}
         </header>
 
         <TabsContent value="character" className="mt-0 flex-1 overflow-hidden">

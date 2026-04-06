@@ -309,10 +309,6 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
   const hasNormalizedSpells = Boolean(spellsData?.length)
   const hasNormalizedInventory = Boolean(inventoryData?.length)
   const hasNormalizedAttacks = Boolean(attacksData?.length)
-  const fallbackSpellEntries = blob.spellbookEntries ?? emptyBlob().spellbookEntries ?? { cantrips: [], spells: [] }
-  const fallbackInventoryItems = dedupeByClientId(blob.inventoryItems ?? [])
-  const fallbackAttacks = dedupeByClientId(blob.attacks ?? [])
-  const fallbackCategoryById = new Map(fallbackInventoryItems.map((item) => [item.id, item.category]))
   const hasSeparatedFeatures = Boolean(blob.raceFeatures || blob.classFeatures || blob.backgroundFeatures)
 
   const character: Character = {
@@ -364,7 +360,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
         damage,
         damageType: damageType.join(' '),
       }
-    }) : fallbackAttacks),
+    }) : []),
     attackNotes: '',
     raceFeatures: hasSeparatedFeatures ? (blob.raceFeatures ?? '') : '',
     classFeatures: hasSeparatedFeatures ? (blob.classFeatures ?? '') : (row.features ?? blob.featuresText ?? ''),
@@ -411,7 +407,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       description: s.description,
       damage: s.dice,
       prepared: true,
-    })) : fallbackSpellEntries.spells ?? []),
+    })) : []),
     slots: spellMeta.slots ?? emptySpellbook.slots,
   }
 
@@ -425,9 +421,9 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
         description: item.description,
         category: (typeof item.category === 'string' && item.category.trim())
           ? item.category
-          : (fallbackCategoryById.get(normalizedId) || 'Other'),
+          : 'Other',
       }
-    }) : fallbackInventoryItems),
+    }) : []),
     currency: blob.inventoryCurrency ?? emptyInventory.currency,
   }
 
@@ -553,41 +549,44 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
     }
     const previousSignatures = characterSaveSignatures.get(characterId)
 
-    if (!previousSignatures || previousSignatures.row !== signatures.row) {
-      let { error: characterUpsertError } = await supabase.from('characters').upsert(row, { onConflict: 'id' })
-      if (characterUpsertError && isMissingColumnError(characterUpsertError, 'portrait_original_url')) {
-        const { portrait_original_url, ...legacyRow } = row
-        ;({ error: characterUpsertError } = await supabase.from('characters').upsert(legacyRow, { onConflict: 'id' }))
+    try {
+      if (!previousSignatures || previousSignatures.attacks !== signatures.attacks) {
+        const { error: attacksDeleteError } = await supabase.from('attacks').delete().eq('character_id', characterId)
+        if (attacksDeleteError) throw new Error(`attacks.delete: ${attacksDeleteError.message ?? 'failed'}`)
+
+        if (character.attacks.length) {
+          const { error } = await supabase.from('attacks').insert(
+            character.attacks.map((attack, index) => ({
+              character_id: characterId,
+              sort_order: index,
+              name: attack.name,
+              attack_bonus: attack.attackBonus,
+              damage: [attack.damage, attack.damageType].filter(Boolean).join(' '),
+            }))
+          )
+          if (error) throw new Error(`attacks.insert: ${error.message ?? 'failed'}`)
+        }
       }
-      if (characterUpsertError) throw characterUpsertError
-    }
 
-    if (!previousSignatures || previousSignatures.attacks !== signatures.attacks) {
-      const { error: attacksDeleteError } = await supabase.from('attacks').delete().eq('character_id', characterId)
-      if (attacksDeleteError) throw attacksDeleteError
-
-      if (character.attacks.length) {
-        const { error } = await supabase.from('attacks').insert(
-          character.attacks.map((attack, index) => ({
-            character_id: characterId,
-            sort_order: index,
-            name: attack.name,
-            attack_bonus: attack.attackBonus,
-            damage: [attack.damage, attack.damageType].filter(Boolean).join(' '),
-          }))
-        )
-        if (error) throw error
+      if (!previousSignatures || previousSignatures.inventory !== signatures.inventory) {
+        await syncInventoryRows(characterId, normalizedInventory)
       }
-    }
-
-    if (!previousSignatures || previousSignatures.inventory !== signatures.inventory) {
-      await syncInventoryRows(characterId, normalizedInventory)
-    }
-    if (!previousSignatures || previousSignatures.spells !== signatures.spells) {
-      await syncSpellRows(characterId, allSpells)
-    }
-    if (!previousSignatures || previousSignatures.blob !== signatures.blob) {
-      await upsertCharacterBlob(characterId, blobPayload)
+      if (!previousSignatures || previousSignatures.spells !== signatures.spells) {
+        await syncSpellRows(characterId, allSpells)
+      }
+      if (!previousSignatures || previousSignatures.blob !== signatures.blob) {
+        await upsertCharacterBlob(characterId, blobPayload)
+      }
+      if (!previousSignatures || previousSignatures.row !== signatures.row) {
+        let { error: characterUpsertError } = await supabase.from('characters').upsert(row, { onConflict: 'id' })
+        if (characterUpsertError && isMissingColumnError(characterUpsertError, 'portrait_original_url')) {
+          const { portrait_original_url, ...legacyRow } = row
+          ;({ error: characterUpsertError } = await supabase.from('characters').upsert(legacyRow, { onConflict: 'id' }))
+        }
+        if (characterUpsertError) throw new Error(`characters.upsert: ${characterUpsertError.message ?? 'failed'}`)
+      }
+    } catch (error) {
+      throw new Error(`[saveCurrentPlayerData] ${error instanceof Error ? error.message : String(error)}`)
     }
 
     characterSaveSignatures.set(characterId, signatures)
