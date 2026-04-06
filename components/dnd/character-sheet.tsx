@@ -334,7 +334,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
     const ctx = canvas.getContext('2d')
     if (!ctx) return ''
     ctx.drawImage(imageBitmap, 0, 0, targetWidth, targetHeight)
-    return canvas.toDataURL('image/jpeg', 0.82)
+    return canvas.toDataURL('image/webp', 0.86)
   }, [])
 
   const handlePortraitUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
