@@ -300,12 +300,47 @@ export async function moveFightTurnToEnd(entityId: string, turnOrder: number) {
 }
 
 export async function setFightEntityCurrentHp(entityId: string, currentHp: number) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('fight_entities')
     .update({ current_hp: currentHp })
     .eq('id', entityId)
+    .select('id, entity_type, character_id')
+    .maybeSingle()
 
   if (error) throw error
+
+  if (data?.entity_type === 'player' && data.character_id) {
+    const characterPatch: { hp_current: number; death_successes?: number; death_failures?: number } = { hp_current: currentHp }
+    if (currentHp > 0) {
+      characterPatch.death_successes = 0
+      characterPatch.death_failures = 0
+    }
+    const { error: characterError } = await supabase
+      .from('characters')
+      .update(characterPatch)
+      .eq('id', data.character_id)
+
+    if (characterError) throw characterError
+  }
+}
+
+export async function listCharacterCombatState(characterIds: string[]) {
+  const ids = [...new Set(characterIds.filter(Boolean))]
+  if (!ids.length) return []
+
+  const { data, error } = await supabase
+    .from('characters')
+    .select('id, hp_current, hp_max, death_successes, death_failures')
+    .in('id', ids)
+
+  if (error) throw error
+  return (data ?? []) as Array<{
+    id: string
+    hp_current: number | null
+    hp_max: number | null
+    death_successes: number | null
+    death_failures: number | null
+  }>
 }
 
 export async function clearFightEntities(fightId: string) {
@@ -795,12 +830,12 @@ export async function listCreatureCompendiumForUser(userId: string) {
   const [{ data: entries, error: entriesError }, { data: unlockRows, error: unlockError }] = await Promise.all([
     supabase
       .from('compendium_entries')
-      .select('id, type, subtype, slug, name, description, data')
+      .select('id, type, subtype, slug, name, description')
       .eq('type', 'creature')
       .order('name', { ascending: true }),
     supabase
       .from('campaign_entry_unlocks')
-      .select('entry_id, is_unlocked')
+      .select('entry_id')
       .or(`player_id.is.null,player_id.eq.${userId}`)
       .eq('is_unlocked', true),
   ])
@@ -808,10 +843,26 @@ export async function listCreatureCompendiumForUser(userId: string) {
   if (unlockError) throw unlockError
 
   const unlockedIds = new Set((unlockRows ?? []).map((row) => row.entry_id as string))
+  const unlockedEntryIds = [...unlockedIds]
+  const unlockedDataById = new Map<string, Record<string, unknown>>()
+  if (unlockedEntryIds.length > 0) {
+    const { data: unlockedEntries, error: unlockedEntriesError } = await supabase
+      .from('compendium_entries')
+      .select('id, data')
+      .in('id', unlockedEntryIds)
+    if (unlockedEntriesError) throw unlockedEntriesError
+    for (const row of unlockedEntries ?? []) {
+      unlockedDataById.set(row.id as string, (row.data ?? {}) as Record<string, unknown>)
+    }
+  }
+
   const mapped = (entries ?? []).map((entry) => ({
     entry_id: entry.id as string,
     is_unlocked: unlockedIds.has(entry.id as string),
-    entry,
+    entry: {
+      ...entry,
+      data: unlockedDataById.get(entry.id as string) ?? {},
+    },
   })) as Array<{
     entry_id: string
     is_unlocked: boolean
