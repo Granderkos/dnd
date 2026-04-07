@@ -85,6 +85,22 @@ function isDownedEntity(entity: FightEntity) {
   return (entity.current_hp ?? 0) <= 0
 }
 
+function getEntityHpSnapshot(
+  entity: FightEntity,
+  characterCombatState: Record<string, { hpCurrent: number; hpMax: number; deathSuccesses: number; deathFailures: number }>
+) {
+  if (entity.entity_type === 'player' && entity.character_id && characterCombatState[entity.character_id]) {
+    return {
+      currentHp: characterCombatState[entity.character_id].hpCurrent,
+      maxHp: characterCombatState[entity.character_id].hpMax,
+    }
+  }
+  return {
+    currentHp: entity.current_hp ?? 0,
+    maxHp: entity.max_hp ?? 0,
+  }
+}
+
 export const DMDashboard = memo(function DMDashboard() {
   const { logout, getAllPlayerCharacters, updateCurrentPage, user } = useAuth()
   const { t } = useI18n()
@@ -228,13 +244,23 @@ export const DMDashboard = memo(function DMDashboard() {
       const combatRows = await listCharacterCombatState(characterIds)
       setFightId(activeFight.id)
       setFightStatus(activeFight.status)
-      setFightEntities(entities)
-      setCharacterCombatState(Object.fromEntries(combatRows.map((row) => [row.id, {
+      const combatStateByCharacter = Object.fromEntries(combatRows.map((row) => [row.id, {
         hpCurrent: row.hp_current ?? 0,
         hpMax: row.hp_max ?? 0,
         deathSuccesses: row.death_successes ?? 0,
         deathFailures: row.death_failures ?? 0,
-      }])))
+      }]))
+      setFightEntities(
+        entities.map((entity) => {
+          if (entity.entity_type !== 'player' || !entity.character_id || !combatStateByCharacter[entity.character_id]) return entity
+          return {
+            ...entity,
+            current_hp: combatStateByCharacter[entity.character_id].hpCurrent,
+            max_hp: combatStateByCharacter[entity.character_id].hpMax,
+          }
+        })
+      )
+      setCharacterCombatState(combatStateByCharacter)
       confirmedHpRef.current = Object.fromEntries(entities.map((entity) => [entity.id, entity.current_hp ?? 0]))
       fightLoadedRef.current = true
     } catch (e) {
@@ -450,8 +476,20 @@ export const DMDashboard = memo(function DMDashboard() {
   const handleSetEntityHp = useCallback((entityId: string, value: number) => {
     const normalized = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
     setFightEntities((prev) => prev.map((entity) => (entity.id === entityId ? { ...entity, current_hp: normalized } : entity)))
+    setCharacterCombatState((prev) => {
+      const playerEntity = fightEntities.find((entity) => entity.id === entityId && entity.entity_type === 'player' && entity.character_id)
+      if (!playerEntity?.character_id || !prev[playerEntity.character_id]) return prev
+      return {
+        ...prev,
+        [playerEntity.character_id]: {
+          ...prev[playerEntity.character_id],
+          hpCurrent: normalized,
+          ...(normalized > 0 ? { deathSuccesses: 0, deathFailures: 0 } : {}),
+        },
+      }
+    })
     persistHp(entityId, normalized)
-  }, [persistHp])
+  }, [fightEntities, persistHp])
 
   const handleStartCombat = useCallback(async () => {
     if (!user?.id || isStartingCombat) return
@@ -780,14 +818,16 @@ function DMFightPanel({
               {labels.allDowned}
             </div>
           ) : null}
-          {entities.map((entity, index) => (
+          {entities.map((entity) => {
+            const hpSnapshot = getEntityHpSnapshot(entity, characterCombatState)
+            return (
             <Card
               key={entity.id}
               className={`transition-all duration-500 ease-out ${
                 entity.id === activeEntityId
                   ? 'border-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.45)] scale-100'
                   : 'scale-[0.98] opacity-95'
-              } ${isDownedEntity(entity) ? 'border-destructive/40 bg-destructive/5' : ''}`}
+              } ${hpSnapshot.currentHp <= 0 ? 'border-destructive/40 bg-destructive/5' : ''}`}
             >
               <CardContent className="py-2.5 transition-all duration-500 ease-out">
                 <div
@@ -796,15 +836,15 @@ function DMFightPanel({
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <div className={`truncate text-sm font-semibold ${isDownedEntity(entity) ? 'line-through opacity-70' : ''}`}>{entity.name}</div>
+                      <div className={`truncate text-sm font-semibold ${hpSnapshot.currentHp <= 0 ? 'line-through opacity-70' : ''}`}>{entity.name}</div>
                       <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${
-                        isDownedEntity(entity)
+                        hpSnapshot.currentHp <= 0
                           ? 'bg-destructive/15 text-destructive'
                           : entity.id === activeEntityId
                             ? 'bg-primary/15 text-primary'
                             : 'bg-muted text-muted-foreground'
                       }`}>
-                        {isDownedEntity(entity) ? labels.statusDowned : labels.statusActive}
+                        {hpSnapshot.currentHp <= 0 ? labels.statusDowned : labels.statusActive}
                       </span>
                     </div>
                     <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{entity.entity_type}</div>
@@ -817,17 +857,17 @@ function DMFightPanel({
                     <div className="mt-2 w-full max-w-[280px] ml-auto">
                       <div className="mb-1.5 flex items-center justify-between text-[11px]">
                         <span className="text-muted-foreground">{labels.hp}</span>
-                        <span className="font-semibold text-foreground">{entity.current_hp ?? 0} / {entity.max_hp ?? 0}</span>
+                        <span className="font-semibold text-foreground">{hpSnapshot.currentHp} / {hpSnapshot.maxHp}</span>
                       </div>
                       <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
                         <div
                           className={`h-full transition-all duration-300 ${
-                            (entity.current_hp ?? 0) <= 0 ? 'bg-destructive' : 'bg-primary'
+                            hpSnapshot.currentHp <= 0 ? 'bg-destructive' : 'bg-primary'
                           }`}
                           style={{
                             width: `${Math.min(
                               100,
-                              Math.max(0, Math.round(((entity.current_hp ?? 0) / Math.max(1, entity.max_hp ?? 1)) * 100))
+                              Math.max(0, Math.round((hpSnapshot.currentHp / Math.max(1, hpSnapshot.maxHp)) * 100))
                             )}%`,
                           }}
                         />
@@ -840,20 +880,20 @@ function DMFightPanel({
                     </div>
                     <div className="mt-1.5 flex items-center justify-end gap-2">
                       <div className="flex items-center rounded-md border border-border bg-background/70 p-0.5">
-                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 5))} disabled={pendingHpIds.includes(entity.id)}>-5</Button>
-                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => onSetEntityHp(entity.id, Math.max(0, (entity.current_hp ?? 0) - 1))} disabled={pendingHpIds.includes(entity.id)}>-1</Button>
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => onSetEntityHp(entity.id, Math.max(0, hpSnapshot.currentHp - 5))} disabled={pendingHpIds.includes(entity.id)}>-5</Button>
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => onSetEntityHp(entity.id, Math.max(0, hpSnapshot.currentHp - 1))} disabled={pendingHpIds.includes(entity.id)}>-1</Button>
                       </div>
                       <input
                         type="number"
                         inputMode="numeric"
-                        value={entity.current_hp ?? 0}
+                        value={hpSnapshot.currentHp}
                         onChange={(e) => onSetEntityHp(entity.id, Number.parseInt(e.target.value, 10) || 0)}
                         className="h-6 w-16 rounded-md border border-border bg-background px-1 text-center text-xs font-semibold"
                         aria-label={labels.hpCurrent}
                       />
                       <div className="flex items-center rounded-md border border-border bg-background/70 p-0.5">
-                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-primary hover:text-primary" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 1)} disabled={pendingHpIds.includes(entity.id)}>+1</Button>
-                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-primary hover:text-primary" onClick={() => onSetEntityHp(entity.id, (entity.current_hp ?? 0) + 5)} disabled={pendingHpIds.includes(entity.id)}>+5</Button>
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-primary hover:text-primary" onClick={() => onSetEntityHp(entity.id, hpSnapshot.currentHp + 1)} disabled={pendingHpIds.includes(entity.id)}>+1</Button>
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-primary hover:text-primary" onClick={() => onSetEntityHp(entity.id, hpSnapshot.currentHp + 5)} disabled={pendingHpIds.includes(entity.id)}>+5</Button>
                       </div>
                     </div>
                     <div className="mt-1 flex justify-end">
@@ -871,7 +911,7 @@ function DMFightPanel({
                 </div>
               </CardContent>
             </Card>
-          ))}
+          )})}
         </div>
       )}
     </div>
