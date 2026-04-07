@@ -420,6 +420,46 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     }
   }, [scheduleInitiativeRefreshBurst, user?.id])
 
+  useEffect(() => {
+    if (!user?.id) return
+    const channel = supabase
+      .channel(`player-character-sync-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'characters',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const row = payload.new as {
+            hp_current?: number | null
+            hp_max?: number | null
+            death_successes?: number | null
+            death_failures?: number | null
+          } | null
+          if (!row) return
+          setCharacter((prev) => ({
+            ...prev,
+            combat: {
+              ...prev.combat,
+              currentHp: row.hp_current ?? prev.combat.currentHp,
+              maxHp: row.hp_max ?? prev.combat.maxHp,
+              deathSaves: {
+                successes: [0, 1, 2].map((i) => i < (row.death_successes ?? 0)) as [boolean, boolean, boolean],
+                failures: [0, 1, 2].map((i) => i < (row.death_failures ?? 0)) as [boolean, boolean, boolean],
+              },
+            },
+          }))
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [user?.id])
+
   const flushSave = useDebouncedRemoteSave(
     { character, spellbook, inventory, notes },
     3000,

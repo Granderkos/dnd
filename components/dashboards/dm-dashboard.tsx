@@ -21,7 +21,7 @@ import { useAuth } from '@/lib/auth-context'
 import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
-import { clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, startCombatForCampaign } from '@/lib/supabase-v3'
+import { clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listCharacterCombatState, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, startCombatForCampaign } from '@/lib/supabase-v3'
 import type { FightStatus } from '@/lib/v3-types'
 import type { FightEntity } from '@/lib/v3-types'
 import { Character, calculateModifier, formatFeetWithSquares, formatModifier } from '@/lib/dnd-types'
@@ -102,6 +102,7 @@ export const DMDashboard = memo(function DMDashboard() {
   const [isClearingFight, setIsClearingFight] = useState(false)
   const [isStartingCombat, setIsStartingCombat] = useState(false)
   const [isEndingCombat, setIsEndingCombat] = useState(false)
+  const [characterCombatState, setCharacterCombatState] = useState<Record<string, { hpCurrent: number; hpMax: number; deathSuccesses: number; deathFailures: number }>>({})
   const [pendingRemoveIds, setPendingRemoveIds] = useState<string[]>([])
   const [pendingHpIds, setPendingHpIds] = useState<string[]>([])
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
@@ -218,13 +219,22 @@ export const DMDashboard = memo(function DMDashboard() {
         setFightId(null)
         setFightStatus('draft')
         setFightEntities([])
+        setCharacterCombatState({})
         fightLoadedRef.current = true
         return
       }
       const entities = await listFightEntities(activeFight.id)
+      const characterIds = entities.map((entity) => entity.character_id).filter((id): id is string => Boolean(id))
+      const combatRows = await listCharacterCombatState(characterIds)
       setFightId(activeFight.id)
       setFightStatus(activeFight.status)
       setFightEntities(entities)
+      setCharacterCombatState(Object.fromEntries(combatRows.map((row) => [row.id, {
+        hpCurrent: row.hp_current ?? 0,
+        hpMax: row.hp_max ?? 0,
+        deathSuccesses: row.death_successes ?? 0,
+        deathFailures: row.death_failures ?? 0,
+      }])))
       confirmedHpRef.current = Object.fromEntries(entities.map((entity) => [entity.id, entity.current_hp ?? 0]))
       fightLoadedRef.current = true
     } catch (e) {
@@ -247,6 +257,41 @@ export const DMDashboard = memo(function DMDashboard() {
       void loadFightState(showLoader)
     }, delayMs)
   }, [loadFightState])
+
+  useEffect(() => {
+    if (!fightId) return
+    const channel = supabase
+      .channel(`dm-character-combat-${fightId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'characters',
+        },
+        (payload) => {
+          const updated = payload.new as { id?: string; hp_current?: number | null; hp_max?: number | null; death_successes?: number | null; death_failures?: number | null } | null
+          const characterId = updated?.id
+          if (!characterId) return
+          setCharacterCombatState((prev) => {
+            if (!prev[characterId]) return prev
+            return {
+              ...prev,
+              [characterId]: {
+                hpCurrent: updated.hp_current ?? prev[characterId].hpCurrent,
+                hpMax: updated.hp_max ?? prev[characterId].hpMax,
+                deathSuccesses: updated.death_successes ?? prev[characterId].deathSuccesses,
+                deathFailures: updated.death_failures ?? prev[characterId].deathFailures,
+              },
+            }
+          })
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [fightId])
 
   useEffect(() => {
     if (activeTab === 'fight' && !fightLoadedRef.current) {
@@ -525,6 +570,7 @@ export const DMDashboard = memo(function DMDashboard() {
             onSetEntityHp={handleSetEntityHp}
             onStartCombat={handleStartCombat}
             onEndCombat={handleEndCombat}
+            characterCombatState={characterCombatState}
             labels={{
               title: t('fight.title'),
               refresh: t('fight.refresh'),
@@ -553,6 +599,9 @@ export const DMDashboard = memo(function DMDashboard() {
               initiative: t('fight.initiative'),
               hp: t('fight.hp'),
               ac: t('fight.ac'),
+              deathSaves: t('fight.deathSaves'),
+              deathSuccess: t('fight.deathSuccess'),
+              deathFailure: t('fight.deathFailure'),
               clearConfirmTitle: t('fight.clearConfirmTitle'),
               clearConfirmDescription: t('fight.clearConfirmDescription'),
             }}
@@ -601,6 +650,7 @@ function DMFightPanel({
   isEndingCombat,
   onStartCombat,
   onEndCombat,
+  characterCombatState,
   labels,
 }: {
   fightId: string | null
@@ -621,6 +671,7 @@ function DMFightPanel({
   isEndingCombat: boolean
   onStartCombat: () => Promise<void>
   onEndCombat: () => Promise<void>
+  characterCombatState: Record<string, { hpCurrent: number; hpMax: number; deathSuccesses: number; deathFailures: number }>
   labels: {
     title: string
     refresh: string
@@ -649,6 +700,9 @@ function DMFightPanel({
     initiative: string
     hp: string
     ac: string
+    deathSaves: string
+    deathSuccess: string
+    deathFailure: string
     clearConfirmTitle: string
     clearConfirmDescription: string
   }
@@ -778,6 +832,11 @@ function DMFightPanel({
                           }}
                         />
                       </div>
+                      {entity.entity_type === 'player' && entity.character_id && characterCombatState[entity.character_id] ? (
+                        <div className="mt-1.5 text-[11px] text-muted-foreground">
+                          {labels.deathSaves}: {labels.deathSuccess} {characterCombatState[entity.character_id].deathSuccesses}/3 • {labels.deathFailure} {characterCombatState[entity.character_id].deathFailures}/3
+                        </div>
+                      ) : null}
                     </div>
                     <div className="mt-1.5 flex items-center justify-end gap-2">
                       <div className="flex items-center rounded-md border border-border bg-background/70 p-0.5">

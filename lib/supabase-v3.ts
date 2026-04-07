@@ -300,12 +300,47 @@ export async function moveFightTurnToEnd(entityId: string, turnOrder: number) {
 }
 
 export async function setFightEntityCurrentHp(entityId: string, currentHp: number) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('fight_entities')
     .update({ current_hp: currentHp })
     .eq('id', entityId)
+    .select('id, entity_type, character_id')
+    .maybeSingle()
 
   if (error) throw error
+
+  if (data?.entity_type === 'player' && data.character_id) {
+    const characterPatch: { hp_current: number; death_successes?: number; death_failures?: number } = { hp_current: currentHp }
+    if (currentHp > 0) {
+      characterPatch.death_successes = 0
+      characterPatch.death_failures = 0
+    }
+    const { error: characterError } = await supabase
+      .from('characters')
+      .update(characterPatch)
+      .eq('id', data.character_id)
+
+    if (characterError) throw characterError
+  }
+}
+
+export async function listCharacterCombatState(characterIds: string[]) {
+  const ids = [...new Set(characterIds.filter(Boolean))]
+  if (!ids.length) return []
+
+  const { data, error } = await supabase
+    .from('characters')
+    .select('id, hp_current, hp_max, death_successes, death_failures')
+    .in('id', ids)
+
+  if (error) throw error
+  return (data ?? []) as Array<{
+    id: string
+    hp_current: number | null
+    hp_max: number | null
+    death_successes: number | null
+    death_failures: number | null
+  }>
 }
 
 export async function clearFightEntities(fightId: string) {

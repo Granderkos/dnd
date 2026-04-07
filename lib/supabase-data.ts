@@ -627,6 +627,15 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
           ;({ error: characterUpsertError } = await supabase.from('characters').upsert(legacyRow, { onConflict: 'id' }))
         }
         if (characterUpsertError) throw new Error(`characters.upsert: ${characterUpsertError.message ?? 'failed'}`)
+        const { error: fightEntitySyncError } = await supabase
+          .from('fight_entities')
+          .update({
+            current_hp: character.combat.currentHp,
+            max_hp: character.combat.maxHp,
+          })
+          .eq('entity_type', 'player')
+          .eq('character_id', characterId)
+        if (fightEntitySyncError) throw new Error(`fight_entities.update: ${fightEntitySyncError.message ?? 'failed'}`)
         timings.rowMs = Date.now() - tSection
       }
     } catch (error) {
