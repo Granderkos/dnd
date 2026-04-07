@@ -324,17 +324,18 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
 
   const createPreviewDataUrl = useCallback(async (file: File): Promise<string> => {
     const imageBitmap = await createImageBitmap(file)
-    const maxSize = 256
-    const scale = Math.min(1, maxSize / Math.max(imageBitmap.width, imageBitmap.height))
-    const targetWidth = Math.max(1, Math.round(imageBitmap.width * scale))
-    const targetHeight = Math.max(1, Math.round(imageBitmap.height * scale))
+    const previewSize = 256
     const canvas = document.createElement('canvas')
-    canvas.width = targetWidth
-    canvas.height = targetHeight
+    canvas.width = previewSize
+    canvas.height = previewSize
     const ctx = canvas.getContext('2d')
     if (!ctx) return ''
-    ctx.drawImage(imageBitmap, 0, 0, targetWidth, targetHeight)
-    return canvas.toDataURL('image/webp', 0.86)
+
+    const sourceSize = Math.min(imageBitmap.width, imageBitmap.height)
+    const sourceX = Math.floor((imageBitmap.width - sourceSize) / 2)
+    const sourceY = Math.floor((imageBitmap.height - sourceSize) / 2)
+    ctx.drawImage(imageBitmap, sourceX, sourceY, sourceSize, sourceSize, 0, 0, previewSize, previewSize)
+    return canvas.toDataURL('image/webp', 0.92)
   }, [])
 
   const handlePortraitUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
