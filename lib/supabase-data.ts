@@ -12,7 +12,12 @@ export interface ItemTemplate {
   name: string
   description: string | null
   category: string | null
-  data: Record<string, unknown>
+  rarity: string | null
+  weight: number | null
+  value_text: string | null
+  requires_attunement: boolean
+  properties: unknown
+  tags: unknown
 }
 
 const characterSaveQueue = new Map<string, Promise<void>>()
@@ -757,7 +762,7 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
 export async function listItemTemplates() {
   const { data, error } = await supabase
     .from('item_templates')
-    .select('id, name, description, category, data')
+    .select('id, name, description, category, rarity, weight, value_text, requires_attunement, properties, tags')
     .order('name', { ascending: true })
   if (error) throw error
   return (data ?? []) as ItemTemplate[]

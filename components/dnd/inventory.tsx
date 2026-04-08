@@ -88,7 +88,6 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
   }, [inventory, onChange])
 
   const importItemTemplate = useCallback((template: ItemTemplate, quantity: number) => {
-    const templateData = (template.data && typeof template.data === 'object') ? template.data : {}
     const importedItem: InventoryItem = {
       id: generateClientId(),
       name: template.name,
@@ -102,7 +101,12 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         name: template.name,
         description: template.description,
         category: template.category,
-        data: templateData,
+        rarity: template.rarity,
+        weight: template.weight,
+        value_text: template.value_text,
+        requires_attunement: template.requires_attunement,
+        properties: template.properties,
+        tags: template.tags,
       },
     }
     onChange({
