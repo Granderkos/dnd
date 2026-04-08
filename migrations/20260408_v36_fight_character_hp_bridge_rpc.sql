@@ -41,12 +41,12 @@ begin
   returning * into v_entity;
 
   if v_entity.entity_type = 'player' and v_entity.character_id is not null then
-    update public.characters
+    update public.characters as c
     set
       hp_current = greatest(0, p_current_hp),
-      death_successes = case when p_current_hp > 0 then 0 else death_successes end,
-      death_failures = case when p_current_hp > 0 then 0 else death_failures end
-    where id = v_entity.character_id;
+      death_successes = case when p_current_hp > 0 then 0 else c.death_successes end,
+      death_failures = case when p_current_hp > 0 then 0 else c.death_failures end
+    where c.id = v_entity.character_id;
   end if;
 
   return query
