@@ -53,7 +53,7 @@ export async function createCreature(input: Omit<CompendiumEntry, 'id' | 'create
       is_system: false,
       ...input,
     })
-    .select('*')
+    .select('id, type, subtype, slug, name, description, is_system, data, created_by, created_at')
     .single()
 
   if (error) throw error
@@ -99,7 +99,7 @@ export async function updateCreature(id: string, patch: Partial<CompendiumEntry>
     .from('compendium_entries')
     .update(patch)
     .eq('id', id)
-    .select('*')
+    .select('id, type, subtype, slug, name, description, is_system, data, created_by, created_at')
     .single()
 
   if (error) throw error
@@ -326,25 +326,6 @@ export async function setFightEntityCurrentHp(entityId: string, currentHp: numbe
     const { error: characterError } = await supabase.from('characters').update(patch).eq('id', data.character_id)
     if (characterError) throw characterError
   }
-}
-
-export async function listCharacterCombatState(characterIds: string[]) {
-  const ids = [...new Set(characterIds.filter(Boolean))]
-  if (!ids.length) return []
-
-  const { data, error } = await supabase
-    .from('characters')
-    .select('id, hp_current, hp_max, death_successes, death_failures')
-    .in('id', ids)
-
-  if (error) throw error
-  return (data ?? []) as Array<{
-    id: string
-    hp_current: number | null
-    hp_max: number | null
-    death_successes: number | null
-    death_failures: number | null
-  }>
 }
 
 export async function listFightCharacterCombatState(fightId: string) {

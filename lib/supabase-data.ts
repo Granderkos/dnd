@@ -314,8 +314,8 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
   const [{ data: row, error: charError }, { data: attacksData, error: attacksError }, { data: inventoryData, error: inventoryError }, { data: spellsData, error: spellsError }, blob] = await Promise.all([
     charSelectWithFallback(),
     supabase.from('attacks').select('id, name, attack_bonus, damage').eq('character_id', characterId).order('sort_order', { ascending: true }),
-    supabase.from('inventory_items').select('*').eq('character_id', characterId).order('sort_order', { ascending: true }),
-    supabase.from('spells').select('*').eq('character_id', characterId).order('sort_order', { ascending: true }),
+    supabase.from('inventory_items').select('id, client_id, title, quantity, description, category').eq('character_id', characterId).order('sort_order', { ascending: true }),
+    supabase.from('spells').select('id, client_id, title, is_cantrip, is_ritual, is_concentration, is_reaction, casting_time, range_text, duration_text, description, dice, spell_level').eq('character_id', characterId).order('sort_order', { ascending: true }),
     getCharacterBlob(characterId),
   ])
 
@@ -907,7 +907,7 @@ export async function setOffline(userId: string) {
 }
 
 export async function loadDmNotes() {
-  const { data, error } = await supabase.from('dm_notes').select('*').order('created_at', { ascending: true }).limit(1)
+  const { data, error } = await supabase.from('dm_notes').select('content').order('created_at', { ascending: true }).limit(1)
   if (error) throw error
   return data?.[0]?.content ?? ''
 }
