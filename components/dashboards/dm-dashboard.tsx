@@ -325,6 +325,14 @@ export const DMDashboard = memo(function DMDashboard() {
   }, [activeTab, loadFightState, user?.id])
 
   useEffect(() => {
+    if (activeTab !== 'fight' || !fightId) return
+    const interval = setInterval(() => {
+      void loadFightState(false)
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [activeTab, fightId, loadFightState])
+
+  useEffect(() => {
     if (!user?.id) return
     let channel = supabase
       .channel(`dm-fight-${user.id}`)
