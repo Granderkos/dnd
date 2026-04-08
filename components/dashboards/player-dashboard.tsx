@@ -49,6 +49,13 @@ const Spellbook = dynamic(() => import('@/components/dnd/spellbook').then((m) =>
 const Inventory = dynamic(() => import('@/components/dnd/inventory').then((m) => m.Inventory), { ssr: false })
 const Notes = dynamic(() => import('@/components/dnd/notes').then((m) => m.Notes), { ssr: false })
 const PlayerMapViewer = dynamic(() => import('@/components/dnd/player-map-viewer').then((m) => m.PlayerMapViewer), { ssr: false })
+const PLAYER_DASHBOARD_TABS = ['character', 'inventory', 'spellbook', 'notes', 'map', 'compendium'] as const
+
+function getInitialPlayerTab() {
+  if (typeof window === 'undefined') return 'character'
+  const saved = window.localStorage.getItem('player-dashboard-active-tab')
+  return saved && PLAYER_DASHBOARD_TABS.includes(saved as (typeof PLAYER_DASHBOARD_TABS)[number]) ? saved : 'character'
+}
 
 function useDebouncedRemoteSave<T>(value: T, delay: number, enabled: boolean, saveFn: (value: T) => Promise<void>) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -157,7 +164,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const { user, logout, updateCurrentPage } = useAuth()
   const { t } = useI18n()
   const [isLoaded, setIsLoaded] = useState(false)
-  const [activeTab, setActiveTab] = useState('character')
+  const [activeTab, setActiveTab] = useState(getInitialPlayerTab)
   const [character, setCharacter] = useState<Character>(emptyCharacter)
   const [spellbook, setSpellbook] = useState<SpellbookType>(emptySpellbook)
   const [inventory, setInventory] = useState<InventoryType>(emptyInventory)
@@ -168,6 +175,8 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [initiativeRollInput, setInitiativeRollInput] = useState('')
   const [isSubmittingInitiative, setIsSubmittingInitiative] = useState(false)
   const [initiativeError, setInitiativeError] = useState<string | null>(null)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [creatureCompendium, setCreatureCompendium] = useState<Array<{ entry_id: string; is_unlocked: boolean; entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'> }>>([])
   const [companions, setCompanions] = useState<Array<CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }>>([])
   const [companionCharacterId, setCompanionCharacterId] = useState<string | null>(null)
@@ -185,6 +194,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const compendiumLoadedRef = useRef(false)
   const initiativeRefreshTimeoutRef = useRef<number | null>(null)
   const playerCacheHydratedRef = useRef(false)
+  const saveStatusTimeoutRef = useRef<number | null>(null)
 
   const playerDataCacheKey = user?.id ? `player-data-cache:${user.id}` : null
   const compendiumCacheKey = user?.id ? `player-compendium-cache:${user.id}` : null
@@ -253,6 +263,17 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   useEffect(() => {
     void updateCurrentPage(activeTab)
   }, [activeTab, updateCurrentPage])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem('player-dashboard-active-tab', activeTab)
+  }, [activeTab])
+
+  useEffect(() => {
+    return () => {
+      if (saveStatusTimeoutRef.current) clearTimeout(saveStatusTimeoutRef.current)
+    }
+  }, [])
 
   const refreshInitiativePrompt = useCallback(async () => {
     if (!user?.id) return
@@ -399,6 +420,46 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     }
   }, [scheduleInitiativeRefreshBurst, user?.id])
 
+  useEffect(() => {
+    if (!user?.id) return
+    const channel = supabase
+      .channel(`player-character-sync-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'characters',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const row = payload.new as {
+            hp_current?: number | null
+            hp_max?: number | null
+            death_successes?: number | null
+            death_failures?: number | null
+          } | null
+          if (!row) return
+          setCharacter((prev) => ({
+            ...prev,
+            combat: {
+              ...prev.combat,
+              currentHp: row.hp_current ?? prev.combat.currentHp,
+              maxHp: row.hp_max ?? prev.combat.maxHp,
+              deathSaves: {
+                successes: [0, 1, 2].map((i) => i < (row.death_successes ?? 0)) as [boolean, boolean, boolean],
+                failures: [0, 1, 2].map((i) => i < (row.death_failures ?? 0)) as [boolean, boolean, boolean],
+              },
+            },
+          }))
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [user?.id])
+
   const flushSave = useDebouncedRemoteSave(
     { character, spellbook, inventory, notes },
     3000,
@@ -406,12 +467,21 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     async (payload) => {
       if (!user?.id) return
       try {
+        if (saveStatusTimeoutRef.current) clearTimeout(saveStatusTimeoutRef.current)
+        setSaveStatus('saving')
         await saveCurrentPlayerData(user.id, {
           ...payload,
           notes: notesLoaded ? payload.notes : undefined,
         })
+        setSaveStatus('saved')
+        setSaveError(null)
+        saveStatusTimeoutRef.current = window.setTimeout(() => {
+          setSaveStatus('idle')
+        }, 1500)
       } catch (e) {
         console.error('Failed to save player data', e)
+        setSaveStatus('failed')
+        setSaveError(formatErrorMessage(e, 'Failed to save changes.'))
       }
     }
   )
@@ -446,6 +516,9 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
               </span>
             </div>
             <div className="flex items-center gap-1">
+              <span className="text-[11px] text-muted-foreground">
+                {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'failed' ? 'Save failed' : ''}
+              </span>
               <span className="text-xs text-muted-foreground">{APP_VERSION}</span>
               <AppControls />
               <Button variant="ghost" size="icon" className="size-7" onClick={() => void logout()}>
@@ -479,6 +552,11 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
               <span className="hidden sm:inline text-xs">{t('nav.compendium')}</span>
             </TabsTrigger>
           </TabsList>
+          {saveError && (
+            <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs text-destructive">
+              {saveError}
+            </div>
+          )}
         </header>
 
         <TabsContent value="character" className="mt-0 flex-1 overflow-hidden">
