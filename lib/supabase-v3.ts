@@ -300,26 +300,30 @@ export async function moveFightTurnToEnd(entityId: string, turnOrder: number) {
 }
 
 export async function setFightEntityCurrentHp(entityId: string, currentHp: number) {
+  const { error: rpcError } = await supabase.rpc('set_fight_entity_hp', {
+    p_entity_id: entityId,
+    p_current_hp: currentHp,
+  })
+  if (!rpcError) return
+
+  const isMissingRpc = typeof rpcError.message === 'string' && rpcError.message.toLowerCase().includes('set_fight_entity_hp')
+  if (!isMissingRpc) throw rpcError
+
   const { data, error } = await supabase
     .from('fight_entities')
     .update({ current_hp: currentHp })
     .eq('id', entityId)
     .select('id, entity_type, character_id')
     .maybeSingle()
-
   if (error) throw error
 
   if (data?.entity_type === 'player' && data.character_id) {
-    const characterPatch: { hp_current: number; death_successes?: number; death_failures?: number } = { hp_current: currentHp }
+    const patch: { hp_current: number; death_successes?: number; death_failures?: number } = { hp_current: currentHp }
     if (currentHp > 0) {
-      characterPatch.death_successes = 0
-      characterPatch.death_failures = 0
+      patch.death_successes = 0
+      patch.death_failures = 0
     }
-    const { error: characterError } = await supabase
-      .from('characters')
-      .update(characterPatch)
-      .eq('id', data.character_id)
-
+    const { error: characterError } = await supabase.from('characters').update(patch).eq('id', data.character_id)
     if (characterError) throw characterError
   }
 }
@@ -336,6 +340,20 @@ export async function listCharacterCombatState(characterIds: string[]) {
   if (error) throw error
   return (data ?? []) as Array<{
     id: string
+    hp_current: number | null
+    hp_max: number | null
+    death_successes: number | null
+    death_failures: number | null
+  }>
+}
+
+export async function listFightCharacterCombatState(fightId: string) {
+  const { data, error } = await supabase.rpc('get_fight_character_combat_state', {
+    p_fight_id: fightId,
+  })
+  if (error) throw error
+  return (data ?? []) as Array<{
+    character_id: string
     hp_current: number | null
     hp_max: number | null
     death_successes: number | null

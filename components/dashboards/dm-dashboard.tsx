@@ -21,7 +21,7 @@ import { useAuth } from '@/lib/auth-context'
 import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
-import { clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listCharacterCombatState, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, startCombatForCampaign } from '@/lib/supabase-v3'
+import { clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listFightCharacterCombatState, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, startCombatForCampaign } from '@/lib/supabase-v3'
 import type { FightStatus } from '@/lib/v3-types'
 import type { FightEntity } from '@/lib/v3-types'
 import { Character, calculateModifier, formatFeetWithSquares, formatModifier } from '@/lib/dnd-types'
@@ -240,11 +240,10 @@ export const DMDashboard = memo(function DMDashboard() {
         return
       }
       const entities = await listFightEntities(activeFight.id)
-      const characterIds = entities.map((entity) => entity.character_id).filter((id): id is string => Boolean(id))
-      const combatRows = await listCharacterCombatState(characterIds)
+      const combatRows = await listFightCharacterCombatState(activeFight.id)
       setFightId(activeFight.id)
       setFightStatus(activeFight.status)
-      const combatStateByCharacter = Object.fromEntries(combatRows.map((row) => [row.id, {
+      const combatStateByCharacter = Object.fromEntries(combatRows.map((row) => [row.character_id, {
         hpCurrent: row.hp_current ?? 0,
         hpMax: row.hp_max ?? 0,
         deathSuccesses: row.death_successes ?? 0,
@@ -324,6 +323,14 @@ export const DMDashboard = memo(function DMDashboard() {
       void loadFightState(true)
     }
   }, [activeTab, loadFightState, user?.id])
+
+  useEffect(() => {
+    if (activeTab !== 'fight' || !fightId) return
+    const interval = setInterval(() => {
+      void loadFightState(false)
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [activeTab, fightId, loadFightState])
 
   useEffect(() => {
     if (!user?.id) return
