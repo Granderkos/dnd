@@ -181,7 +181,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
   ).toFixed(2), [inventory.currency])
 
   useEffect(() => {
-    if (!isImportingTemplate || templates.length > 0 || isLoadingTemplates) return
+    if (!isImportingTemplate || templates.length > 0) return
     let cancelled = false
     setIsLoadingTemplates(true)
     setTemplateLoadError(null)
@@ -200,7 +200,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
     return () => {
       cancelled = true
     }
-  }, [isImportingTemplate, templates.length, isLoadingTemplates, t])
+  }, [isImportingTemplate, templates.length, t])
 
   return (
     <div className="h-full min-h-0 overflow-y-auto">
