@@ -4,10 +4,22 @@ import { useState, useEffect, useRef, memo, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import type { Note } from '@/components/dnd/notes'
 import { useAuth } from '@/lib/auth-context'
 import { emptyCharacter, emptyInventory, emptySpellbook } from '@/lib/auth-types'
 import { loadCurrentPlayerData, saveCurrentPlayerData } from '@/lib/supabase-data'
+import { getPendingInitiativeForUser, submitPlayerInitiative } from '@/lib/supabase-v3'
+import { supabase } from '@/lib/supabase'
 import {
   Character,
   Spellbook as SpellbookType,
@@ -90,6 +102,23 @@ const defaultMapSettings: MapSettings = {
   panY: 0,
 }
 
+function formatErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === 'object' && error !== null) {
+    const message = 'message' in error && typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : null
+    const details = 'details' in error && typeof (error as { details?: unknown }).details === 'string'
+      ? (error as { details: string }).details
+      : null
+    const hint = 'hint' in error && typeof (error as { hint?: unknown }).hint === 'string'
+      ? (error as { hint: string }).hint
+      : null
+    return [message, details, hint].filter(Boolean).join(' — ') || fallback
+  }
+  return fallback
+}
+
 export const PlayerDashboard = memo(function PlayerDashboard() {
   const { user, logout, updateCurrentPage } = useAuth()
   const { t } = useI18n()
@@ -100,6 +129,10 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [inventory, setInventory] = useState<InventoryType>(emptyInventory)
   const [notes, setNotes] = useState<Note[]>([])
   const [mapSettings, setMapSettings] = useState<MapSettings>(defaultMapSettings)
+  const [initiativePrompt, setInitiativePrompt] = useState<{ requestId: string; initiativeMod: number } | null>(null)
+  const [initiativeRollInput, setInitiativeRollInput] = useState('')
+  const [isSubmittingInitiative, setIsSubmittingInitiative] = useState(false)
+  const [initiativeError, setInitiativeError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!user?.id) return
@@ -127,9 +160,70 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     void updateCurrentPage(activeTab)
   }, [activeTab, updateCurrentPage])
 
+  const refreshInitiativePrompt = useCallback(async () => {
+    if (!user?.id) return
+    try {
+      const pending = await getPendingInitiativeForUser(user.id)
+      if (!pending) {
+        setInitiativePrompt(null)
+        setInitiativeRollInput('')
+        setInitiativeError(null)
+        return
+      }
+      setInitiativePrompt({ requestId: pending.requestId, initiativeMod: pending.initiativeMod })
+      setInitiativeError(null)
+    } catch (error) {
+      const message = formatErrorMessage(error, 'Failed to check initiative request.')
+      setInitiativeError(message)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!isLoaded || !user?.id) return
+    void refreshInitiativePrompt()
+  }, [isLoaded, refreshInitiativePrompt, user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshInitiativePrompt()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [refreshInitiativePrompt, user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    const channel = supabase
+      .channel(`initiative-requests-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'fight_initiative_requests',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          void refreshInitiativePrompt()
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          void refreshInitiativePrompt()
+        }
+      })
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [refreshInitiativePrompt, user?.id])
+
   const flushSave = useDebouncedRemoteSave(
     { character, spellbook, inventory, notes },
-    500,
+    3000,
     isLoaded && !!user?.id,
     async (payload) => {
       if (!user?.id) return
@@ -140,11 +234,6 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       }
     }
   )
-
-  useEffect(() => {
-    if (!isLoaded) return
-    flushSave()
-  }, [activeTab, isLoaded, flushSave])
 
   if (!isLoaded) {
     return (
@@ -215,6 +304,59 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
           {activeTab === 'map' && <PlayerMapViewer settings={mapSettings} onSettingsChange={setMapSettings} />}
         </TabsContent>
       </Tabs>
+
+      <AlertDialog open={!!initiativePrompt} onOpenChange={() => {}}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('fight.initiativePromptTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('fight.initiativePromptDescription', { mod: initiativePrompt?.initiativeMod ?? 0 })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {initiativeError ? (
+            <div className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {initiativeError}
+            </div>
+          ) : null}
+          <Input
+            type="number"
+            min={1}
+            max={20}
+            value={initiativeRollInput}
+            onChange={(e) => setInitiativeRollInput(e.target.value)}
+            placeholder={t('fight.initiativeRollPlaceholder')}
+            className="text-center"
+          />
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={async (e) => {
+                e.preventDefault()
+                if (!initiativePrompt || !user?.id) return
+                const parsed = Number.parseInt(initiativeRollInput, 10)
+                if (!Number.isFinite(parsed) || parsed < 1 || parsed > 20) {
+                  setInitiativeError(t('fight.initiativeValidation'))
+                  return
+                }
+                setIsSubmittingInitiative(true)
+                try {
+                  await submitPlayerInitiative(user.id, initiativePrompt.requestId, parsed)
+                  setInitiativePrompt(null)
+                  setInitiativeRollInput('')
+                  setInitiativeError(null)
+                } catch (error) {
+                  const message = formatErrorMessage(error, 'Failed to submit initiative.')
+                  setInitiativeError(message)
+                } finally {
+                  setIsSubmittingInitiative(false)
+                }
+              }}
+              disabled={isSubmittingInitiative}
+            >
+              {isSubmittingInitiative ? t('fight.submittingInitiative') : t('fight.submitInitiative')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   )
 })
