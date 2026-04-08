@@ -77,6 +77,9 @@ export interface Spell {
   description: string
   damage: string
   prepared: boolean
+  sourceOrigin?: 'custom' | 'template'
+  sourceSpellTemplateId?: string | null
+  templateSnapshot?: Record<string, unknown> | null
 }
 
 export interface SpellSlots {

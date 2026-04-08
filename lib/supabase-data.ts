@@ -31,6 +31,23 @@ interface CharacterNotesBlob {
   backgroundFeatures?: string
 }
 
+export interface SpellTemplateRecord {
+  id: string
+  name: string
+  spell_level: number
+  school: string | null
+  casting_time: string
+  range_text: string
+  duration_text: string
+  components: string
+  dice: string
+  description: string
+  is_cantrip: boolean
+  is_ritual: boolean
+  is_concentration: boolean
+  is_reaction: boolean
+}
+
 const emptyBlob = (): CharacterNotesBlob => ({
   notes: [],
   inventoryCurrency: emptyInventory.currency,
@@ -163,17 +180,10 @@ async function getCharacterBlob(characterId: string): Promise<CharacterNotesBlob
   return safeJsonParse<CharacterNotesBlob>(data?.notes, emptyBlob())
 }
 
-async function upsertCharacterBlob(characterId: string, patch: Partial<CharacterNotesBlob>) {
-  const current = await getCharacterBlob(characterId)
-  const merged = {
-    ...current,
-    ...patch,
-    inventoryCurrency: patch.inventoryCurrency ?? current.inventoryCurrency,
-    spellbookMeta: patch.spellbookMeta ? { ...current.spellbookMeta, ...patch.spellbookMeta } : current.spellbookMeta,
-  }
+async function upsertCharacterBlob(characterId: string, blob: CharacterNotesBlob) {
   const { error } = await supabase.from('character_notes').upsert({
     character_id: characterId,
-    notes: notesBlobToText(merged),
+    notes: notesBlobToText(blob),
   })
   if (error) throw error
 }
@@ -181,16 +191,14 @@ async function upsertCharacterBlob(characterId: string, patch: Partial<Character
 export async function loadCurrentPlayerData(userId: string): Promise<{ character: Character; spellbook: Spellbook; inventory: Inventory; notes: Note[] }> {
   const characterId = await ensureCharacterRecord(userId)
 
-  const [{ data: row, error: charError }, { data: attacksData, error: attacksError }, { data: inventoryData, error: inventoryError }, { data: spellsData, error: spellsError }, blob] = await Promise.all([
+  const [{ data: row, error: charError }, { data: inventoryData, error: inventoryError }, { data: spellsData, error: spellsError }, blob] = await Promise.all([
     supabase.from('characters').select('*').eq('id', characterId).single(),
-    supabase.from('attacks').select('*').eq('character_id', characterId).order('sort_order', { ascending: true }),
     supabase.from('inventory_items').select('*').eq('character_id', characterId).order('sort_order', { ascending: true }),
     supabase.from('spells').select('*').eq('character_id', characterId).order('sort_order', { ascending: true }),
     getCharacterBlob(characterId),
   ])
 
   if (charError) throw charError
-  if (attacksError) throw attacksError
   if (inventoryError) throw inventoryError
   if (spellsError) throw spellsError
 
@@ -244,13 +252,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
         failures: [0, 1, 2].map((i) => i < (row.death_failures ?? 0)) as [boolean, boolean, boolean],
       },
     },
-    attacks: (attacksData?.length ? (attacksData ?? []).map((attack) => ({
-      id: attack.id,
-      name: attack.name,
-      attackBonus: attack.attack_bonus,
-      damage: attack.damage,
-      damageType: '',
-    })) : fallbackAttacks),
+    attacks: fallbackAttacks,
     attackNotes: '',
     raceFeatures: blob.raceFeatures ?? '',
     classFeatures: blob.classFeatures ?? blob.featuresText ?? row.features ?? '',
@@ -278,6 +280,9 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       description: s.description,
       damage: s.dice,
       prepared: true,
+      sourceOrigin: s.source_origin ?? 'custom',
+      sourceSpellTemplateId: s.source_spell_template_id ?? null,
+      templateSnapshot: s.template_snapshot ?? null,
     })) : fallbackSpellEntries.cantrips),
     spells: (spellsData?.length ? (spellsData ?? []).filter((s) => !s.is_cantrip).map((s) => ({
       id: s.id,
@@ -292,6 +297,9 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       description: s.description,
       damage: s.dice,
       prepared: true,
+      sourceOrigin: s.source_origin ?? 'custom',
+      sourceSpellTemplateId: s.source_spell_template_id ?? null,
+      templateSnapshot: s.template_snapshot ?? null,
     })) : fallbackSpellEntries.spells),
     slots: spellMeta.slots || emptySpellbook.slots,
   }
@@ -404,7 +412,7 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
     raceFeatures: character.raceFeatures,
     classFeatures: character.classFeatures,
     backgroundFeatures: character.backgroundFeatures,
-  })
+  } satisfies CharacterNotesBlob)
 
   try {
     const [{ error: attacksDeleteError }, { error: invDeleteError }, { error: spellsDeleteError }] = await Promise.all([
@@ -455,11 +463,14 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
           duration_text: spell.duration,
           dice: spell.damage,
           description: spell.description,
-          is_cantrip: spell.level === 0,
-          is_ritual: spell.ritual,
-          is_concentration: spell.concentration,
-          is_reaction: spell.reaction,
-        }))
+              is_cantrip: spell.level === 0,
+              is_ritual: spell.ritual,
+              is_concentration: spell.concentration,
+              is_reaction: spell.reaction,
+              source_origin: spell.sourceOrigin ?? 'custom',
+              source_spell_template_id: spell.sourceSpellTemplateId ?? null,
+              template_snapshot: spell.templateSnapshot ?? null,
+            }))
       )
       if (error) throw error
     }
@@ -470,6 +481,18 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
 
 function findSkill(character: Character, name: string) {
   return character.skills.find((skill) => skill.name === name)?.proficient ?? false
+}
+
+export async function listSpellTemplates() {
+  const { data, error } = await supabase
+    .from('spell_templates')
+    .select('id, name, spell_level, school, casting_time, range_text, duration_text, components, dice, description, is_cantrip, is_ritual, is_concentration, is_reaction')
+    .eq('is_published', true)
+    .order('spell_level', { ascending: true })
+    .order('name', { ascending: true })
+
+  if (error) throw error
+  return (data ?? []) as SpellTemplateRecord[]
 }
 
 export async function listPlayerCharacters() {
@@ -493,10 +516,7 @@ export async function listPlayerCharacters() {
       return { username: player.username, character: emptyCharacter, activity: player.activity_status }
     }
 
-    const [{ data: attacksData }, blob] = await Promise.all([
-      supabase.from('attacks').select('*').eq('character_id', row.id).order('sort_order'),
-      getCharacterBlob(row.id),
-    ])
+    const blob = await getCharacterBlob(row.id)
 
     const character: Character = {
       info: {
@@ -530,7 +550,7 @@ export async function listPlayerCharacters() {
         hitDice: row.hit_dice_type ?? '',
         deathSaves: { successes: [false, false, false], failures: [false, false, false] },
       },
-      attacks: attacksData?.length ? attacksData.map((attack: any) => ({ id: attack.id, name: attack.name, attackBonus: attack.attack_bonus, damage: attack.damage, damageType: '' })) : (blob.attacks ?? emptyCharacter.attacks),
+      attacks: blob.attacks ?? emptyCharacter.attacks,
       attackNotes: '',
       raceFeatures: blob.raceFeatures ?? '',
       classFeatures: blob.classFeatures ?? blob.featuresText ?? row.features ?? '',

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, memo, useCallback, useMemo } from 'react'
+import { useState, memo, useCallback, useMemo, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Plus, X, Eye, Zap, BookOpen } from 'lucide-react'
+import { listSpellTemplates, type SpellTemplateRecord } from '@/lib/supabase-data'
 import {
   Spellbook as SpellbookType,
   Spell,
@@ -76,7 +77,7 @@ export function Spellbook({
 
   const updateSpellcastingAbility = useCallback((ability: AbilityName) => {
     onChange({ ...spellbook, spellcastingAbility: ability })
-  }, [spellbook, onChange])
+  }, [spellbook, onChange, t])
 
   const toggleSlot = useCallback((level: number, index: number) => {
     const currentSlots = spellbook.slots[level]
@@ -88,7 +89,7 @@ export function Spellbook({
         [level]: { ...currentSlots, expended: Math.min(newExpended, currentSlots.total) },
       },
     })
-  }, [spellbook, onChange])
+  }, [spellbook, onChange, t])
 
   const updateSlotTotal = useCallback((level: number, total: number) => {
     onChange({
@@ -136,6 +137,25 @@ export function Spellbook({
   }, [spellbook, onChange, t])
 
   const addSpell = useCallback((spell: Spell) => {
+    const duplicate = [...spellbook.cantrips, ...spellbook.spells].some(
+      (existing) => existing.name.trim().toLowerCase() === spell.name.trim().toLowerCase() && existing.level === spell.level
+    )
+    if (duplicate) {
+      setConfirmDialog({
+        open: true,
+        title: t('spellbook.duplicateTitle'),
+        description: t('spellbook.duplicateDescription', { name: spell.name }),
+        onConfirm: () => {
+          if (spell.level === 0) {
+            onChange({ ...spellbook, cantrips: [...spellbook.cantrips, spell] })
+          } else {
+            onChange({ ...spellbook, spells: [...spellbook.spells, spell] })
+          }
+          setIsAddingSpell(false)
+        },
+      })
+      return
+    }
     if (spell.level === 0) {
       onChange({ ...spellbook, cantrips: [...spellbook.cantrips, spell] })
     } else {
@@ -329,6 +349,7 @@ const SpellRow = memo(function SpellRow({ spell, onClick, onTogglePrepared, onDe
         <div className="flex items-center gap-2">
           <span className="font-medium text-sm truncate max-w-[120px]">{spell.name}</span>
           <div className="flex shrink-0 gap-1">
+            {spell.sourceOrigin === 'template' ? <Badge variant="secondary" className="h-5 px-1.5 text-xs">T</Badge> : null}
             {spell.ritual && <Badge variant="outline" className="h-5 px-1.5 text-xs">R</Badge>}
             {spell.concentration && <Badge variant="outline" className="h-5 px-1.5 text-xs">C</Badge>}
             {spell.reaction && <Badge variant="outline" className="h-5 px-1.5 text-xs"><Zap className="size-3" /></Badge>}
@@ -350,6 +371,10 @@ interface AddSpellDialogProps {
 
 function AddSpellDialog({ open, onOpenChange, level, onAdd }: AddSpellDialogProps) {
   const { t } = useI18n()
+  const [mode, setMode] = useState<'custom' | 'template'>('custom')
+  const [templates, setTemplates] = useState<SpellTemplateRecord[]>([])
+  const [templateQuery, setTemplateQuery] = useState('')
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
   const initialSpell = useCallback((): Partial<Spell> => ({
     name: '',
     level,
@@ -365,9 +390,74 @@ function AddSpellDialog({ open, onOpenChange, level, onAdd }: AddSpellDialogProp
   }), [level])
   const [spell, setSpell] = useState<Partial<Spell>>(initialSpell())
 
+  const filteredTemplates = useMemo(
+    () =>
+      templates.filter((entry) => {
+        const q = templateQuery.trim().toLowerCase()
+        if (!q) return true
+        return entry.name.toLowerCase().includes(q) || (entry.school ?? '').toLowerCase().includes(q)
+      }),
+    [templateQuery, templates]
+  )
+
+  const importTemplate = useCallback((entry: SpellTemplateRecord) => {
+    onAdd({
+      id: `tpl-${entry.id}-${Date.now()}`,
+      name: entry.name,
+      level: entry.is_cantrip ? 0 : Number(entry.spell_level || 1),
+      ritual: entry.is_ritual,
+      concentration: entry.is_concentration,
+      reaction: entry.is_reaction,
+      castingTime: entry.casting_time || '1 action',
+      range: entry.range_text || '',
+      duration: entry.duration_text || '',
+      description: entry.description || '',
+      damage: entry.dice || '',
+      prepared: entry.is_cantrip,
+      sourceOrigin: 'template',
+      sourceSpellTemplateId: entry.id,
+      templateSnapshot: {
+        id: entry.id,
+        name: entry.name,
+        spell_level: entry.spell_level,
+        school: entry.school,
+        casting_time: entry.casting_time,
+        range_text: entry.range_text,
+        duration_text: entry.duration_text,
+        components: entry.components,
+        dice: entry.dice,
+        description: entry.description,
+        is_cantrip: entry.is_cantrip,
+        is_ritual: entry.is_ritual,
+        is_concentration: entry.is_concentration,
+        is_reaction: entry.is_reaction,
+      },
+    })
+  }, [onAdd])
+
+  useEffect(() => {
+    if (!open || mode !== 'template') return
+    let mounted = true
+    setIsLoadingTemplates(true)
+    void (async () => {
+      try {
+        const data = await listSpellTemplates()
+        if (!mounted) return
+        setTemplates(data)
+      } catch (error) {
+        console.error('Failed to load spell templates', error)
+      } finally {
+        if (mounted) setIsLoadingTemplates(false)
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [open, mode])
+
   const handleSubmit = () => {
     if (spell.name) {
-      onAdd({ ...spell, id: Date.now().toString(), level } as Spell)
+      onAdd({ ...spell, id: Date.now().toString(), level, sourceOrigin: 'custom', sourceSpellTemplateId: null, templateSnapshot: null } as Spell)
       setSpell(initialSpell())
     }
   }
@@ -380,38 +470,76 @@ function AddSpellDialog({ open, onOpenChange, level, onAdd }: AddSpellDialogProp
           <DialogDescription className="sr-only">{t('spellbook.enterSpellDetails')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">{t('spellbook.name')}</label>
-            <Input value={spell.name} onChange={(e) => setSpell({ ...spell, name: e.target.value })} placeholder={t('spellbook.spellName')} className="h-10" />
-          </div>
-          <div className="flex flex-wrap gap-4">
-            <label className="flex items-center gap-2 text-sm"><Checkbox checked={spell.ritual} onCheckedChange={(checked) => setSpell({ ...spell, ritual: !!checked })} />{t('spellbook.ritual')}</label>
-            <label className="flex items-center gap-2 text-sm"><Checkbox checked={spell.concentration} onCheckedChange={(checked) => setSpell({ ...spell, concentration: !!checked })} />{t('spellbook.concentration')}</label>
-            <label className="flex items-center gap-2 text-sm"><Checkbox checked={spell.reaction} onCheckedChange={(checked) => setSpell({ ...spell, reaction: !!checked })} />{t('spellbook.reaction')}</label>
-          </div>
           <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">{t('spellbook.castingTime')}</label>
-              <Input value={spell.castingTime} onChange={(e) => setSpell({ ...spell, castingTime: e.target.value })} placeholder="1 action" className="h-10" />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">{t('spellbook.range')}</label>
-              <Input value={spell.range} onChange={(e) => setSpell({ ...spell, range: e.target.value })} placeholder="60 feet" className="h-10" />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">{t('spellbook.duration')}</label>
-              <Input value={spell.duration} onChange={(e) => setSpell({ ...spell, duration: e.target.value })} placeholder="1 minute" className="h-10" />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">{t('spellbook.damage')}</label>
-              <Input value={spell.damage} onChange={(e) => setSpell({ ...spell, damage: e.target.value })} placeholder="1d10 fire" className="h-10" />
-            </div>
+            <Button variant={mode === 'custom' ? 'default' : 'outline'} onClick={() => setMode('custom')}>
+              {t('spellbook.createCustom')}
+            </Button>
+            <Button variant={mode === 'template' ? 'default' : 'outline'} onClick={() => setMode('template')}>
+              {t('spellbook.importTemplate')}
+            </Button>
           </div>
-          <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">{t('spellbook.description')}</label>
-            <Textarea value={spell.description} onChange={(e) => setSpell({ ...spell, description: e.target.value })} placeholder={t('spellbook.descriptionPlaceholder')} className="min-h-24" />
-          </div>
-          <Button onClick={handleSubmit} className="w-full h-10">{t('spellbook.addSpellButton')}</Button>
+          {mode === 'template' ? (
+            <div className="space-y-2">
+              <Input value={templateQuery} onChange={(e) => setTemplateQuery(e.target.value)} placeholder={t('spellbook.searchTemplates')} />
+              <div className="max-h-72 space-y-2 overflow-y-auto">
+                {isLoadingTemplates ? (
+                  <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+                ) : filteredTemplates.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">{t('common.empty')}</p>
+                ) : (
+                  filteredTemplates.map((entry) => (
+                    <button
+                      key={entry.id}
+                      className="w-full rounded border px-3 py-2 text-left hover:bg-muted/30"
+                      onClick={() => importTemplate(entry)}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-medium">{entry.name}</span>
+                        <Badge variant="outline">{t('spellbook.level', { level: entry.is_cantrip ? 0 : entry.spell_level })}</Badge>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{entry.description}</p>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : null}
+          {mode === 'custom' ? (
+            <>
+              <div className="space-y-1">
+                <label className="text-sm text-muted-foreground">{t('spellbook.name')}</label>
+                <Input value={spell.name} onChange={(e) => setSpell({ ...spell, name: e.target.value })} placeholder={t('spellbook.spellName')} className="h-10" />
+              </div>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 text-sm"><Checkbox checked={spell.ritual} onCheckedChange={(checked) => setSpell({ ...spell, ritual: !!checked })} />{t('spellbook.ritual')}</label>
+                <label className="flex items-center gap-2 text-sm"><Checkbox checked={spell.concentration} onCheckedChange={(checked) => setSpell({ ...spell, concentration: !!checked })} />{t('spellbook.concentration')}</label>
+                <label className="flex items-center gap-2 text-sm"><Checkbox checked={spell.reaction} onCheckedChange={(checked) => setSpell({ ...spell, reaction: !!checked })} />{t('spellbook.reaction')}</label>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-sm text-muted-foreground">{t('spellbook.castingTime')}</label>
+                  <Input value={spell.castingTime} onChange={(e) => setSpell({ ...spell, castingTime: e.target.value })} placeholder="1 action" className="h-10" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm text-muted-foreground">{t('spellbook.range')}</label>
+                  <Input value={spell.range} onChange={(e) => setSpell({ ...spell, range: e.target.value })} placeholder="60 feet" className="h-10" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm text-muted-foreground">{t('spellbook.duration')}</label>
+                  <Input value={spell.duration} onChange={(e) => setSpell({ ...spell, duration: e.target.value })} placeholder="1 minute" className="h-10" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm text-muted-foreground">{t('spellbook.damage')}</label>
+                  <Input value={spell.damage} onChange={(e) => setSpell({ ...spell, damage: e.target.value })} placeholder="1d10 fire" className="h-10" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm text-muted-foreground">{t('spellbook.description')}</label>
+                <Textarea value={spell.description} onChange={(e) => setSpell({ ...spell, description: e.target.value })} placeholder={t('spellbook.descriptionPlaceholder')} className="min-h-24" />
+              </div>
+              <Button onClick={handleSubmit} className="w-full h-10">{t('spellbook.addSpellButton')}</Button>
+            </>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>
