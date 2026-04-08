@@ -104,6 +104,9 @@ export interface InventoryItem {
   quantity: number
   description: string
   category: string
+  sourceItemTemplateId?: string | null
+  sourceOrigin?: 'custom' | 'template'
+  templateSnapshot?: Record<string, unknown> | null
 }
 
 export interface Currency {

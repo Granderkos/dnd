@@ -35,6 +35,7 @@ import { Inventory as InventoryType, InventoryItem, Currency } from '@/lib/dnd-t
 import { useI18n } from '@/lib/i18n'
 import { PageShell } from '@/components/app/page-shell'
 import { generateClientId } from '@/lib/client-id'
+import { listItemTemplates, type ItemTemplate } from '@/lib/supabase-data'
 
 interface InventoryProps {
   inventory: InventoryType
@@ -56,6 +57,10 @@ const CATEGORY_META = {
 export function Inventory({ inventory, onChange }: InventoryProps) {
   const { t } = useI18n()
   const [isAddingItem, setIsAddingItem] = useState(false)
+  const [isImportingTemplate, setIsImportingTemplate] = useState(false)
+  const [templates, setTemplates] = useState<ItemTemplate[]>([])
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
+  const [templateLoadError, setTemplateLoadError] = useState<string | null>(null)
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
@@ -80,6 +85,31 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
       items: [...inventory.items, item],
     })
     setIsAddingItem(false)
+  }, [inventory, onChange])
+
+  const importItemTemplate = useCallback((template: ItemTemplate, quantity: number) => {
+    const templateData = (template.data && typeof template.data === 'object') ? template.data : {}
+    const importedItem: InventoryItem = {
+      id: generateClientId(),
+      name: template.name,
+      quantity: Math.max(1, quantity),
+      description: template.description ?? '',
+      category: template.category || 'Other',
+      sourceItemTemplateId: template.id,
+      sourceOrigin: 'template',
+      templateSnapshot: {
+        id: template.id,
+        name: template.name,
+        description: template.description,
+        category: template.category,
+        data: templateData,
+      },
+    }
+    onChange({
+      ...inventory,
+      items: [...inventory.items, importedItem],
+    })
+    setIsImportingTemplate(false)
   }, [inventory, onChange])
 
   const updateItem = useCallback((item: InventoryItem) => {
@@ -146,6 +176,28 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
     inventory.currency.cp * 0.01
   ).toFixed(2), [inventory.currency])
 
+  useEffect(() => {
+    if (!isImportingTemplate || templates.length > 0 || isLoadingTemplates) return
+    let cancelled = false
+    setIsLoadingTemplates(true)
+    setTemplateLoadError(null)
+    void listItemTemplates()
+      .then((rows) => {
+        if (!cancelled) setTemplates(rows)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        console.error('Failed to load item templates', error)
+        setTemplateLoadError(t('inventory.templateLoadFailed'))
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingTemplates(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isImportingTemplate, templates.length, isLoadingTemplates, t])
+
   return (
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="px-3 py-4"><PageShell><div className="flex flex-col gap-4 pb-24">
@@ -176,11 +228,17 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
           </CardContent>
         </Card>
 
-        {/* Add Item Button */}
-        <Button onClick={() => setIsAddingItem(true)} className="w-full h-10">
-          <Plus className="mr-2 size-5" />
-          {t('inventory.addItem')}
-        </Button>
+        {/* Add Item Buttons */}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <Button onClick={() => setIsAddingItem(true)} className="h-10">
+            <Plus className="mr-2 size-5" />
+            {t('inventory.createCustomItem')}
+          </Button>
+          <Button variant="outline" onClick={() => setIsImportingTemplate(true)} className="h-10">
+            <Package className="mr-2 size-5" />
+            {t('inventory.importFromTemplate')}
+          </Button>
+        </div>
 
         {/* Item Categories */}
         {CATEGORIES.map((category) => {
@@ -221,6 +279,15 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         open={isAddingItem}
         onOpenChange={setIsAddingItem}
         onSave={addItem}
+      />
+
+      <TemplateImportDialog
+        open={isImportingTemplate}
+        onOpenChange={setIsImportingTemplate}
+        templates={templates}
+        isLoading={isLoadingTemplates}
+        loadError={templateLoadError}
+        onImport={importItemTemplate}
       />
 
       {/* Edit Item Dialog */}
@@ -313,6 +380,97 @@ interface ItemDialogProps {
   onOpenChange: (open: boolean) => void
   item?: InventoryItem
   onSave: (item: InventoryItem) => void
+}
+
+interface TemplateImportDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  templates: ItemTemplate[]
+  isLoading: boolean
+  loadError: string | null
+  onImport: (template: ItemTemplate, quantity: number) => void
+}
+
+function TemplateImportDialog({
+  open,
+  onOpenChange,
+  templates,
+  isLoading,
+  loadError,
+  onImport,
+}: TemplateImportDialogProps) {
+  const { t } = useI18n()
+  const [selectedId, setSelectedId] = useState<string>('')
+  const [quantity, setQuantity] = useState<number>(1)
+
+  useEffect(() => {
+    if (!open) return
+    setSelectedId((current) => current || templates[0]?.id || '')
+    setQuantity(1)
+  }, [open, templates])
+
+  const selectedTemplate = useMemo(
+    () => templates.find((template) => template.id === selectedId) ?? null,
+    [templates, selectedId]
+  )
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{t('inventory.importFromTemplate')}</DialogTitle>
+          <DialogDescription>{t('inventory.selectTemplate')}</DialogDescription>
+        </DialogHeader>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+        ) : loadError ? (
+          <p className="text-sm text-destructive">{loadError}</p>
+        ) : templates.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t('inventory.noTemplates')}</p>
+        ) : (
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-sm text-muted-foreground">{t('inventory.template')}</label>
+              <Select value={selectedId} onValueChange={setSelectedId}>
+                <SelectTrigger className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {templates.map((template) => (
+                    <SelectItem key={template.id} value={template.id}>
+                      {template.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm text-muted-foreground">{t('inventory.quantity')}</label>
+              <Input
+                type="number"
+                min={1}
+                value={quantity}
+                onChange={(event) => setQuantity(parseInt(event.target.value, 10) || 1)}
+                className="h-10"
+              />
+            </div>
+            {selectedTemplate?.description ? (
+              <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                {selectedTemplate.description}
+              </p>
+            ) : null}
+            <Button
+              className="w-full h-10"
+              onClick={() => selectedTemplate && onImport(selectedTemplate, quantity)}
+              disabled={!selectedTemplate}
+            >
+              {t('inventory.importFromTemplate')}
+            </Button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
