@@ -36,6 +36,7 @@ import { useI18n } from '@/lib/i18n'
 import { PageShell } from '@/components/app/page-shell'
 import { generateClientId } from '@/lib/client-id'
 import { listItemTemplates, type ItemTemplate } from '@/lib/supabase-data'
+import { TemplateImportModal } from '@/components/dnd/template-import-modal'
 
 interface InventoryProps {
   inventory: InventoryType
@@ -434,61 +435,38 @@ function TemplateImportDialog({
   )
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>{t('inventory.importFromTemplate')}</DialogTitle>
-          <DialogDescription>{t('inventory.selectTemplate')}</DialogDescription>
-        </DialogHeader>
-        {isLoading ? (
-          <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
-        ) : loadError ? (
-          <p className="text-sm text-destructive">{loadError}</p>
-        ) : templates.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('inventory.noTemplates')}</p>
-        ) : (
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">{t('inventory.template')}</label>
-              <Select value={selectedId} onValueChange={setSelectedId}>
-                <SelectTrigger className="h-10">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {templates.map((template) => (
-                    <SelectItem key={template.id} value={template.id}>
-                      {template.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">{t('inventory.quantity')}</label>
-              <Input
-                type="number"
-                min={1}
-                value={quantity}
-                onChange={(event) => setQuantity(parseInt(event.target.value, 10) || 1)}
-                className="h-10"
-              />
-            </div>
-            {selectedTemplate?.description ? (
-              <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                {selectedTemplate.description}
-              </p>
-            ) : null}
-            <Button
-              className="w-full h-10"
-              onClick={() => selectedTemplate && onImport(selectedTemplate, quantity)}
-              disabled={!selectedTemplate}
-            >
-              {t('inventory.importFromTemplate')}
-            </Button>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+    <TemplateImportModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t('inventory.importFromTemplate')}
+      description={t('inventory.selectTemplate')}
+      searchPlaceholder={t('inventory.searchTemplates')}
+      isLoading={isLoading}
+      loadingText={t('common.loading')}
+      emptyText={t('inventory.noTemplates')}
+      errorText={loadError}
+      importLabel={t('inventory.importFromTemplate')}
+      items={templates}
+      getItemId={(template) => template.id}
+      getItemTitle={(template) => template.name}
+      getItemDescription={(template) => template.description ?? ''}
+      selectedId={selectedId}
+      onSelectedIdChange={setSelectedId}
+      onImport={() => selectedTemplate && onImport(selectedTemplate, quantity)}
+      importDisabled={!selectedTemplate}
+      footerContent={(
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-muted-foreground">{t('inventory.quantity')}</label>
+          <Input
+            type="number"
+            min={1}
+            value={quantity}
+            onChange={(event) => setQuantity(parseInt(event.target.value, 10) || 1)}
+            className="h-10 w-20"
+          />
+        </div>
+      )}
+    />
   )
 }
 

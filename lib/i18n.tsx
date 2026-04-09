@@ -137,6 +137,7 @@ const translations: Record<Language, TranslationMap> = {
     'inventory.selectTemplate': 'Select an item template to import.',
     'inventory.noTemplates': 'No item templates available.',
     'inventory.template': 'Template',
+    'inventory.searchTemplates': 'Search templates...',
     'inventory.templateLoadFailed': 'Failed to load item templates.',
 
     'notes.session': 'Session',
@@ -413,6 +414,7 @@ const translations: Record<Language, TranslationMap> = {
     'inventory.selectTemplate': 'Vyber šablonu předmětu k importu.',
     'inventory.noTemplates': 'Nejsou dostupné žádné šablony předmětů.',
     'inventory.template': 'Šablona',
+    'inventory.searchTemplates': 'Hledat šablony...',
     'inventory.templateLoadFailed': 'Nepodařilo se načíst šablony předmětů.',
 
     'notes.session': 'Sezení',
