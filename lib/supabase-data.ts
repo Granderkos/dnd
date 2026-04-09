@@ -32,6 +32,19 @@ const characterSaveSignatures = new Map<string, {
 }>()
 const INVENTORY_CATEGORIES = new Set(['Weapons', 'Armor', 'Equipment', 'Consumables', 'Supplies', 'Treasure', 'Other'])
 
+function normalizeInventoryCategory(value: string | null | undefined): string {
+  const normalized = (value ?? '').trim().toLowerCase()
+  if (!normalized) return 'Other'
+  if (['weapon', 'weapons'].includes(normalized)) return 'Weapons'
+  if (['armor', 'armour'].includes(normalized)) return 'Armor'
+  if (['equipment', 'gear'].includes(normalized)) return 'Equipment'
+  if (['consumable', 'consumables', 'potion', 'potions'].includes(normalized)) return 'Consumables'
+  if (['supply', 'supplies'].includes(normalized)) return 'Supplies'
+  if (['treasure', 'treasures', 'loot'].includes(normalized)) return 'Treasure'
+  if (INVENTORY_CATEGORIES.has(value ?? '')) return value as string
+  return 'Other'
+}
+
 async function withRetry<T>(operation: () => Promise<T>, retries = 2, delayMs = 250): Promise<T> {
   let attempt = 0
   let lastError: unknown
@@ -477,9 +490,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
         name: item.title,
         quantity: item.quantity,
         description: item.description,
-        category: (typeof item.category === 'string' && item.category.trim())
-          ? (INVENTORY_CATEGORIES.has(item.category) ? item.category : 'Other')
-          : 'Other',
+        category: normalizeInventoryCategory(typeof item.category === 'string' ? item.category : null),
         sourceItemTemplateId: 'source_item_template_id' in itemRecord ? itemRecord.source_item_template_id as string | null : null,
         sourceOrigin: (typeof itemRecord.source_origin === 'string' && itemRecord.source_origin === 'template')
           ? 'template'
@@ -730,9 +741,7 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
     title: item.name,
     description: item.description,
     quantity: item.quantity,
-    category: (typeof item.category === 'string' && INVENTORY_CATEGORIES.has(item.category))
-      ? item.category
-      : 'Other',
+    category: normalizeInventoryCategory(item.category),
     source_item_template_id: item.sourceItemTemplateId ?? null,
     source_origin: item.sourceOrigin === 'template' ? 'template' : 'custom',
     template_snapshot: item.templateSnapshot ?? null,

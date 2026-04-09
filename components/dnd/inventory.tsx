@@ -45,6 +45,19 @@ interface InventoryProps {
 const CATEGORIES = ['Weapons', 'Armor', 'Equipment', 'Consumables', 'Supplies', 'Treasure', 'Other'] as const
 const CATEGORY_SET = new Set<string>(CATEGORIES)
 
+function normalizeInventoryCategory(value: string | null | undefined): string {
+  const normalized = (value ?? '').trim().toLowerCase()
+  if (!normalized) return 'Other'
+  if (['weapon', 'weapons'].includes(normalized)) return 'Weapons'
+  if (['armor', 'armour'].includes(normalized)) return 'Armor'
+  if (['equipment', 'gear'].includes(normalized)) return 'Equipment'
+  if (['consumable', 'consumables', 'potion', 'potions'].includes(normalized)) return 'Consumables'
+  if (['supply', 'supplies'].includes(normalized)) return 'Supplies'
+  if (['treasure', 'treasures', 'loot'].includes(normalized)) return 'Treasure'
+  if (CATEGORY_SET.has(value ?? '')) return value as string
+  return 'Other'
+}
+
 const CATEGORY_META = {
   Weapons: { icon: Sword, labelKey: 'inventory.weapons' },
   Armor: { icon: Shield, labelKey: 'inventory.armor' },
@@ -89,9 +102,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
   }, [inventory, onChange])
 
   const importItemTemplate = useCallback((template: ItemTemplate, quantity: number) => {
-    const normalizedCategory = template.category && CATEGORY_SET.has(template.category)
-      ? template.category
-      : 'Other'
+    const normalizedCategory = normalizeInventoryCategory(template.category)
     const importedItem: InventoryItem = {
       id: generateClientId(),
       name: template.name,
