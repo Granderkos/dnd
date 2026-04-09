@@ -121,6 +121,11 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         rarity: template.rarity,
         weight: template.weight,
         value_text: template.value_text,
+        damage_text: template.damage_text,
+        damage_type: template.damage_type,
+        range_text: template.range_text,
+        weapon_kind: template.weapon_kind,
+        source_url: template.source_url,
         requires_attunement: template.requires_attunement,
         properties: template.properties,
         tags: template.tags,
@@ -455,6 +460,15 @@ function ItemDetailDialog({ open, onOpenChange, item, onEdit }: ItemDetailDialog
             ) : null}
             {typeof snapshot?.value_text === 'string' && snapshot.value_text ? (
               <div><span className="text-muted-foreground">{t('inventory.value')}:</span> {snapshot.value_text}</div>
+            ) : null}
+            {typeof snapshot?.damage_text === 'string' && snapshot.damage_text ? (
+              <div><span className="text-muted-foreground">{t('inventory.damage')}:</span> {snapshot.damage_text}</div>
+            ) : null}
+            {typeof snapshot?.damage_type === 'string' && snapshot.damage_type ? (
+              <div><span className="text-muted-foreground">{t('inventory.damageType')}:</span> {snapshot.damage_type}</div>
+            ) : null}
+            {typeof snapshot?.range_text === 'string' && snapshot.range_text ? (
+              <div><span className="text-muted-foreground">{t('inventory.range')}:</span> {snapshot.range_text}</div>
             ) : null}
           </div>
           {item.description ? (

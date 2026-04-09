@@ -15,6 +15,11 @@ export interface ItemTemplate {
   rarity: string | null
   weight: number | null
   value_text: string | null
+  damage_text: string | null
+  damage_type: string | null
+  range_text: string | null
+  weapon_kind: string | null
+  source_url: string | null
   requires_attunement: boolean
   properties: unknown
   tags: unknown
@@ -886,7 +891,7 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
 export async function listItemTemplates() {
   const { data, error } = await supabase
     .from('item_templates')
-    .select('id, name, description, category, rarity, weight, value_text, requires_attunement, properties, tags')
+    .select('id, name, description, category, rarity, weight, value_text, damage_text, damage_type, range_text, weapon_kind, source_url, requires_attunement, properties, tags')
     .order('name', { ascending: true })
   if (error) throw error
   return (data ?? []) as ItemTemplate[]

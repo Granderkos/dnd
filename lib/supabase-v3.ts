@@ -518,29 +518,16 @@ export async function assignCompanionFromTemplate(input: {
   nameOverride?: string
   notes?: string
 }) {
-  const entry = await createCompanionEntry({
-    name: input.template.name,
-    kind: input.template.kind,
-    description: input.template.notes ?? undefined,
-    data: {
-      ac: input.template.armor_class,
-      hp: input.template.hit_points,
-      speed: input.template.speed_text,
-      ...(input.template.custom_data ?? {}),
-    },
+  const { data, error } = await supabase.rpc('assign_companion_from_template', {
+    p_character_id: input.characterId,
+    p_template_id: input.template.id,
+    p_name_override: input.nameOverride ?? null,
+    p_notes: input.notes ?? null,
   })
-
-  return assignCompanion({
-    characterId: input.characterId,
-    entryId: entry.id,
-    kind: input.template.kind,
-    nameOverride: input.nameOverride,
-    notes: input.notes,
-    customData: { source: 'template', template_id: input.template.id },
-    sourceCompanionTemplateId: input.template.id,
-    sourceOrigin: 'template',
-    templateSnapshot: input.template as unknown as Record<string, unknown>,
-  })
+  if (error) throw error
+  const row = Array.isArray(data) ? data[0] : data
+  if (!row) throw new Error('assign_companion_from_template returned no row')
+  return row as CharacterCompanion
 }
 
 export async function activateCompanion(companionId: string, isActive: boolean) {

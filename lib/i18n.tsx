@@ -146,6 +146,9 @@ const translations: Record<Language, TranslationMap> = {
     'inventory.rarity': 'Rarity',
     'inventory.properties': 'Properties',
     'inventory.tags': 'Tags',
+    'inventory.damage': 'Damage',
+    'inventory.damageType': 'Damage Type',
+    'inventory.range': 'Range',
 
     'notes.session': 'Session',
     'notes.quest': 'Quest',
@@ -434,6 +437,9 @@ const translations: Record<Language, TranslationMap> = {
     'inventory.rarity': 'Vzácnost',
     'inventory.properties': 'Vlastnosti',
     'inventory.tags': 'Štítky',
+    'inventory.damage': 'Zranění',
+    'inventory.damageType': 'Typ zranění',
+    'inventory.range': 'Dosah',
 
     'notes.session': 'Sezení',
     'notes.quest': 'Úkoly',
