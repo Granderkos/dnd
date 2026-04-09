@@ -26,6 +26,14 @@ import {
 } from '@/lib/dnd-types'
 import { useI18n } from '@/lib/i18n'
 import { PageShell } from '@/components/app/page-shell'
+import {
+  listBackgroundTemplates,
+  listClassTemplates,
+  listRaceTemplates,
+  type BackgroundTemplate,
+  type ClassTemplate,
+  type RaceTemplate,
+} from '@/lib/supabase-data'
 
 // Debounced input for better typing performance - uses uncontrolled input with ref
 interface DebouncedInputProps extends Omit<React.ComponentProps<typeof Input>, 'onChange' | 'defaultValue'> {
@@ -202,6 +210,60 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
   }>({ open: false, title: '', description: '', onConfirm: () => {} })
   
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [classTemplates, setClassTemplates] = useState<ClassTemplate[]>([])
+  const [raceTemplates, setRaceTemplates] = useState<RaceTemplate[]>([])
+  const [backgroundTemplates, setBackgroundTemplates] = useState<BackgroundTemplate[]>([])
+
+  const deriveRaceFeatures = useCallback((template: RaceTemplate): string => {
+    if (Array.isArray(template.traits)) {
+      return (template.traits as unknown[]).map((value) => String(value)).join('\n')
+    }
+    return template.short_description ?? ''
+  }, [])
+
+  const deriveClassFeatures = useCallback((template: ClassTemplate): string => {
+    return template.feature_summary ?? ''
+  }, [])
+
+  const deriveBackgroundFeatures = useCallback((template: BackgroundTemplate): string => {
+    return template.feature_summary ?? template.short_description ?? ''
+  }, [])
+
+  const composeTemplateProficienciesAndLanguages = useCallback((params: {
+    classTemplate?: ClassTemplate | null
+    raceTemplate?: RaceTemplate | null
+    backgroundTemplate?: BackgroundTemplate | null
+  }): string => {
+    const sections: string[] = []
+    if (params.classTemplate) {
+      const classParts = [
+        params.classTemplate.saving_throw_proficiencies ? `Saving Throws: ${params.classTemplate.saving_throw_proficiencies}` : '',
+        params.classTemplate.armor_proficiencies ? `Armor: ${params.classTemplate.armor_proficiencies}` : '',
+        params.classTemplate.weapon_proficiencies ? `Weapons: ${params.classTemplate.weapon_proficiencies}` : '',
+        params.classTemplate.tool_proficiencies ? `Tools: ${params.classTemplate.tool_proficiencies}` : '',
+      ].filter(Boolean)
+      if (classParts.length > 0) sections.push(`Class\n${classParts.join('\n')}`)
+    }
+    if (params.raceTemplate?.languages) {
+      sections.push(`Race\nLanguages: ${params.raceTemplate.languages}`)
+    }
+    if (params.backgroundTemplate) {
+      const backgroundParts = [
+        params.backgroundTemplate.skill_proficiencies ? `Skills: ${params.backgroundTemplate.skill_proficiencies}` : '',
+        params.backgroundTemplate.tool_proficiencies ? `Tools: ${params.backgroundTemplate.tool_proficiencies}` : '',
+        params.backgroundTemplate.language_proficiencies ? `Languages: ${params.backgroundTemplate.language_proficiencies}` : '',
+      ].filter(Boolean)
+      if (backgroundParts.length > 0) sections.push(`Background\n${backgroundParts.join('\n')}`)
+    }
+    return sections.join('\n\n')
+  }, [])
+
+  const shouldApplyPrefill = useCallback((currentValue: string, previousPrefill: string, nextPrefill: string): boolean => {
+    const current = currentValue.trim()
+    if (!nextPrefill.trim()) return false
+    if (!current) return true
+    return current === previousPrefill.trim()
+  }, [])
 
   const updateInfo = useCallback((field: keyof Character['info'], value: string | number) => {
     onChange({
@@ -209,6 +271,131 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
       info: { ...character.info, [field]: value },
     })
   }, [character, onChange])
+
+  useEffect(() => {
+    let active = true
+    void Promise.all([
+      listClassTemplates(),
+      listRaceTemplates(),
+      listBackgroundTemplates(),
+    ]).then(([classes, races, backgrounds]) => {
+      if (!active) return
+      setClassTemplates(classes)
+      setRaceTemplates(races)
+      setBackgroundTemplates(backgrounds)
+    }).catch((error) => {
+      console.error('[character:templates] load failed', error)
+      if (!active) return
+      setClassTemplates([])
+      setRaceTemplates([])
+      setBackgroundTemplates([])
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const applyClassTemplate = useCallback((templateId: string) => {
+    const template = classTemplates.find((row) => row.id === templateId)
+    if (!template) return
+    const previousTemplate = (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null
+    const previousClassPrefill = previousTemplate ? deriveClassFeatures(previousTemplate) : ''
+    const nextClassPrefill = deriveClassFeatures(template)
+    const previousLanguagesPrefill = composeTemplateProficienciesAndLanguages({
+      classTemplate: previousTemplate,
+      raceTemplate: (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null,
+      backgroundTemplate: (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null,
+    })
+    const nextLanguagesPrefill = composeTemplateProficienciesAndLanguages({
+      classTemplate: template,
+      raceTemplate: (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null,
+      backgroundTemplate: (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null,
+    })
+    onChange({
+      ...character,
+      info: {
+        ...character.info,
+        class: template.name,
+        sourceClassTemplateId: template.id,
+        classSourceOrigin: 'template',
+        classTemplateSnapshot: template as unknown as Record<string, unknown>,
+      },
+      classFeatures: shouldApplyPrefill(character.classFeatures, previousClassPrefill, nextClassPrefill)
+        ? nextClassPrefill
+        : character.classFeatures,
+      languages: shouldApplyPrefill(character.languages, previousLanguagesPrefill, nextLanguagesPrefill)
+        ? nextLanguagesPrefill
+        : character.languages,
+    })
+  }, [character, classTemplates, composeTemplateProficienciesAndLanguages, deriveClassFeatures, onChange, shouldApplyPrefill])
+
+  const applyRaceTemplate = useCallback((templateId: string) => {
+    const template = raceTemplates.find((row) => row.id === templateId)
+    if (!template) return
+    const previousTemplate = (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null
+    const previousRacePrefill = previousTemplate ? deriveRaceFeatures(previousTemplate) : ''
+    const nextRacePrefill = deriveRaceFeatures(template)
+    const previousLanguagesPrefill = composeTemplateProficienciesAndLanguages({
+      classTemplate: (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null,
+      raceTemplate: previousTemplate,
+      backgroundTemplate: (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null,
+    })
+    const nextLanguagesPrefill = composeTemplateProficienciesAndLanguages({
+      classTemplate: (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null,
+      raceTemplate: template,
+      backgroundTemplate: (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null,
+    })
+    onChange({
+      ...character,
+      info: {
+        ...character.info,
+        race: template.name,
+        sourceRaceTemplateId: template.id,
+        raceSourceOrigin: 'template',
+        raceTemplateSnapshot: template as unknown as Record<string, unknown>,
+      },
+      raceFeatures: shouldApplyPrefill(character.raceFeatures, previousRacePrefill, nextRacePrefill)
+        ? nextRacePrefill
+        : character.raceFeatures,
+      languages: shouldApplyPrefill(character.languages, previousLanguagesPrefill, nextLanguagesPrefill)
+        ? nextLanguagesPrefill
+        : character.languages,
+    })
+  }, [character, composeTemplateProficienciesAndLanguages, deriveRaceFeatures, onChange, raceTemplates, shouldApplyPrefill])
+
+  const applyBackgroundTemplate = useCallback((templateId: string) => {
+    const template = backgroundTemplates.find((row) => row.id === templateId)
+    if (!template) return
+    const previousTemplate = (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null
+    const previousBackgroundPrefill = previousTemplate ? deriveBackgroundFeatures(previousTemplate) : ''
+    const nextBackgroundPrefill = deriveBackgroundFeatures(template)
+    const previousLanguagesPrefill = composeTemplateProficienciesAndLanguages({
+      classTemplate: (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null,
+      raceTemplate: (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null,
+      backgroundTemplate: previousTemplate,
+    })
+    const nextLanguagesPrefill = composeTemplateProficienciesAndLanguages({
+      classTemplate: (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null,
+      raceTemplate: (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null,
+      backgroundTemplate: template,
+    })
+    onChange({
+      ...character,
+      info: {
+        ...character.info,
+        background: template.name,
+        sourceBackgroundTemplateId: template.id,
+        backgroundSourceOrigin: 'template',
+        backgroundTemplateSnapshot: template as unknown as Record<string, unknown>,
+      },
+      backgroundFeatures: shouldApplyPrefill(character.backgroundFeatures, previousBackgroundPrefill, nextBackgroundPrefill)
+        ? nextBackgroundPrefill
+        : character.backgroundFeatures,
+      languages: shouldApplyPrefill(character.languages, previousLanguagesPrefill, nextLanguagesPrefill)
+        ? nextLanguagesPrefill
+        : character.languages,
+    })
+  }, [backgroundTemplates, character, composeTemplateProficienciesAndLanguages, deriveBackgroundFeatures, onChange, shouldApplyPrefill])
 
   const updateAbility = useCallback((ability: AbilityName, value: number) => {
     onChange({
@@ -466,6 +653,78 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                   onChange={(value) => updateInfo('alignment', value)}
                   className="h-9 text-sm"
                 />
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-2 rounded-md border border-border bg-muted/20 p-2">
+              <p className="text-xs uppercase text-muted-foreground">{t('character.templateSources')}</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">{t('character.classTemplate')}</label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={character.info.sourceClassTemplateId ?? ''}
+                    onChange={(e) => applyClassTemplate(e.target.value)}
+                  >
+                    <option value="">{t('character.selectTemplate')}</option>
+                    {classTemplates.map((template) => (
+                      <option key={template.id} value={template.id}>{template.name}</option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => onChange({ ...character, info: { ...character.info, sourceClassTemplateId: null, classSourceOrigin: 'custom', classTemplateSnapshot: null } })}
+                  >
+                    {t('character.useCustom')}
+                  </Button>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">{t('character.raceTemplate')}</label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={character.info.sourceRaceTemplateId ?? ''}
+                    onChange={(e) => applyRaceTemplate(e.target.value)}
+                  >
+                    <option value="">{t('character.selectTemplate')}</option>
+                    {raceTemplates.map((template) => (
+                      <option key={template.id} value={template.id}>{template.name}</option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => onChange({ ...character, info: { ...character.info, sourceRaceTemplateId: null, raceSourceOrigin: 'custom', raceTemplateSnapshot: null } })}
+                  >
+                    {t('character.useCustom')}
+                  </Button>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">{t('character.backgroundTemplate')}</label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={character.info.sourceBackgroundTemplateId ?? ''}
+                    onChange={(e) => applyBackgroundTemplate(e.target.value)}
+                  >
+                    <option value="">{t('character.selectTemplate')}</option>
+                    {backgroundTemplates.map((template) => (
+                      <option key={template.id} value={template.id}>{template.name}</option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => onChange({ ...character, info: { ...character.info, sourceBackgroundTemplateId: null, backgroundSourceOrigin: 'custom', backgroundTemplateSnapshot: null } })}
+                  >
+                    {t('character.useCustom')}
+                  </Button>
+                </div>
               </div>
             </div>
           </CardContent>
