@@ -272,7 +272,9 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
         raceSourceOrigin: 'template',
         raceTemplateSnapshot: template as unknown as Record<string, unknown>,
       },
-      raceFeatures: template.trait_summary ?? character.raceFeatures,
+      raceFeatures: Array.isArray(template.traits)
+        ? (template.traits as unknown[]).map((value) => String(value)).join('\n')
+        : (template.short_description ?? character.raceFeatures),
     })
   }, [character, onChange, raceTemplates])
 
@@ -288,7 +290,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
         backgroundSourceOrigin: 'template',
         backgroundTemplateSnapshot: template as unknown as Record<string, unknown>,
       },
-      backgroundFeatures: [template.feature_name, template.feature_description].filter(Boolean).join(': ') || character.backgroundFeatures,
+      backgroundFeatures: template.feature_summary ?? template.short_description ?? character.backgroundFeatures,
     })
   }, [backgroundTemplates, character, onChange])
 

@@ -33,19 +33,22 @@ export interface RaceTemplate {
   id: string
   name: string
   size: string | null
-  speed_text: string | null
-  ability_summary: string | null
-  trait_summary: string | null
+  speed: number | null
+  ability_bonuses: Record<string, unknown>
+  traits: unknown
+  languages: string
+  short_description: string | null
 }
 
 export interface BackgroundTemplate {
   id: string
   name: string
-  skill_proficiencies: string | null
-  tool_proficiencies: string | null
-  language_options: string | null
-  feature_name: string | null
-  feature_description: string | null
+  skill_proficiencies: string
+  tool_proficiencies: string
+  language_proficiencies: string
+  equipment_summary: string | null
+  feature_summary: string | null
+  short_description: string | null
 }
 
 const characterSaveQueue = new Map<string, Promise<void>>()
@@ -861,7 +864,7 @@ export async function listClassTemplates() {
 export async function listRaceTemplates() {
   const { data, error } = await supabase
     .from('race_templates')
-    .select('id, name, size, speed_text, ability_summary, trait_summary')
+    .select('id, name, size, speed, ability_bonuses, traits, languages, short_description')
     .order('name', { ascending: true })
   if (error) throw error
   return (data ?? []) as RaceTemplate[]
@@ -870,7 +873,7 @@ export async function listRaceTemplates() {
 export async function listBackgroundTemplates() {
   const { data, error } = await supabase
     .from('background_templates')
-    .select('id, name, skill_proficiencies, tool_proficiencies, language_options, feature_name, feature_description')
+    .select('id, name, skill_proficiencies, tool_proficiencies, language_proficiencies, equipment_summary, feature_summary, short_description')
     .order('name', { ascending: true })
   if (error) throw error
   return (data ?? []) as BackgroundTemplate[]
