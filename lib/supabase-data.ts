@@ -7,6 +7,19 @@ import type { Note } from '@/components/dnd/notes'
 import { supabase } from './supabase'
 import { generateClientId } from './client-id'
 
+export interface ItemTemplate {
+  id: string
+  name: string
+  description: string | null
+  category: string | null
+  rarity: string | null
+  weight: number | null
+  value_text: string | null
+  requires_attunement: boolean
+  properties: unknown
+  tags: unknown
+}
+
 const characterSaveQueue = new Map<string, Promise<void>>()
 const characterBlobCache = new Map<string, CharacterNotesBlob>()
 const portraitUploadCache = new Map<string, string>()
@@ -17,6 +30,20 @@ const characterSaveSignatures = new Map<string, {
   spells: string
   blob: string
 }>()
+const INVENTORY_CATEGORIES = new Set(['Weapons', 'Armor', 'Equipment', 'Consumables', 'Supplies', 'Treasure', 'Other'])
+
+function normalizeInventoryCategory(value: string | null | undefined): string {
+  const normalized = (value ?? '').trim().toLowerCase()
+  if (!normalized) return 'Other'
+  if (['weapon', 'weapons'].includes(normalized)) return 'Weapons'
+  if (['armor', 'armour'].includes(normalized)) return 'Armor'
+  if (['equipment', 'gear'].includes(normalized)) return 'Equipment'
+  if (['consumable', 'consumables', 'potion', 'potions'].includes(normalized)) return 'Consumables'
+  if (['supply', 'supplies'].includes(normalized)) return 'Supplies'
+  if (['treasure', 'treasures', 'loot'].includes(normalized)) return 'Treasure'
+  if (INVENTORY_CATEGORIES.has(value ?? '')) return value as string
+  return 'Other'
+}
 
 async function withRetry<T>(operation: () => Promise<T>, retries = 2, delayMs = 250): Promise<T> {
   let attempt = 0
@@ -78,6 +105,8 @@ interface CharacterNotesBlob {
 
 const characterSelectColumnsBase = 'id, name, class_name, subclass, race, background, alignment, level, xp, proficiency_bonus, armor_class, initiative, speed, hp_max, hp_current, hp_temp, hit_dice_type, death_successes, death_failures, str_score, dex_score, con_score, int_score, wis_score, cha_score, save_str_prof, save_dex_prof, save_con_prof, save_int_prof, save_wis_prof, save_cha_prof, skill_acrobatics_prof, skill_animal_handling_prof, skill_arcana_prof, skill_athletics_prof, skill_deception_prof, skill_history_prof, skill_insight_prof, skill_intimidation_prof, skill_investigation_prof, skill_medicine_prof, skill_nature_prof, skill_perception_prof, skill_performance_prof, skill_persuasion_prof, skill_religion_prof, skill_sleight_of_hand_prof, skill_stealth_prof, skill_survival_prof, features, languages, portrait_preview_url'
 const characterSelectColumnsWithOriginal = `${characterSelectColumnsBase}, portrait_original_url`
+const inventoryColumnsBase = 'id, client_id, title, quantity, description, category'
+const inventoryColumnsWithTemplate = `${inventoryColumnsBase}, source_item_template_id, source_origin, template_snapshot`
 
 function isMissingColumnError(error: unknown, columnName: string) {
   const message = typeof error === 'object' && error !== null && 'message' in error
@@ -311,10 +340,24 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       .single()
   }
 
+  const inventoryQuery = async () => {
+    const withTemplateFields = await supabase
+      .from('inventory_items')
+      .select(inventoryColumnsWithTemplate)
+      .eq('character_id', characterId)
+      .order('sort_order', { ascending: true })
+    if (!withTemplateFields.error || !isMissingColumnError(withTemplateFields.error, 'source_item_template_id')) return withTemplateFields
+    return supabase
+      .from('inventory_items')
+      .select(inventoryColumnsBase)
+      .eq('character_id', characterId)
+      .order('sort_order', { ascending: true })
+  }
+
   const [{ data: row, error: charError }, { data: attacksData, error: attacksError }, { data: inventoryData, error: inventoryError }, { data: spellsData, error: spellsError }, blob] = await Promise.all([
     charSelectWithFallback(),
     supabase.from('attacks').select('id, name, attack_bonus, damage').eq('character_id', characterId).order('sort_order', { ascending: true }),
-    supabase.from('inventory_items').select('id, client_id, title, quantity, description, category').eq('character_id', characterId).order('sort_order', { ascending: true }),
+    inventoryQuery(),
     supabase.from('spells').select('id, client_id, title, is_cantrip, is_ritual, is_concentration, is_reaction, casting_time, range_text, duration_text, description, dice, spell_level').eq('character_id', characterId).order('sort_order', { ascending: true }),
     getCharacterBlob(characterId),
   ])
@@ -336,6 +379,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
   const hasNormalizedInventory = Boolean(inventoryData?.length)
   const hasNormalizedAttacks = Boolean(attacksData?.length)
   const hasSeparatedFeatures = Boolean(blob.raceFeatures || blob.classFeatures || blob.backgroundFeatures)
+  const fallbackSpellEntries = blob.spellbookEntries ?? emptyBlob().spellbookEntries ?? { cantrips: [], spells: [] }
 
   const character: Character = {
     info: {
@@ -439,15 +483,21 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
 
   const inventory: Inventory = {
     items: (hasNormalizedInventory ? (inventoryData ?? []).map((item) => {
+      const itemRecord = item as Record<string, unknown>
       const normalizedId = item.client_id ?? item.id
       return {
         id: normalizedId,
         name: item.title,
         quantity: item.quantity,
         description: item.description,
-        category: (typeof item.category === 'string' && item.category.trim())
-          ? item.category
-          : 'Other',
+        category: normalizeInventoryCategory(typeof item.category === 'string' ? item.category : null),
+        sourceItemTemplateId: 'source_item_template_id' in itemRecord ? itemRecord.source_item_template_id as string | null : null,
+        sourceOrigin: (typeof itemRecord.source_origin === 'string' && itemRecord.source_origin === 'template')
+          ? 'template'
+          : 'custom',
+        templateSnapshot: 'template_snapshot' in itemRecord && itemRecord.template_snapshot && typeof itemRecord.template_snapshot === 'object'
+          ? itemRecord.template_snapshot as Record<string, unknown>
+          : null,
       }
     }) : []),
     currency: blob.inventoryCurrency ?? emptyInventory.currency,
@@ -691,11 +741,20 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
     title: item.name,
     description: item.description,
     quantity: item.quantity,
-    category: item.category || 'Other',
+    category: normalizeInventoryCategory(item.category),
+    source_item_template_id: item.sourceItemTemplateId ?? null,
+    source_origin: item.sourceOrigin === 'template' ? 'template' : 'custom',
+    template_snapshot: item.templateSnapshot ?? null,
   }))
-  const { error: upsertError } = await supabase
+  let { error: upsertError } = await supabase
     .from('inventory_items')
     .upsert(rows, { onConflict: 'character_id,client_id' })
+  if (upsertError && isMissingColumnError(upsertError, 'source_item_template_id')) {
+    const legacyRows = rows.map(({ source_item_template_id, source_origin, template_snapshot, ...legacyRow }) => legacyRow)
+    ;({ error: upsertError } = await supabase
+      .from('inventory_items')
+      .upsert(legacyRows, { onConflict: 'character_id,client_id' }))
+  }
   if (upsertError) {
     console.error('[inventory:save] upsert failed', {
       characterId,
@@ -710,6 +769,15 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
     throw upsertError
   }
   await deleteMissingInventoryRows(characterId, items.map((item) => item.id))
+}
+
+export async function listItemTemplates() {
+  const { data, error } = await supabase
+    .from('item_templates')
+    .select('id, name, description, category, rarity, weight, value_text, requires_attunement, properties, tags')
+    .order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as ItemTemplate[]
 }
 
 async function syncSpellRows(characterId: string, spells: Spellbook['spells'][number][]) {
