@@ -45,6 +45,7 @@ import { User, BookOpen, Package, FileText, Map, LogOut, Sparkles, Plus } from '
 import { AppControls } from '@/components/app/app-controls'
 import { APP_VERSION } from '@/lib/app-config'
 import { useI18n } from '@/lib/i18n'
+import { TemplateImportModal } from '@/components/dnd/template-import-modal'
 
 const CharacterSheet = dynamic(() => import('@/components/dnd/character-sheet').then((m) => m.CharacterSheet), { ssr: false })
 const Spellbook = dynamic(() => import('@/components/dnd/spellbook').then((m) => m.Spellbook), { ssr: false })
@@ -794,47 +795,36 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isImportCompanionOpen} onOpenChange={setIsImportCompanionOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('compendium.importCompanionTitle')}</DialogTitle>
-          </DialogHeader>
-          {isCompanionTemplatesLoading ? (
-            <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
-          ) : companionTemplatesError ? (
-            <p className="text-sm text-destructive">{companionTemplatesError}</p>
-          ) : companionTemplates.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('compendium.noCompanionTemplates')}</p>
-          ) : (
-            <div className="space-y-3">
-              <select
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                value={selectedCompanionTemplateId}
-                onChange={(e) => setSelectedCompanionTemplateId(e.target.value)}
-              >
-                {companionTemplates.map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name} ({template.kind})
-                  </option>
-                ))}
-              </select>
-              <Button onClick={async () => {
-                if (!companionCharacterId || !selectedCompanionTemplateId) return
-                const template = companionTemplates.find((row) => row.id === selectedCompanionTemplateId)
-                if (!template) return
-                await assignCompanionFromTemplate({
-                  characterId: companionCharacterId,
-                  template,
-                })
-                setIsImportCompanionOpen(false)
-                await refreshCompendium()
-              }}>
-                {t('compendium.importCompanionAction')}
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <TemplateImportModal
+        open={isImportCompanionOpen}
+        onOpenChange={setIsImportCompanionOpen}
+        title={t('compendium.importCompanionTitle')}
+        description={t('compendium.importTemplate')}
+        searchPlaceholder={t('compendium.searchTemplates')}
+        isLoading={isCompanionTemplatesLoading}
+        loadingText={t('common.loading')}
+        emptyText={t('compendium.noCompanionTemplates')}
+        errorText={companionTemplatesError}
+        importLabel={t('compendium.importCompanionAction')}
+        items={companionTemplates}
+        getItemId={(template) => template.id}
+        getItemTitle={(template) => template.name}
+        getItemDescription={(template) => template.notes ?? template.kind}
+        selectedId={selectedCompanionTemplateId}
+        onSelectedIdChange={setSelectedCompanionTemplateId}
+        onImport={async () => {
+          if (!companionCharacterId || !selectedCompanionTemplateId) return
+          const template = companionTemplates.find((row) => row.id === selectedCompanionTemplateId)
+          if (!template) return
+          await assignCompanionFromTemplate({
+            characterId: companionCharacterId,
+            template,
+          })
+          setIsImportCompanionOpen(false)
+          await refreshCompendium()
+        }}
+        importDisabled={!selectedCompanionTemplateId}
+      />
 
       <AlertDialog open={!!initiativePrompt} onOpenChange={() => {}}>
         <AlertDialogContent>

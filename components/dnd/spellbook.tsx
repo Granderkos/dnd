@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Plus, X, Eye, Zap, BookOpen } from 'lucide-react'
+import { Plus, X, Eye, Zap, BookOpen, Package } from 'lucide-react'
 import {
   Spellbook as SpellbookType,
   Spell,
@@ -44,6 +44,7 @@ import {
 import { useI18n } from '@/lib/i18n'
 import { generateClientId } from '@/lib/client-id'
 import { listSpellTemplates, type SpellTemplate } from '@/lib/supabase-data'
+import { TemplateImportModal } from '@/components/dnd/template-import-modal'
 
 interface SpellbookProps {
   spellbook: SpellbookType
@@ -61,6 +62,7 @@ export function Spellbook({
   const { t, language } = useI18n()
   const [selectedSpell, setSelectedSpell] = useState<Spell | null>(null)
   const [isAddingSpell, setIsAddingSpell] = useState(false)
+  const [isImportingSpell, setIsImportingSpell] = useState(false)
   const [newSpellLevel, setNewSpellLevel] = useState(0)
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
@@ -186,9 +188,14 @@ export function Spellbook({
                 <span className="flex size-6 items-center justify-center rounded bg-muted text-xs font-bold">0</span>
                 {t('spellbook.cantrips')}
               </CardTitle>
-              <Button size="sm" variant="outline" className="h-8" onClick={() => { setNewSpellLevel(0); setIsAddingSpell(true) }}>
-                <Plus className="size-4" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" className="h-8" onClick={() => { setNewSpellLevel(0); setIsAddingSpell(true) }}>
+                  <Plus className="size-4" />
+                </Button>
+                <Button size="sm" variant="outline" className="h-8" onClick={() => { setNewSpellLevel(0); setIsImportingSpell(true) }}>
+                  <Package className="size-4" />
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -212,9 +219,14 @@ export function Spellbook({
                     <span className="flex size-6 items-center justify-center rounded bg-muted text-xs font-bold">{level}</span>
                     {t('spellbook.level', { level })}
                   </CardTitle>
-                  <Button size="sm" variant="outline" className="h-8" onClick={() => { setNewSpellLevel(level); setIsAddingSpell(true) }}>
-                    <Plus className="size-4" />
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" className="h-8" onClick={() => { setNewSpellLevel(level); setIsAddingSpell(true) }}>
+                      <Plus className="size-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-8" onClick={() => { setNewSpellLevel(level); setIsImportingSpell(true) }}>
+                      <Package className="size-4" />
+                    </Button>
+                  </div>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <span className="text-xs text-muted-foreground">{t('spellbook.slots')}</span>
@@ -253,9 +265,14 @@ export function Spellbook({
                     <span className="flex size-6 items-center justify-center rounded bg-muted text-xs font-bold">{level}</span>
                     {t('spellbook.level', { level })}
                   </CardTitle>
-                  <Button size="sm" variant="outline" className="h-8" onClick={() => { setNewSpellLevel(level); setIsAddingSpell(true) }}>
-                    <Plus className="size-4" />
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" className="h-8" onClick={() => { setNewSpellLevel(level); setIsAddingSpell(true) }}>
+                      <Plus className="size-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-8" onClick={() => { setNewSpellLevel(level); setIsImportingSpell(true) }}>
+                      <Package className="size-4" />
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
@@ -297,6 +314,12 @@ export function Spellbook({
       </Dialog>
 
       <AddSpellDialog open={isAddingSpell} onOpenChange={setIsAddingSpell} level={newSpellLevel} onAdd={addSpell} />
+      <SpellTemplateImportDialog
+        open={isImportingSpell}
+        onOpenChange={setIsImportingSpell}
+        level={newSpellLevel}
+        onImport={addSpell}
+      />
 
       <AlertDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog({ ...confirmDialog, open })}>
         <AlertDialogContent>
@@ -508,5 +531,96 @@ function AddSpellDialog({ open, onOpenChange, level, onAdd }: AddSpellDialogProp
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+interface SpellTemplateImportDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  level: number
+  onImport: (spell: Spell) => void
+}
+
+function SpellTemplateImportDialog({ open, onOpenChange, level, onImport }: SpellTemplateImportDialogProps) {
+  const { t } = useI18n()
+  const [templates, setTemplates] = useState<SpellTemplate[]>([])
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('')
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setIsLoadingTemplates(true)
+    setLoadError(null)
+    void listSpellTemplates()
+      .then((rows) => {
+        if (cancelled) return
+        setTemplates(rows)
+        const firstForLevel = rows.find((row) => row.level === level)
+        setSelectedTemplateId((current) => current || firstForLevel?.id || '')
+      })
+      .catch((error) => {
+        console.error('[spellbook:templates] load failed', error)
+        if (!cancelled) setLoadError(t('spellbook.templateLoadFailed'))
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingTemplates(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [level, open, t])
+
+  const templatesForLevel = useMemo(
+    () => templates.filter((template) => template.level === level),
+    [level, templates],
+  )
+  const selectedTemplate = useMemo(
+    () => templatesForLevel.find((template) => template.id === selectedTemplateId) ?? null,
+    [selectedTemplateId, templatesForLevel],
+  )
+
+  return (
+    <TemplateImportModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t('spellbook.importFromTemplate')}
+      description={level === 0 ? t('spellbook.addCantrip') : t('spellbook.addSpell', { level })}
+      searchPlaceholder={t('spellbook.searchTemplates')}
+      isLoading={isLoadingTemplates}
+      loadingText={t('common.loading')}
+      emptyText={t('spellbook.noTemplates')}
+      errorText={loadError}
+      importLabel={t('spellbook.importSpellButton')}
+      items={templatesForLevel}
+      getItemId={(template) => template.id}
+      getItemTitle={(template) => template.name}
+      getItemDescription={(template) => template.description}
+      selectedId={selectedTemplateId}
+      onSelectedIdChange={setSelectedTemplateId}
+      onImport={() => {
+        if (!selectedTemplate) return
+        onImport({
+          id: generateClientId(),
+          name: selectedTemplate.name,
+          level,
+          ritual: selectedTemplate.ritual,
+          concentration: selectedTemplate.concentration,
+          reaction: false,
+          castingTime: selectedTemplate.casting_time,
+          range: selectedTemplate.range_text,
+          duration: selectedTemplate.duration_text,
+          description: [selectedTemplate.description, selectedTemplate.higher_level_text].filter(Boolean).join('\n\n'),
+          damage: '',
+          prepared: level === 0,
+          sourceSpellTemplateId: selectedTemplate.id,
+          sourceOrigin: 'template',
+          templateSnapshot: selectedTemplate as unknown as Record<string, unknown>,
+        })
+        onOpenChange(false)
+      }}
+      importDisabled={!selectedTemplate}
+    />
   )
 }

@@ -77,6 +77,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
   const [templateLoadError, setTemplateLoadError] = useState<string | null>(null)
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
+  const [viewingItem, setViewingItem] = useState<InventoryItem | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
     title: string
@@ -282,6 +283,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
                     <ItemRow
                       key={item.id}
                       item={item}
+                      onView={() => setViewingItem(item)}
                       onEdit={() => setEditingItem(item)}
                       onDelete={() => deleteItem(item.id, item.name)}
                       onAdjustQuantity={(amount) => adjustQuantity(item.id, amount)}
@@ -320,6 +322,18 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         />
       )}
 
+      {viewingItem && (
+        <ItemDetailDialog
+          open={!!viewingItem}
+          onOpenChange={() => setViewingItem(null)}
+          item={viewingItem}
+          onEdit={() => {
+            setViewingItem(null)
+            setEditingItem(viewingItem)
+          }}
+        />
+      )}
+
       {/* Confirmation Dialog */}
       <AlertDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog({ ...confirmDialog, open })}>
         <AlertDialogContent>
@@ -341,16 +355,18 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
 
 interface ItemRowProps {
   item: InventoryItem
+  onView: () => void
   onEdit: () => void
   onDelete: () => void
   onAdjustQuantity: (amount: number) => void
 }
 
-const ItemRow = memo(function ItemRow({ item, onEdit, onDelete, onAdjustQuantity }: ItemRowProps) {
+const ItemRow = memo(function ItemRow({ item, onView, onEdit, onDelete, onAdjustQuantity }: ItemRowProps) {
+  const { t } = useI18n()
   return (
     <div className="flex items-center gap-2 rounded-lg border border-border bg-background/80 px-3 py-3">
       <button
-        onClick={onEdit}
+        onClick={onView}
         className="min-w-0 flex-1 text-left"
       >
         <p className="text-sm font-medium truncate max-w-[140px]">
@@ -384,6 +400,14 @@ const ItemRow = memo(function ItemRow({ item, onEdit, onDelete, onAdjustQuantity
         </Button>
       </div>
       <Button
+        size="sm"
+        variant="ghost"
+        onClick={onEdit}
+        className="h-8 px-2 text-xs"
+      >
+        {t('inventory.editAction')}
+      </Button>
+      <Button
         size="icon"
         variant="ghost"
         onClick={onDelete}
@@ -394,6 +418,60 @@ const ItemRow = memo(function ItemRow({ item, onEdit, onDelete, onAdjustQuantity
     </div>
   )
 })
+
+interface ItemDetailDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  item: InventoryItem
+  onEdit: () => void
+}
+
+function ItemDetailDialog({ open, onOpenChange, item, onEdit }: ItemDetailDialogProps) {
+  const { t } = useI18n()
+  const snapshot = (item.templateSnapshot ?? null) as Record<string, unknown> | null
+  const properties = Array.isArray(snapshot?.properties)
+    ? snapshot?.properties.map((value) => String(value)).join(', ')
+    : null
+  const tags = Array.isArray(snapshot?.tags)
+    ? snapshot?.tags.map((value) => String(value)).join(', ')
+    : null
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t('inventory.itemDetails')}</DialogTitle>
+          <DialogDescription>{t('inventory.category')}: {item.category}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          <div className="grid grid-cols-2 gap-2">
+            <div><span className="text-muted-foreground">{t('inventory.name')}:</span> {item.name}</div>
+            <div><span className="text-muted-foreground">{t('inventory.quantity')}:</span> {item.quantity}</div>
+            {typeof snapshot?.rarity === 'string' && snapshot.rarity ? (
+              <div><span className="text-muted-foreground">{t('inventory.rarity')}:</span> {snapshot.rarity}</div>
+            ) : null}
+            {typeof snapshot?.weight === 'number' ? (
+              <div><span className="text-muted-foreground">{t('inventory.weight')}:</span> {snapshot.weight}</div>
+            ) : null}
+            {typeof snapshot?.value_text === 'string' && snapshot.value_text ? (
+              <div><span className="text-muted-foreground">{t('inventory.value')}:</span> {snapshot.value_text}</div>
+            ) : null}
+          </div>
+          {item.description ? (
+            <p className="rounded-md border border-border bg-muted/30 p-3 text-sm">{item.description}</p>
+          ) : null}
+          {properties ? (
+            <p><span className="text-muted-foreground">{t('inventory.properties')}:</span> {properties}</p>
+          ) : null}
+          {tags ? (
+            <p><span className="text-muted-foreground">{t('inventory.tags')}:</span> {tags}</p>
+          ) : null}
+          <Button onClick={onEdit} className="w-full h-10">{t('inventory.saveChanges')}</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 interface ItemDialogProps {
   open: boolean
