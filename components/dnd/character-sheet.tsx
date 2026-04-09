@@ -214,6 +214,57 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
   const [raceTemplates, setRaceTemplates] = useState<RaceTemplate[]>([])
   const [backgroundTemplates, setBackgroundTemplates] = useState<BackgroundTemplate[]>([])
 
+  const deriveRaceFeatures = useCallback((template: RaceTemplate): string => {
+    if (Array.isArray(template.traits)) {
+      return (template.traits as unknown[]).map((value) => String(value)).join('\n')
+    }
+    return template.short_description ?? ''
+  }, [])
+
+  const deriveClassFeatures = useCallback((template: ClassTemplate): string => {
+    return template.feature_summary ?? ''
+  }, [])
+
+  const deriveBackgroundFeatures = useCallback((template: BackgroundTemplate): string => {
+    return template.feature_summary ?? template.short_description ?? ''
+  }, [])
+
+  const composeTemplateProficienciesAndLanguages = useCallback((params: {
+    classTemplate?: ClassTemplate | null
+    raceTemplate?: RaceTemplate | null
+    backgroundTemplate?: BackgroundTemplate | null
+  }): string => {
+    const sections: string[] = []
+    if (params.classTemplate) {
+      const classParts = [
+        params.classTemplate.saving_throw_proficiencies ? `Saving Throws: ${params.classTemplate.saving_throw_proficiencies}` : '',
+        params.classTemplate.armor_proficiencies ? `Armor: ${params.classTemplate.armor_proficiencies}` : '',
+        params.classTemplate.weapon_proficiencies ? `Weapons: ${params.classTemplate.weapon_proficiencies}` : '',
+        params.classTemplate.tool_proficiencies ? `Tools: ${params.classTemplate.tool_proficiencies}` : '',
+      ].filter(Boolean)
+      if (classParts.length > 0) sections.push(`Class\n${classParts.join('\n')}`)
+    }
+    if (params.raceTemplate?.languages) {
+      sections.push(`Race\nLanguages: ${params.raceTemplate.languages}`)
+    }
+    if (params.backgroundTemplate) {
+      const backgroundParts = [
+        params.backgroundTemplate.skill_proficiencies ? `Skills: ${params.backgroundTemplate.skill_proficiencies}` : '',
+        params.backgroundTemplate.tool_proficiencies ? `Tools: ${params.backgroundTemplate.tool_proficiencies}` : '',
+        params.backgroundTemplate.language_proficiencies ? `Languages: ${params.backgroundTemplate.language_proficiencies}` : '',
+      ].filter(Boolean)
+      if (backgroundParts.length > 0) sections.push(`Background\n${backgroundParts.join('\n')}`)
+    }
+    return sections.join('\n\n')
+  }, [])
+
+  const shouldApplyPrefill = useCallback((currentValue: string, previousPrefill: string, nextPrefill: string): boolean => {
+    const current = currentValue.trim()
+    if (!nextPrefill.trim()) return false
+    if (!current) return true
+    return current === previousPrefill.trim()
+  }, [])
+
   const updateInfo = useCallback((field: keyof Character['info'], value: string | number) => {
     onChange({
       ...character,
@@ -247,6 +298,19 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
   const applyClassTemplate = useCallback((templateId: string) => {
     const template = classTemplates.find((row) => row.id === templateId)
     if (!template) return
+    const previousTemplate = (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null
+    const previousClassPrefill = previousTemplate ? deriveClassFeatures(previousTemplate) : ''
+    const nextClassPrefill = deriveClassFeatures(template)
+    const previousLanguagesPrefill = composeTemplateProficienciesAndLanguages({
+      classTemplate: previousTemplate,
+      raceTemplate: (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null,
+      backgroundTemplate: (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null,
+    })
+    const nextLanguagesPrefill = composeTemplateProficienciesAndLanguages({
+      classTemplate: template,
+      raceTemplate: (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null,
+      backgroundTemplate: (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null,
+    })
     onChange({
       ...character,
       info: {
@@ -256,13 +320,31 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
         classSourceOrigin: 'template',
         classTemplateSnapshot: template as unknown as Record<string, unknown>,
       },
-      classFeatures: template.feature_summary ?? character.classFeatures,
+      classFeatures: shouldApplyPrefill(character.classFeatures, previousClassPrefill, nextClassPrefill)
+        ? nextClassPrefill
+        : character.classFeatures,
+      languages: shouldApplyPrefill(character.languages, previousLanguagesPrefill, nextLanguagesPrefill)
+        ? nextLanguagesPrefill
+        : character.languages,
     })
-  }, [character, classTemplates, onChange])
+  }, [character, classTemplates, composeTemplateProficienciesAndLanguages, deriveClassFeatures, onChange, shouldApplyPrefill])
 
   const applyRaceTemplate = useCallback((templateId: string) => {
     const template = raceTemplates.find((row) => row.id === templateId)
     if (!template) return
+    const previousTemplate = (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null
+    const previousRacePrefill = previousTemplate ? deriveRaceFeatures(previousTemplate) : ''
+    const nextRacePrefill = deriveRaceFeatures(template)
+    const previousLanguagesPrefill = composeTemplateProficienciesAndLanguages({
+      classTemplate: (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null,
+      raceTemplate: previousTemplate,
+      backgroundTemplate: (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null,
+    })
+    const nextLanguagesPrefill = composeTemplateProficienciesAndLanguages({
+      classTemplate: (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null,
+      raceTemplate: template,
+      backgroundTemplate: (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null,
+    })
     onChange({
       ...character,
       info: {
@@ -272,15 +354,31 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
         raceSourceOrigin: 'template',
         raceTemplateSnapshot: template as unknown as Record<string, unknown>,
       },
-      raceFeatures: Array.isArray(template.traits)
-        ? (template.traits as unknown[]).map((value) => String(value)).join('\n')
-        : (template.short_description ?? character.raceFeatures),
+      raceFeatures: shouldApplyPrefill(character.raceFeatures, previousRacePrefill, nextRacePrefill)
+        ? nextRacePrefill
+        : character.raceFeatures,
+      languages: shouldApplyPrefill(character.languages, previousLanguagesPrefill, nextLanguagesPrefill)
+        ? nextLanguagesPrefill
+        : character.languages,
     })
-  }, [character, onChange, raceTemplates])
+  }, [character, composeTemplateProficienciesAndLanguages, deriveRaceFeatures, onChange, raceTemplates, shouldApplyPrefill])
 
   const applyBackgroundTemplate = useCallback((templateId: string) => {
     const template = backgroundTemplates.find((row) => row.id === templateId)
     if (!template) return
+    const previousTemplate = (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null
+    const previousBackgroundPrefill = previousTemplate ? deriveBackgroundFeatures(previousTemplate) : ''
+    const nextBackgroundPrefill = deriveBackgroundFeatures(template)
+    const previousLanguagesPrefill = composeTemplateProficienciesAndLanguages({
+      classTemplate: (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null,
+      raceTemplate: (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null,
+      backgroundTemplate: previousTemplate,
+    })
+    const nextLanguagesPrefill = composeTemplateProficienciesAndLanguages({
+      classTemplate: (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null,
+      raceTemplate: (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null,
+      backgroundTemplate: template,
+    })
     onChange({
       ...character,
       info: {
@@ -290,9 +388,14 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
         backgroundSourceOrigin: 'template',
         backgroundTemplateSnapshot: template as unknown as Record<string, unknown>,
       },
-      backgroundFeatures: template.feature_summary ?? template.short_description ?? character.backgroundFeatures,
+      backgroundFeatures: shouldApplyPrefill(character.backgroundFeatures, previousBackgroundPrefill, nextBackgroundPrefill)
+        ? nextBackgroundPrefill
+        : character.backgroundFeatures,
+      languages: shouldApplyPrefill(character.languages, previousLanguagesPrefill, nextLanguagesPrefill)
+        ? nextLanguagesPrefill
+        : character.languages,
     })
-  }, [backgroundTemplates, character, onChange])
+  }, [backgroundTemplates, character, composeTemplateProficienciesAndLanguages, deriveBackgroundFeatures, onChange, shouldApplyPrefill])
 
   const updateAbility = useCallback((ability: AbilityName, value: number) => {
     onChange({

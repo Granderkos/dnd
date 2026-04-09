@@ -41,6 +41,10 @@ export interface ClassTemplate {
   name: string
   hit_die: string
   primary_ability: string | null
+  saving_throw_proficiencies: string
+  armor_proficiencies: string
+  weapon_proficiencies: string
+  tool_proficiencies: string
   short_description: string | null
   feature_summary: string | null
 }
@@ -901,7 +905,7 @@ export async function listSpellTemplates() {
 export async function listClassTemplates() {
   const { data, error } = await supabase
     .from('class_templates')
-    .select('id, name, hit_die, primary_ability, short_description, feature_summary')
+    .select('id, name, hit_die, primary_ability, saving_throw_proficiencies, armor_proficiencies, weapon_proficiencies, tool_proficiencies, short_description, feature_summary')
     .order('name', { ascending: true })
   if (error) throw error
   return (data ?? []) as ClassTemplate[]
