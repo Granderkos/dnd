@@ -37,6 +37,15 @@ export interface CharacterInfo {
   xp: number
   portraitUrl?: string
   portraitOriginalUrl?: string
+  sourceClassTemplateId?: string | null
+  sourceRaceTemplateId?: string | null
+  sourceBackgroundTemplateId?: string | null
+  classSourceOrigin?: 'custom' | 'template'
+  raceSourceOrigin?: 'custom' | 'template'
+  backgroundSourceOrigin?: 'custom' | 'template'
+  classTemplateSnapshot?: Record<string, unknown> | null
+  raceTemplateSnapshot?: Record<string, unknown> | null
+  backgroundTemplateSnapshot?: Record<string, unknown> | null
 }
 
 export interface CombatInfo {
@@ -81,6 +90,9 @@ export interface Spell {
   description: string
   damage: string
   prepared: boolean
+  sourceSpellTemplateId?: string | null
+  sourceOrigin?: 'custom' | 'template'
+  templateSnapshot?: Record<string, unknown> | null
 }
 
 export interface SpellSlots {
@@ -104,6 +116,9 @@ export interface InventoryItem {
   quantity: number
   description: string
   category: string
+  sourceItemTemplateId?: string | null
+  sourceOrigin?: 'custom' | 'template'
+  templateSnapshot?: Record<string, unknown> | null
 }
 
 export interface Currency {
