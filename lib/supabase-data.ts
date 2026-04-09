@@ -20,6 +20,34 @@ export interface ItemTemplate {
   tags: unknown
 }
 
+export interface ClassTemplate {
+  id: string
+  name: string
+  hit_die: string
+  primary_ability: string | null
+  short_description: string | null
+  feature_summary: string | null
+}
+
+export interface RaceTemplate {
+  id: string
+  name: string
+  size: string | null
+  speed_text: string | null
+  ability_summary: string | null
+  trait_summary: string | null
+}
+
+export interface BackgroundTemplate {
+  id: string
+  name: string
+  skill_proficiencies: string | null
+  tool_proficiencies: string | null
+  language_options: string | null
+  feature_name: string | null
+  feature_description: string | null
+}
+
 const characterSaveQueue = new Map<string, Promise<void>>()
 const characterBlobCache = new Map<string, CharacterNotesBlob>()
 const portraitUploadCache = new Map<string, string>()
@@ -105,6 +133,7 @@ interface CharacterNotesBlob {
 
 const characterSelectColumnsBase = 'id, name, class_name, subclass, race, background, alignment, level, xp, proficiency_bonus, armor_class, initiative, speed, hp_max, hp_current, hp_temp, hit_dice_type, death_successes, death_failures, str_score, dex_score, con_score, int_score, wis_score, cha_score, save_str_prof, save_dex_prof, save_con_prof, save_int_prof, save_wis_prof, save_cha_prof, skill_acrobatics_prof, skill_animal_handling_prof, skill_arcana_prof, skill_athletics_prof, skill_deception_prof, skill_history_prof, skill_insight_prof, skill_intimidation_prof, skill_investigation_prof, skill_medicine_prof, skill_nature_prof, skill_perception_prof, skill_performance_prof, skill_persuasion_prof, skill_religion_prof, skill_sleight_of_hand_prof, skill_stealth_prof, skill_survival_prof, features, languages, portrait_preview_url'
 const characterSelectColumnsWithOriginal = `${characterSelectColumnsBase}, portrait_original_url`
+const characterSelectColumnsWithTemplates = `${characterSelectColumnsWithOriginal}, source_class_template_id, source_race_template_id, source_background_template_id, class_source_origin, race_source_origin, background_source_origin, class_template_snapshot, race_template_snapshot, background_template_snapshot`
 const inventoryColumnsBase = 'id, client_id, title, quantity, description, category'
 const inventoryColumnsWithTemplate = `${inventoryColumnsBase}, source_item_template_id, source_origin, template_snapshot`
 
@@ -327,6 +356,13 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
   const t0 = Date.now()
   const characterId = await ensureCharacterRecord(userId)
   const charSelectWithFallback = async () => {
+    const withTemplates = await supabase
+      .from('characters')
+      .select(characterSelectColumnsWithTemplates)
+      .eq('id', characterId)
+      .single()
+    if (!withTemplates.error || !isMissingColumnError(withTemplates.error, 'source_class_template_id')) return withTemplates
+
     const withOriginal = await supabase
       .from('characters')
       .select(characterSelectColumnsWithOriginal)
@@ -393,6 +429,15 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       xp: row.xp ?? 0,
       portraitUrl: blob.portraitUrl || row.portrait_preview_url || '',
       portraitOriginalUrl: blob.portraitOriginalUrl || (row as { portrait_original_url?: string | null }).portrait_original_url || '',
+      sourceClassTemplateId: (row as { source_class_template_id?: string | null }).source_class_template_id ?? null,
+      sourceRaceTemplateId: (row as { source_race_template_id?: string | null }).source_race_template_id ?? null,
+      sourceBackgroundTemplateId: (row as { source_background_template_id?: string | null }).source_background_template_id ?? null,
+      classSourceOrigin: ((row as { class_source_origin?: 'custom' | 'template' | null }).class_source_origin ?? 'custom') === 'template' ? 'template' : 'custom',
+      raceSourceOrigin: ((row as { race_source_origin?: 'custom' | 'template' | null }).race_source_origin ?? 'custom') === 'template' ? 'template' : 'custom',
+      backgroundSourceOrigin: ((row as { background_source_origin?: 'custom' | 'template' | null }).background_source_origin ?? 'custom') === 'template' ? 'template' : 'custom',
+      classTemplateSnapshot: ((row as { class_template_snapshot?: Record<string, unknown> | null }).class_template_snapshot ?? null),
+      raceTemplateSnapshot: ((row as { race_template_snapshot?: Record<string, unknown> | null }).race_template_snapshot ?? null),
+      backgroundTemplateSnapshot: ((row as { background_template_snapshot?: Record<string, unknown> | null }).background_template_snapshot ?? null),
     },
     abilities: {
       STR: { value: row.str_score ?? 10, proficient: row.save_str_prof ?? false },
@@ -599,6 +644,15 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       languages: character.languages,
       portrait_preview_url: portraitPreviewUrl,
       portrait_original_url: portraitOriginalUrl,
+      source_class_template_id: character.info.sourceClassTemplateId ?? null,
+      source_race_template_id: character.info.sourceRaceTemplateId ?? null,
+      source_background_template_id: character.info.sourceBackgroundTemplateId ?? null,
+      class_source_origin: character.info.classSourceOrigin === 'template' ? 'template' : 'custom',
+      race_source_origin: character.info.raceSourceOrigin === 'template' ? 'template' : 'custom',
+      background_source_origin: character.info.backgroundSourceOrigin === 'template' ? 'template' : 'custom',
+      class_template_snapshot: character.info.classTemplateSnapshot ?? null,
+      race_template_snapshot: character.info.raceTemplateSnapshot ?? null,
+      background_template_snapshot: character.info.backgroundTemplateSnapshot ?? null,
     }
 
     const allSpells = [...spellbook.cantrips.map((s) => ({ ...s, level: 0 })), ...spellbook.spells]
@@ -672,6 +726,21 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       if (!previousSignatures || previousSignatures.row !== signatures.row) {
         const tSection = Date.now()
         let { error: characterUpsertError } = await supabase.from('characters').upsert(row, { onConflict: 'id' })
+        if (characterUpsertError && isMissingColumnError(characterUpsertError, 'source_class_template_id')) {
+          const {
+            source_class_template_id,
+            source_race_template_id,
+            source_background_template_id,
+            class_source_origin,
+            race_source_origin,
+            background_source_origin,
+            class_template_snapshot,
+            race_template_snapshot,
+            background_template_snapshot,
+            ...legacyTemplateRow
+          } = row
+          ;({ error: characterUpsertError } = await supabase.from('characters').upsert(legacyTemplateRow, { onConflict: 'id' }))
+        }
         if (characterUpsertError && isMissingColumnError(characterUpsertError, 'portrait_original_url')) {
           const { portrait_original_url, ...legacyRow } = row
           ;({ error: characterUpsertError } = await supabase.from('characters').upsert(legacyRow, { onConflict: 'id' }))
@@ -778,6 +847,33 @@ export async function listItemTemplates() {
     .order('name', { ascending: true })
   if (error) throw error
   return (data ?? []) as ItemTemplate[]
+}
+
+export async function listClassTemplates() {
+  const { data, error } = await supabase
+    .from('class_templates')
+    .select('id, name, hit_die, primary_ability, short_description, feature_summary')
+    .order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as ClassTemplate[]
+}
+
+export async function listRaceTemplates() {
+  const { data, error } = await supabase
+    .from('race_templates')
+    .select('id, name, size, speed_text, ability_summary, trait_summary')
+    .order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as RaceTemplate[]
+}
+
+export async function listBackgroundTemplates() {
+  const { data, error } = await supabase
+    .from('background_templates')
+    .select('id, name, skill_proficiencies, tool_proficiencies, language_options, feature_name, feature_description')
+    .order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as BackgroundTemplate[]
 }
 
 async function syncSpellRows(characterId: string, spells: Spellbook['spells'][number][]) {
