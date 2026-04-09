@@ -94,6 +94,93 @@ export async function createCompanionEntry(input: {
   return data as Pick<CompendiumEntry, 'id' | 'type' | 'subtype' | 'slug' | 'name' | 'description' | 'data'>
 }
 
+export interface CompanionTemplate {
+  id: string
+  slug: string
+  name: string
+  kind: CompanionKind
+  armor_class: number | null
+  hit_points: number | null
+  speed_text: string | null
+  notes: string | null
+  custom_data: Record<string, unknown>
+}
+
+export interface CreatureTemplate {
+  id: string
+  slug: string
+  name: string
+  subtype: string | null
+  alignment: string | null
+  armor_class: number | null
+  hit_points: number | null
+  speed_text: string | null
+  str_score: number | null
+  dex_score: number | null
+  con_score: number | null
+  int_score: number | null
+  wis_score: number | null
+  cha_score: number | null
+  skills: Record<string, unknown>
+  senses: string | null
+  notes: string | null
+  traits: unknown
+  actions: unknown
+}
+
+export async function listCompanionTemplates() {
+  const { data, error } = await supabase
+    .from('companion_templates')
+    .select('id, slug, name, kind, armor_class, hit_points, speed_text, notes, custom_data')
+    .order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as CompanionTemplate[]
+}
+
+export async function listCreatureTemplates() {
+  const { data, error } = await supabase
+    .from('creature_templates')
+    .select('id, slug, name, subtype, alignment, armor_class, hit_points, speed_text, str_score, dex_score, con_score, int_score, wis_score, cha_score, skills, senses, notes, traits, actions')
+    .order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as CreatureTemplate[]
+}
+
+export async function createCreatureEntryFromTemplate(template: CreatureTemplate) {
+  const { data, error } = await supabase
+    .from('compendium_entries')
+    .insert({
+      type: 'creature',
+      subtype: 'monster',
+      slug: `${template.slug}-${Date.now()}`,
+      name: template.name,
+      description: template.notes ?? null,
+      is_system: false,
+      data: {
+        ac: template.armor_class,
+        hp: template.hit_points,
+        speed: template.speed_text,
+        str: template.str_score,
+        dex: template.dex_score,
+        con: template.con_score,
+        int: template.int_score,
+        wis: template.wis_score,
+        cha: template.cha_score,
+        senses: template.senses,
+        skills: template.skills,
+        traits: template.traits,
+        actions: template.actions,
+        source_creature_template_id: template.id,
+        source_origin: 'template',
+        template_snapshot: template,
+      },
+    })
+    .select('id, type, subtype, slug, name, description, is_system, data, created_by, created_at')
+    .single()
+  if (error) throw error
+  return data as CompendiumEntry
+}
+
 export async function updateCreature(id: string, patch: Partial<CompendiumEntry>) {
   const { data, error } = await supabase
     .from('compendium_entries')
@@ -385,7 +472,7 @@ export async function getUnlockedCreatures(campaignId: string, playerId?: string
 export async function listCharacterCompanions(characterId: string) {
   const { data, error } = await supabase
     .from('character_companions')
-    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, created_at')
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, source_companion_template_id, source_origin, template_snapshot, created_at')
     .eq('character_id', characterId)
     .order('created_at', { ascending: true })
 
@@ -400,6 +487,9 @@ export async function assignCompanion(input: {
   nameOverride?: string
   notes?: string
   customData?: Record<string, unknown>
+  sourceCompanionTemplateId?: string
+  sourceOrigin?: 'custom' | 'template'
+  templateSnapshot?: Record<string, unknown> | null
 }) {
   const { data, error } = await supabase
     .from('character_companions')
@@ -411,12 +501,46 @@ export async function assignCompanion(input: {
       notes: input.notes ?? null,
       is_active: true,
       custom_data: input.customData ?? {},
+      source_companion_template_id: input.sourceCompanionTemplateId ?? null,
+      source_origin: input.sourceOrigin ?? 'custom',
+      template_snapshot: input.templateSnapshot ?? null,
     })
-    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, created_at')
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, source_companion_template_id, source_origin, template_snapshot, created_at')
     .single()
 
   if (error) throw error
   return data as CharacterCompanion
+}
+
+export async function assignCompanionFromTemplate(input: {
+  characterId: string
+  template: CompanionTemplate
+  nameOverride?: string
+  notes?: string
+}) {
+  const entry = await createCompanionEntry({
+    name: input.template.name,
+    kind: input.template.kind,
+    description: input.template.notes ?? undefined,
+    data: {
+      ac: input.template.armor_class,
+      hp: input.template.hit_points,
+      speed: input.template.speed_text,
+      ...(input.template.custom_data ?? {}),
+    },
+  })
+
+  return assignCompanion({
+    characterId: input.characterId,
+    entryId: entry.id,
+    kind: input.template.kind,
+    nameOverride: input.nameOverride,
+    notes: input.notes,
+    customData: { source: 'template', template_id: input.template.id },
+    sourceCompanionTemplateId: input.template.id,
+    sourceOrigin: 'template',
+    templateSnapshot: input.template as unknown as Record<string, unknown>,
+  })
 }
 
 export async function activateCompanion(companionId: string, isActive: boolean) {
@@ -424,7 +548,7 @@ export async function activateCompanion(companionId: string, isActive: boolean) 
     .from('character_companions')
     .update({ is_active: isActive })
     .eq('id', companionId)
-    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, created_at')
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, source_companion_template_id, source_origin, template_snapshot, created_at')
     .single()
 
   if (error) throw error
@@ -897,7 +1021,7 @@ export async function listCompanionsForUser(userId: string) {
 
   const { data, error } = await supabase
     .from('character_companions')
-    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, created_at, compendium_entries(id, name, subtype, description)')
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, source_companion_template_id, source_origin, template_snapshot, created_at, compendium_entries(id, name, subtype, description)')
     .eq('character_id', character.id)
     .order('created_at', { ascending: true })
   if (error) throw error
@@ -911,6 +1035,9 @@ export async function listCompanionsForUser(userId: string) {
     notes: row.notes as string | null,
     is_active: Boolean(row.is_active),
     custom_data: (row.custom_data as Record<string, unknown>) ?? {},
+    source_companion_template_id: row.source_companion_template_id as string | null,
+    source_origin: (row.source_origin as 'custom' | 'template' | null) ?? 'custom',
+    template_snapshot: (row.template_snapshot as Record<string, unknown> | null) ?? null,
     created_at: row.created_at as string,
     entry: Array.isArray(row.compendium_entries) ? row.compendium_entries[0] : row.compendium_entries,
   }))
