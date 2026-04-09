@@ -20,6 +20,22 @@ export interface ItemTemplate {
   tags: unknown
 }
 
+export interface SpellTemplate {
+  id: string
+  name: string
+  level: number
+  school: string
+  casting_time: string
+  range_text: string
+  duration_text: string
+  concentration: boolean
+  ritual: boolean
+  description: string
+  higher_level_text: string | null
+  save_type: string | null
+  attack_type: string | null
+}
+
 export interface ClassTemplate {
   id: string
   name: string
@@ -393,11 +409,25 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       .order('sort_order', { ascending: true })
   }
 
+  const spellsQuery = async () => {
+    const withTemplateFields = await supabase
+      .from('spells')
+      .select('id, client_id, title, is_cantrip, is_ritual, is_concentration, is_reaction, casting_time, range_text, duration_text, description, dice, spell_level, source_spell_template_id, source_origin, template_snapshot')
+      .eq('character_id', characterId)
+      .order('sort_order', { ascending: true })
+    if (!withTemplateFields.error || !isMissingColumnError(withTemplateFields.error, 'source_spell_template_id')) return withTemplateFields
+    return supabase
+      .from('spells')
+      .select('id, client_id, title, is_cantrip, is_ritual, is_concentration, is_reaction, casting_time, range_text, duration_text, description, dice, spell_level')
+      .eq('character_id', characterId)
+      .order('sort_order', { ascending: true })
+  }
+
   const [{ data: row, error: charError }, { data: attacksData, error: attacksError }, { data: inventoryData, error: inventoryError }, { data: spellsData, error: spellsError }, blob] = await Promise.all([
     charSelectWithFallback(),
     supabase.from('attacks').select('id, name, attack_bonus, damage').eq('character_id', characterId).order('sort_order', { ascending: true }),
     inventoryQuery(),
-    supabase.from('spells').select('id, client_id, title, is_cantrip, is_ritual, is_concentration, is_reaction, casting_time, range_text, duration_text, description, dice, spell_level').eq('character_id', characterId).order('sort_order', { ascending: true }),
+    spellsQuery(),
     getCharacterBlob(characterId),
   ])
 
@@ -511,6 +541,9 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       description: s.description,
       damage: s.dice,
       prepared: true,
+      sourceSpellTemplateId: (s as { source_spell_template_id?: string | null }).source_spell_template_id ?? null,
+      sourceOrigin: (s as { source_origin?: string | null }).source_origin === 'template' ? 'template' : 'custom',
+      templateSnapshot: ((s as { template_snapshot?: Record<string, unknown> | null }).template_snapshot ?? null),
     })) : fallbackSpellEntries.cantrips ?? []),
     spells: (hasNormalizedSpells ? (spellsData ?? []).filter((s) => !s.is_cantrip).map((s) => ({
       id: s.client_id ?? s.id,
@@ -525,6 +558,9 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       description: s.description,
       damage: s.dice,
       prepared: true,
+      sourceSpellTemplateId: (s as { source_spell_template_id?: string | null }).source_spell_template_id ?? null,
+      sourceOrigin: (s as { source_origin?: string | null }).source_origin === 'template' ? 'template' : 'custom',
+      templateSnapshot: ((s as { template_snapshot?: Record<string, unknown> | null }).template_snapshot ?? null),
     })) : []),
     slots: spellMeta.slots ?? emptySpellbook.slots,
   }
@@ -852,6 +888,16 @@ export async function listItemTemplates() {
   return (data ?? []) as ItemTemplate[]
 }
 
+export async function listSpellTemplates() {
+  const { data, error } = await supabase
+    .from('spell_templates')
+    .select('id, name, level, school, casting_time, range_text, duration_text, concentration, ritual, description, higher_level_text, save_type, attack_type')
+    .order('level', { ascending: true })
+    .order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as SpellTemplate[]
+}
+
 export async function listClassTemplates() {
   const { data, error } = await supabase
     .from('class_templates')
@@ -902,10 +948,19 @@ async function syncSpellRows(characterId: string, spells: Spellbook['spells'][nu
     is_ritual: spell.ritual,
     is_concentration: spell.concentration,
     is_reaction: spell.reaction,
+    source_spell_template_id: spell.sourceSpellTemplateId ?? null,
+    source_origin: spell.sourceOrigin === 'template' ? 'template' : 'custom',
+    template_snapshot: spell.templateSnapshot ?? null,
   }))
-  const { error: upsertError } = await supabase
+  let { error: upsertError } = await supabase
     .from('spells')
     .upsert(rows, { onConflict: 'character_id,client_id' })
+  if (upsertError && isMissingColumnError(upsertError, 'source_spell_template_id')) {
+    const legacyRows = rows.map(({ source_spell_template_id, source_origin, template_snapshot, ...legacyRow }) => legacyRow)
+    ;({ error: upsertError } = await supabase
+      .from('spells')
+      .upsert(legacyRows, { onConflict: 'character_id,client_id' }))
+  }
   if (upsertError) {
     console.error('[spells:save] upsert failed', { characterId, rowCount: rows.length, error: upsertError })
     throw upsertError

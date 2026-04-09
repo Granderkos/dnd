@@ -90,6 +90,9 @@ export interface Spell {
   description: string
   damage: string
   prepared: boolean
+  sourceSpellTemplateId?: string | null
+  sourceOrigin?: 'custom' | 'template'
+  templateSnapshot?: Record<string, unknown> | null
 }
 
 export interface SpellSlots {

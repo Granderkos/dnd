@@ -258,6 +258,11 @@ const translations: Record<Language, TranslationMap> = {
     'spellbook.description': 'Description',
     'spellbook.descriptionPlaceholder': 'Spell description...',
     'spellbook.addSpellButton': 'Add Spell',
+    'spellbook.createCustomSpell': 'Create Custom Spell',
+    'spellbook.importFromTemplate': 'Import from Template',
+    'spellbook.templateSpell': 'Template Spell',
+    'spellbook.selectTemplate': 'Select template',
+    'spellbook.importSpellButton': 'Import Spell',
 
     'map.noMapSelected': 'No map selected by DM',
     'map.waitForDm': 'Wait for the DM to select a map',
@@ -529,6 +534,11 @@ const translations: Record<Language, TranslationMap> = {
     'spellbook.description': 'Popis',
     'spellbook.descriptionPlaceholder': 'Popis kouzla...',
     'spellbook.addSpellButton': 'Přidat kouzlo',
+    'spellbook.createCustomSpell': 'Vytvořit vlastní kouzlo',
+    'spellbook.importFromTemplate': 'Importovat ze šablony',
+    'spellbook.templateSpell': 'Kouzlo ze šablony',
+    'spellbook.selectTemplate': 'Vyber šablonu',
+    'spellbook.importSpellButton': 'Importovat kouzlo',
 
     'map.noMapSelected': 'DM nevybral žádnou mapu',
     'map.waitForDm': 'Počkej, až DM vybere mapu',
