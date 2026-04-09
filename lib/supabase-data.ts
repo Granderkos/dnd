@@ -7,6 +7,70 @@ import type { Note } from '@/components/dnd/notes'
 import { supabase } from './supabase'
 import { generateClientId } from './client-id'
 
+export interface ItemTemplate {
+  id: string
+  name: string
+  description: string | null
+  category: string | null
+  rarity: string | null
+  weight: number | null
+  value_text: string | null
+  requires_attunement: boolean
+  properties: unknown
+  tags: unknown
+}
+
+export interface SpellTemplate {
+  id: string
+  name: string
+  level: number
+  school: string
+  casting_time: string
+  range_text: string
+  duration_text: string
+  concentration: boolean
+  ritual: boolean
+  description: string
+  higher_level_text: string | null
+  save_type: string | null
+  attack_type: string | null
+}
+
+export interface ClassTemplate {
+  id: string
+  name: string
+  hit_die: string
+  primary_ability: string | null
+  saving_throw_proficiencies: string
+  armor_proficiencies: string
+  weapon_proficiencies: string
+  tool_proficiencies: string
+  short_description: string | null
+  feature_summary: string | null
+}
+
+export interface RaceTemplate {
+  id: string
+  name: string
+  size: string | null
+  speed: number | null
+  ability_bonuses: Record<string, unknown>
+  traits: unknown
+  languages: string
+  short_description: string | null
+}
+
+export interface BackgroundTemplate {
+  id: string
+  name: string
+  skill_proficiencies: string
+  tool_proficiencies: string
+  language_proficiencies: string
+  equipment_summary: string | null
+  feature_summary: string | null
+  short_description: string | null
+}
+
 const characterSaveQueue = new Map<string, Promise<void>>()
 const characterBlobCache = new Map<string, CharacterNotesBlob>()
 const portraitUploadCache = new Map<string, string>()
@@ -17,6 +81,20 @@ const characterSaveSignatures = new Map<string, {
   spells: string
   blob: string
 }>()
+const INVENTORY_CATEGORIES = new Set(['Weapons', 'Armor', 'Equipment', 'Consumables', 'Supplies', 'Treasure', 'Other'])
+
+function normalizeInventoryCategory(value: string | null | undefined): string {
+  const normalized = (value ?? '').trim().toLowerCase()
+  if (!normalized) return 'Other'
+  if (['weapon', 'weapons'].includes(normalized)) return 'Weapons'
+  if (['armor', 'armour'].includes(normalized)) return 'Armor'
+  if (['equipment', 'gear'].includes(normalized)) return 'Equipment'
+  if (['consumable', 'consumables', 'potion', 'potions'].includes(normalized)) return 'Consumables'
+  if (['supply', 'supplies'].includes(normalized)) return 'Supplies'
+  if (['treasure', 'treasures', 'loot'].includes(normalized)) return 'Treasure'
+  if (INVENTORY_CATEGORIES.has(value ?? '')) return value as string
+  return 'Other'
+}
 
 async function withRetry<T>(operation: () => Promise<T>, retries = 2, delayMs = 250): Promise<T> {
   let attempt = 0
@@ -78,6 +156,9 @@ interface CharacterNotesBlob {
 
 const characterSelectColumnsBase = 'id, name, class_name, subclass, race, background, alignment, level, xp, proficiency_bonus, armor_class, initiative, speed, hp_max, hp_current, hp_temp, hit_dice_type, death_successes, death_failures, str_score, dex_score, con_score, int_score, wis_score, cha_score, save_str_prof, save_dex_prof, save_con_prof, save_int_prof, save_wis_prof, save_cha_prof, skill_acrobatics_prof, skill_animal_handling_prof, skill_arcana_prof, skill_athletics_prof, skill_deception_prof, skill_history_prof, skill_insight_prof, skill_intimidation_prof, skill_investigation_prof, skill_medicine_prof, skill_nature_prof, skill_perception_prof, skill_performance_prof, skill_persuasion_prof, skill_religion_prof, skill_sleight_of_hand_prof, skill_stealth_prof, skill_survival_prof, features, languages, portrait_preview_url'
 const characterSelectColumnsWithOriginal = `${characterSelectColumnsBase}, portrait_original_url`
+const characterSelectColumnsWithTemplates = `${characterSelectColumnsWithOriginal}, source_class_template_id, source_race_template_id, source_background_template_id, class_source_origin, race_source_origin, background_source_origin, class_template_snapshot, race_template_snapshot, background_template_snapshot`
+const inventoryColumnsBase = 'id, client_id, title, quantity, description, category'
+const inventoryColumnsWithTemplate = `${inventoryColumnsBase}, source_item_template_id, source_origin, template_snapshot`
 
 function isMissingColumnError(error: unknown, columnName: string) {
   const message = typeof error === 'object' && error !== null && 'message' in error
@@ -298,6 +379,13 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
   const t0 = Date.now()
   const characterId = await ensureCharacterRecord(userId)
   const charSelectWithFallback = async () => {
+    const withTemplates = await supabase
+      .from('characters')
+      .select(characterSelectColumnsWithTemplates)
+      .eq('id', characterId)
+      .single()
+    if (!withTemplates.error || !isMissingColumnError(withTemplates.error, 'source_class_template_id')) return withTemplates
+
     const withOriginal = await supabase
       .from('characters')
       .select(characterSelectColumnsWithOriginal)
@@ -311,11 +399,39 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       .single()
   }
 
+  const inventoryQuery = async () => {
+    const withTemplateFields = await supabase
+      .from('inventory_items')
+      .select(inventoryColumnsWithTemplate)
+      .eq('character_id', characterId)
+      .order('sort_order', { ascending: true })
+    if (!withTemplateFields.error || !isMissingColumnError(withTemplateFields.error, 'source_item_template_id')) return withTemplateFields
+    return supabase
+      .from('inventory_items')
+      .select(inventoryColumnsBase)
+      .eq('character_id', characterId)
+      .order('sort_order', { ascending: true })
+  }
+
+  const spellsQuery = async () => {
+    const withTemplateFields = await supabase
+      .from('spells')
+      .select('id, client_id, title, is_cantrip, is_ritual, is_concentration, is_reaction, casting_time, range_text, duration_text, description, dice, spell_level, source_spell_template_id, source_origin, template_snapshot')
+      .eq('character_id', characterId)
+      .order('sort_order', { ascending: true })
+    if (!withTemplateFields.error || !isMissingColumnError(withTemplateFields.error, 'source_spell_template_id')) return withTemplateFields
+    return supabase
+      .from('spells')
+      .select('id, client_id, title, is_cantrip, is_ritual, is_concentration, is_reaction, casting_time, range_text, duration_text, description, dice, spell_level')
+      .eq('character_id', characterId)
+      .order('sort_order', { ascending: true })
+  }
+
   const [{ data: row, error: charError }, { data: attacksData, error: attacksError }, { data: inventoryData, error: inventoryError }, { data: spellsData, error: spellsError }, blob] = await Promise.all([
     charSelectWithFallback(),
     supabase.from('attacks').select('id, name, attack_bonus, damage').eq('character_id', characterId).order('sort_order', { ascending: true }),
-    supabase.from('inventory_items').select('id, client_id, title, quantity, description, category').eq('character_id', characterId).order('sort_order', { ascending: true }),
-    supabase.from('spells').select('id, client_id, title, is_cantrip, is_ritual, is_concentration, is_reaction, casting_time, range_text, duration_text, description, dice, spell_level').eq('character_id', characterId).order('sort_order', { ascending: true }),
+    inventoryQuery(),
+    spellsQuery(),
     getCharacterBlob(characterId),
   ])
 
@@ -336,6 +452,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
   const hasNormalizedInventory = Boolean(inventoryData?.length)
   const hasNormalizedAttacks = Boolean(attacksData?.length)
   const hasSeparatedFeatures = Boolean(blob.raceFeatures || blob.classFeatures || blob.backgroundFeatures)
+  const fallbackSpellEntries = blob.spellbookEntries ?? emptyBlob().spellbookEntries ?? { cantrips: [], spells: [] }
 
   const character: Character = {
     info: {
@@ -349,6 +466,15 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       xp: row.xp ?? 0,
       portraitUrl: blob.portraitUrl || row.portrait_preview_url || '',
       portraitOriginalUrl: blob.portraitOriginalUrl || (row as { portrait_original_url?: string | null }).portrait_original_url || '',
+      sourceClassTemplateId: (row as { source_class_template_id?: string | null }).source_class_template_id ?? null,
+      sourceRaceTemplateId: (row as { source_race_template_id?: string | null }).source_race_template_id ?? null,
+      sourceBackgroundTemplateId: (row as { source_background_template_id?: string | null }).source_background_template_id ?? null,
+      classSourceOrigin: ((row as { class_source_origin?: 'custom' | 'template' | null }).class_source_origin ?? 'custom') === 'template' ? 'template' : 'custom',
+      raceSourceOrigin: ((row as { race_source_origin?: 'custom' | 'template' | null }).race_source_origin ?? 'custom') === 'template' ? 'template' : 'custom',
+      backgroundSourceOrigin: ((row as { background_source_origin?: 'custom' | 'template' | null }).background_source_origin ?? 'custom') === 'template' ? 'template' : 'custom',
+      classTemplateSnapshot: ((row as { class_template_snapshot?: Record<string, unknown> | null }).class_template_snapshot ?? null),
+      raceTemplateSnapshot: ((row as { race_template_snapshot?: Record<string, unknown> | null }).race_template_snapshot ?? null),
+      backgroundTemplateSnapshot: ((row as { background_template_snapshot?: Record<string, unknown> | null }).background_template_snapshot ?? null),
     },
     abilities: {
       STR: { value: row.str_score ?? 10, proficient: row.save_str_prof ?? false },
@@ -419,6 +545,9 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       description: s.description,
       damage: s.dice,
       prepared: true,
+      sourceSpellTemplateId: (s as { source_spell_template_id?: string | null }).source_spell_template_id ?? null,
+      sourceOrigin: (s as { source_origin?: string | null }).source_origin === 'template' ? 'template' : 'custom',
+      templateSnapshot: ((s as { template_snapshot?: Record<string, unknown> | null }).template_snapshot ?? null),
     })) : fallbackSpellEntries.cantrips ?? []),
     spells: (hasNormalizedSpells ? (spellsData ?? []).filter((s) => !s.is_cantrip).map((s) => ({
       id: s.client_id ?? s.id,
@@ -433,21 +562,30 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       description: s.description,
       damage: s.dice,
       prepared: true,
+      sourceSpellTemplateId: (s as { source_spell_template_id?: string | null }).source_spell_template_id ?? null,
+      sourceOrigin: (s as { source_origin?: string | null }).source_origin === 'template' ? 'template' : 'custom',
+      templateSnapshot: ((s as { template_snapshot?: Record<string, unknown> | null }).template_snapshot ?? null),
     })) : []),
     slots: spellMeta.slots ?? emptySpellbook.slots,
   }
 
   const inventory: Inventory = {
     items: (hasNormalizedInventory ? (inventoryData ?? []).map((item) => {
+      const itemRecord = item as Record<string, unknown>
       const normalizedId = item.client_id ?? item.id
       return {
         id: normalizedId,
         name: item.title,
         quantity: item.quantity,
         description: item.description,
-        category: (typeof item.category === 'string' && item.category.trim())
-          ? item.category
-          : 'Other',
+        category: normalizeInventoryCategory(typeof item.category === 'string' ? item.category : null),
+        sourceItemTemplateId: 'source_item_template_id' in itemRecord ? itemRecord.source_item_template_id as string | null : null,
+        sourceOrigin: (typeof itemRecord.source_origin === 'string' && itemRecord.source_origin === 'template')
+          ? 'template'
+          : 'custom',
+        templateSnapshot: 'template_snapshot' in itemRecord && itemRecord.template_snapshot && typeof itemRecord.template_snapshot === 'object'
+          ? itemRecord.template_snapshot as Record<string, unknown>
+          : null,
       }
     }) : []),
     currency: blob.inventoryCurrency ?? emptyInventory.currency,
@@ -549,6 +687,15 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       languages: character.languages,
       portrait_preview_url: portraitPreviewUrl,
       portrait_original_url: portraitOriginalUrl,
+      source_class_template_id: character.info.sourceClassTemplateId ?? null,
+      source_race_template_id: character.info.sourceRaceTemplateId ?? null,
+      source_background_template_id: character.info.sourceBackgroundTemplateId ?? null,
+      class_source_origin: character.info.classSourceOrigin === 'template' ? 'template' : 'custom',
+      race_source_origin: character.info.raceSourceOrigin === 'template' ? 'template' : 'custom',
+      background_source_origin: character.info.backgroundSourceOrigin === 'template' ? 'template' : 'custom',
+      class_template_snapshot: character.info.classTemplateSnapshot ?? null,
+      race_template_snapshot: character.info.raceTemplateSnapshot ?? null,
+      background_template_snapshot: character.info.backgroundTemplateSnapshot ?? null,
     }
 
     const allSpells = [...spellbook.cantrips.map((s) => ({ ...s, level: 0 })), ...spellbook.spells]
@@ -622,6 +769,21 @@ export async function saveCurrentPlayerData(userId: string, payload: { character
       if (!previousSignatures || previousSignatures.row !== signatures.row) {
         const tSection = Date.now()
         let { error: characterUpsertError } = await supabase.from('characters').upsert(row, { onConflict: 'id' })
+        if (characterUpsertError && isMissingColumnError(characterUpsertError, 'source_class_template_id')) {
+          const {
+            source_class_template_id,
+            source_race_template_id,
+            source_background_template_id,
+            class_source_origin,
+            race_source_origin,
+            background_source_origin,
+            class_template_snapshot,
+            race_template_snapshot,
+            background_template_snapshot,
+            ...legacyTemplateRow
+          } = row
+          ;({ error: characterUpsertError } = await supabase.from('characters').upsert(legacyTemplateRow, { onConflict: 'id' }))
+        }
         if (characterUpsertError && isMissingColumnError(characterUpsertError, 'portrait_original_url')) {
           const { portrait_original_url, ...legacyRow } = row
           ;({ error: characterUpsertError } = await supabase.from('characters').upsert(legacyRow, { onConflict: 'id' }))
@@ -691,11 +853,20 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
     title: item.name,
     description: item.description,
     quantity: item.quantity,
-    category: item.category || 'Other',
+    category: normalizeInventoryCategory(item.category),
+    source_item_template_id: item.sourceItemTemplateId ?? null,
+    source_origin: item.sourceOrigin === 'template' ? 'template' : 'custom',
+    template_snapshot: item.templateSnapshot ?? null,
   }))
-  const { error: upsertError } = await supabase
+  let { error: upsertError } = await supabase
     .from('inventory_items')
     .upsert(rows, { onConflict: 'character_id,client_id' })
+  if (upsertError && isMissingColumnError(upsertError, 'source_item_template_id')) {
+    const legacyRows = rows.map(({ source_item_template_id, source_origin, template_snapshot, ...legacyRow }) => legacyRow)
+    ;({ error: upsertError } = await supabase
+      .from('inventory_items')
+      .upsert(legacyRows, { onConflict: 'character_id,client_id' }))
+  }
   if (upsertError) {
     console.error('[inventory:save] upsert failed', {
       characterId,
@@ -710,6 +881,52 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
     throw upsertError
   }
   await deleteMissingInventoryRows(characterId, items.map((item) => item.id))
+}
+
+export async function listItemTemplates() {
+  const { data, error } = await supabase
+    .from('item_templates')
+    .select('id, name, description, category, rarity, weight, value_text, requires_attunement, properties, tags')
+    .order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as ItemTemplate[]
+}
+
+export async function listSpellTemplates() {
+  const { data, error } = await supabase
+    .from('spell_templates')
+    .select('id, name, level, school, casting_time, range_text, duration_text, concentration, ritual, description, higher_level_text, save_type, attack_type')
+    .order('level', { ascending: true })
+    .order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as SpellTemplate[]
+}
+
+export async function listClassTemplates() {
+  const { data, error } = await supabase
+    .from('class_templates')
+    .select('id, name, hit_die, primary_ability, saving_throw_proficiencies, armor_proficiencies, weapon_proficiencies, tool_proficiencies, short_description, feature_summary')
+    .order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as ClassTemplate[]
+}
+
+export async function listRaceTemplates() {
+  const { data, error } = await supabase
+    .from('race_templates')
+    .select('id, name, size, speed, ability_bonuses, traits, languages, short_description')
+    .order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as RaceTemplate[]
+}
+
+export async function listBackgroundTemplates() {
+  const { data, error } = await supabase
+    .from('background_templates')
+    .select('id, name, skill_proficiencies, tool_proficiencies, language_proficiencies, equipment_summary, feature_summary, short_description')
+    .order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as BackgroundTemplate[]
 }
 
 async function syncSpellRows(characterId: string, spells: Spellbook['spells'][number][]) {
@@ -735,10 +952,19 @@ async function syncSpellRows(characterId: string, spells: Spellbook['spells'][nu
     is_ritual: spell.ritual,
     is_concentration: spell.concentration,
     is_reaction: spell.reaction,
+    source_spell_template_id: spell.sourceSpellTemplateId ?? null,
+    source_origin: spell.sourceOrigin === 'template' ? 'template' : 'custom',
+    template_snapshot: spell.templateSnapshot ?? null,
   }))
-  const { error: upsertError } = await supabase
+  let { error: upsertError } = await supabase
     .from('spells')
     .upsert(rows, { onConflict: 'character_id,client_id' })
+  if (upsertError && isMissingColumnError(upsertError, 'source_spell_template_id')) {
+    const legacyRows = rows.map(({ source_spell_template_id, source_origin, template_snapshot, ...legacyRow }) => legacyRow)
+    ;({ error: upsertError } = await supabase
+      .from('spells')
+      .upsert(legacyRows, { onConflict: 'character_id,client_id' }))
+  }
   if (upsertError) {
     console.error('[spells:save] upsert failed', { characterId, rowCount: rows.length, error: upsertError })
     throw upsertError

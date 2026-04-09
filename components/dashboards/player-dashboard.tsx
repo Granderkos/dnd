@@ -25,8 +25,10 @@ import { loadCurrentPlayerData, loadCurrentPlayerNotes, saveCurrentPlayerData } 
 import {
   activateCompanion,
   assignCompanion,
+  assignCompanionFromTemplate,
   createCompanionEntry,
   getPendingInitiativeForUser,
+  listCompanionTemplates,
   listCompanionsForUser,
   listCreatureCompendiumForUser,
   submitPlayerInitiative,
@@ -182,6 +184,11 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [companionCharacterId, setCompanionCharacterId] = useState<string | null>(null)
   const [compendiumSearch, setCompendiumSearch] = useState('')
   const [isCreateCompanionOpen, setIsCreateCompanionOpen] = useState(false)
+  const [isImportCompanionOpen, setIsImportCompanionOpen] = useState(false)
+  const [companionTemplates, setCompanionTemplates] = useState<Awaited<ReturnType<typeof listCompanionTemplates>>>([])
+  const [selectedCompanionTemplateId, setSelectedCompanionTemplateId] = useState('')
+  const [isCompanionTemplatesLoading, setIsCompanionTemplatesLoading] = useState(false)
+  const [companionTemplatesError, setCompanionTemplatesError] = useState<string | null>(null)
   const [customCompanionName, setCustomCompanionName] = useState('')
   const [customCompanionKind, setCustomCompanionKind] = useState<CompanionKind>('pet')
   const [customCompanionAc, setCustomCompanionAc] = useState('')
@@ -318,6 +325,34 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   useEffect(() => {
     compendiumLoadedRef.current = false
   }, [user?.id])
+
+  useEffect(() => {
+    if (!isImportCompanionOpen || companionTemplates.length > 0) return
+    let active = true
+    setIsCompanionTemplatesLoading(true)
+    setCompanionTemplatesError(null)
+
+    void listCompanionTemplates()
+      .then((rows) => {
+        if (!active) return
+        setCompanionTemplates(rows)
+        if (!selectedCompanionTemplateId && rows[0]?.id) {
+          setSelectedCompanionTemplateId(rows[0].id)
+        }
+      })
+      .catch((error) => {
+        if (!active) return
+        console.error('[companions:templates] load failed', error)
+        setCompanionTemplatesError(formatErrorMessage(error, t('compendium.loadTemplatesFailed')))
+      })
+      .finally(() => {
+        if (active) setIsCompanionTemplatesLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [companionTemplates.length, isImportCompanionOpen, selectedCompanionTemplateId, t])
 
   const refreshCompendium = useCallback(async () => {
     if (!user?.id) return
@@ -584,6 +619,10 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
                     <Plus className="mr-1 size-4" />
                     {t('compendium.addCustom')}
                   </Button>
+                  <Button size="sm" variant="outline" onClick={() => setIsImportCompanionOpen(true)}>
+                    <Plus className="mr-1 size-4" />
+                    {t('compendium.importTemplate')}
+                  </Button>
                 </div>
               </div>
               {companions.length === 0 ? (
@@ -594,7 +633,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
                     <div key={companion.id} className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
                       <div>
                         <p className="font-medium">{companion.name_override || companion.entry?.name || t('compendium.unnamedCompanion')}</p>
-                        <p className="text-xs text-muted-foreground">{companion.kind}</p>
+                        <p className="text-xs text-muted-foreground">{companion.kind} · {companion.source_origin ?? 'custom'}</p>
                       </div>
                       <Button
                         variant={companion.is_active ? 'default' : 'outline'}
@@ -752,6 +791,48 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
               await refreshCompendium()
             }}>{t('compendium.createCompanionAction')}</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isImportCompanionOpen} onOpenChange={setIsImportCompanionOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('compendium.importCompanionTitle')}</DialogTitle>
+          </DialogHeader>
+          {isCompanionTemplatesLoading ? (
+            <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+          ) : companionTemplatesError ? (
+            <p className="text-sm text-destructive">{companionTemplatesError}</p>
+          ) : companionTemplates.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('compendium.noCompanionTemplates')}</p>
+          ) : (
+            <div className="space-y-3">
+              <select
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={selectedCompanionTemplateId}
+                onChange={(e) => setSelectedCompanionTemplateId(e.target.value)}
+              >
+                {companionTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name} ({template.kind})
+                  </option>
+                ))}
+              </select>
+              <Button onClick={async () => {
+                if (!companionCharacterId || !selectedCompanionTemplateId) return
+                const template = companionTemplates.find((row) => row.id === selectedCompanionTemplateId)
+                if (!template) return
+                await assignCompanionFromTemplate({
+                  characterId: companionCharacterId,
+                  template,
+                })
+                setIsImportCompanionOpen(false)
+                await refreshCompendium()
+              }}>
+                {t('compendium.importCompanionAction')}
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
