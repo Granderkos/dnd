@@ -30,6 +30,7 @@ const characterSaveSignatures = new Map<string, {
   spells: string
   blob: string
 }>()
+const INVENTORY_CATEGORIES = new Set(['Weapons', 'Armor', 'Equipment', 'Consumables', 'Supplies', 'Treasure', 'Other'])
 
 async function withRetry<T>(operation: () => Promise<T>, retries = 2, delayMs = 250): Promise<T> {
   let attempt = 0
@@ -477,7 +478,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
         quantity: item.quantity,
         description: item.description,
         category: (typeof item.category === 'string' && item.category.trim())
-          ? item.category
+          ? (INVENTORY_CATEGORIES.has(item.category) ? item.category : 'Other')
           : 'Other',
         sourceItemTemplateId: 'source_item_template_id' in itemRecord ? itemRecord.source_item_template_id as string | null : null,
         sourceOrigin: (typeof itemRecord.source_origin === 'string' && itemRecord.source_origin === 'template')
@@ -729,7 +730,9 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
     title: item.name,
     description: item.description,
     quantity: item.quantity,
-    category: item.category || 'Other',
+    category: (typeof item.category === 'string' && INVENTORY_CATEGORIES.has(item.category))
+      ? item.category
+      : 'Other',
     source_item_template_id: item.sourceItemTemplateId ?? null,
     source_origin: item.sourceOrigin === 'template' ? 'template' : 'custom',
     template_snapshot: item.templateSnapshot ?? null,

@@ -43,6 +43,7 @@ interface InventoryProps {
 }
 
 const CATEGORIES = ['Weapons', 'Armor', 'Equipment', 'Consumables', 'Supplies', 'Treasure', 'Other'] as const
+const CATEGORY_SET = new Set<string>(CATEGORIES)
 
 const CATEGORY_META = {
   Weapons: { icon: Sword, labelKey: 'inventory.weapons' },
@@ -88,19 +89,22 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
   }, [inventory, onChange])
 
   const importItemTemplate = useCallback((template: ItemTemplate, quantity: number) => {
+    const normalizedCategory = template.category && CATEGORY_SET.has(template.category)
+      ? template.category
+      : 'Other'
     const importedItem: InventoryItem = {
       id: generateClientId(),
       name: template.name,
       quantity: Math.max(1, quantity),
       description: template.description ?? '',
-      category: template.category || 'Other',
+      category: normalizedCategory,
       sourceItemTemplateId: template.id,
       sourceOrigin: 'template',
       templateSnapshot: {
         id: template.id,
         name: template.name,
         description: template.description,
-        category: template.category,
+        category: normalizedCategory,
         rarity: template.rarity,
         weight: template.weight,
         value_text: template.value_text,
