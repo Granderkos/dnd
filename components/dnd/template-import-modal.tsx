@@ -119,7 +119,7 @@ export function TemplateImportModal<T>({
           />
           {categoryFilters?.length ? (
             <div className="-mx-1 overflow-hidden">
-              <div className="flex w-full gap-2 overflow-x-auto px-1 pb-2 touch-pan-x [scrollbar-width:thin]">
+              <div className="flex w-full gap-2 overflow-x-auto px-1 pb-2 touch-pan-x sm:flex-wrap sm:overflow-visible">
                 {categoryFilters.map((filter) => {
                   const isActive = filter.value === activeCategoryFilter
                   return (

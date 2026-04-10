@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Plus, X, Minus, Package, Sword, Shield, Backpack, FlaskConical, ScrollText, Gem, Boxes, Wrench } from 'lucide-react'
+import { Plus, X, Minus, Package, Sword, Shield, Backpack, FlaskConical, ScrollText, Gem, Boxes, Wrench, ChevronRight, ChevronDown, MoveHorizontal } from 'lucide-react'
 import { Inventory as InventoryType, InventoryItem, Currency } from '@/lib/dnd-types'
 import { useI18n } from '@/lib/i18n'
 import { PageShell } from '@/components/app/page-shell'
@@ -98,6 +98,9 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
     description: string
     onConfirm: () => void
   }>({ open: false, title: '', description: '', onConfirm: () => {} })
+  const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({})
+  const [moveDialog, setMoveDialog] = useState<{ open: boolean; itemId: string | null }>({ open: false, itemId: null })
+  const [moveTargetContainerId, setMoveTargetContainerId] = useState<string>('top-level')
 
   const updateCurrency = useCallback((coin: keyof Currency, value: number) => {
     onChange({
@@ -130,6 +133,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
       quantity: Math.max(1, quantity),
       description: template.description ?? '',
       category: normalizedCategory,
+      parentItemId: null,
       sourceItemTemplateId: template.id,
       sourceOrigin: 'template',
       templateSnapshot: {
@@ -193,7 +197,9 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
       onConfirm: () => {
         onChange({
           ...inventory,
-          items: inventory.items.filter((i) => i.id !== id),
+          items: inventory.items
+            .filter((i) => i.id !== id)
+            .map((i) => (i.parentItemId === id ? { ...i, parentItemId: null } : i)),
         })
       },
     })
@@ -219,10 +225,21 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
     })
   }, [inventory, onChange])
 
+  const itemsByParent = useMemo(() => {
+    const map = new Map<string | null, InventoryItem[]>()
+    for (const item of inventory.items) {
+      const parent = item.parentItemId ?? null
+      const current = map.get(parent)
+      if (current) current.push(item)
+      else map.set(parent, [item])
+    }
+    return map
+  }, [inventory.items])
+
   const groupedItems = useMemo(() => {
     return CATEGORIES.reduce(
       (acc, category) => {
-        acc[category] = inventory.items.filter((item) => item.category === category)
+        acc[category] = inventory.items.filter((item) => item.category === category && !item.parentItemId)
         return acc
       },
       {} as Record<string, InventoryItem[]>
@@ -266,6 +283,75 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
       cancelled = true
     }
   }, [isImportingTemplate, templates.length, t])
+
+  const isContainerItem = useCallback((item: InventoryItem) => {
+    const snapshot = (item.templateSnapshot ?? null) as Record<string, unknown> | null
+    const subtype = typeof snapshot?.item_subtype === 'string' ? snapshot.item_subtype.toLowerCase() : ''
+    const hasCapacity = typeof snapshot?.capacity_text === 'string' && snapshot.capacity_text.trim().length > 0
+    return hasCapacity || ['backpack', 'pouch', 'container', 'chest', 'bag'].includes(subtype)
+  }, [])
+
+  const moveItemToContainer = useCallback((itemId: string, parentId: string | null) => {
+    onChange({
+      ...inventory,
+      items: inventory.items.map((item) => (
+        item.id === itemId ? { ...item, parentItemId: parentId } : item
+      )),
+    })
+  }, [inventory, onChange])
+
+  const collectDescendantIds = useCallback((rootId: string): Set<string> => {
+    const descendants = new Set<string>()
+    const queue = [rootId]
+    while (queue.length) {
+      const current = queue.shift()
+      if (!current) continue
+      for (const child of itemsByParent.get(current) ?? []) {
+        if (descendants.has(child.id)) continue
+        descendants.add(child.id)
+        queue.push(child.id)
+      }
+    }
+    return descendants
+  }, [itemsByParent])
+
+  const containerCandidates = useMemo(() => {
+    if (!moveDialog.itemId) return []
+    const blocked = collectDescendantIds(moveDialog.itemId)
+    blocked.add(moveDialog.itemId)
+    return inventory.items.filter((item) => isContainerItem(item) && !blocked.has(item.id))
+  }, [collectDescendantIds, inventory.items, isContainerItem, moveDialog.itemId])
+
+  const renderItemTree = useCallback((item: InventoryItem, depth = 0) => {
+    const children = itemsByParent.get(item.id) ?? []
+    const canExpand = isContainerItem(item) && children.length > 0
+    const expanded = expandedContainers[item.id] ?? true
+    return (
+      <div key={item.id} className="space-y-1.5">
+        <ItemRow
+          item={item}
+          depth={depth}
+          isContainer={isContainerItem(item)}
+          canExpand={canExpand}
+          expanded={expanded}
+          onToggleExpand={() => setExpandedContainers((current) => ({ ...current, [item.id]: !expanded }))}
+          onMove={() => {
+            setMoveDialog({ open: true, itemId: item.id })
+            setMoveTargetContainerId(item.parentItemId ?? 'top-level')
+          }}
+          onView={() => setViewingItem(item)}
+          onDelete={() => deleteItem(item.id, item.name)}
+          onAdjustQuantity={(amount) => adjustQuantity(item.id, amount)}
+          onUseConsumable={() => consumeItemUse(item.id)}
+        />
+        {canExpand && expanded ? (
+          <div className="space-y-1.5">
+            {children.map((child) => renderItemTree(child, depth + 1))}
+          </div>
+        ) : null}
+      </div>
+    )
+  }, [adjustQuantity, consumeItemUse, deleteItem, expandedContainers, isContainerItem, itemsByParent])
 
   return (
     <div className="h-full min-h-0 overflow-y-auto">
@@ -331,16 +417,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
               </CardHeader>
               <CardContent>
                 <div className="space-y-1.5">
-                  {items.map((item) => (
-                    <ItemRow
-                      key={item.id}
-                      item={item}
-                      onView={() => setViewingItem(item)}
-                      onDelete={() => deleteItem(item.id, item.name)}
-                      onAdjustQuantity={(amount) => adjustQuantity(item.id, amount)}
-                      onUseConsumable={() => consumeItemUse(item.id)}
-                    />
-                  ))}
+                  {items.map((item) => renderItemTree(item, 0))}
                 </div>
               </CardContent>
             </Card>
@@ -386,6 +463,40 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         />
       )}
 
+      <Dialog open={moveDialog.open} onOpenChange={(open) => setMoveDialog({ open, itemId: open ? moveDialog.itemId : null })}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Move to container</DialogTitle>
+            <DialogDescription>Select a destination container or keep the item at top level.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Select value={moveTargetContainerId} onValueChange={setMoveTargetContainerId}>
+              <SelectTrigger className="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="top-level">Top level</SelectItem>
+                {containerCandidates.map((container) => (
+                  <SelectItem key={container.id} value={container.id}>
+                    {container.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              className="w-full"
+              onClick={() => {
+                if (!moveDialog.itemId) return
+                moveItemToContainer(moveDialog.itemId, moveTargetContainerId === 'top-level' ? null : moveTargetContainerId)
+                setMoveDialog({ open: false, itemId: null })
+              }}
+            >
+              Move item
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Confirmation Dialog */}
       <AlertDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog({ ...confirmDialog, open })}>
         <AlertDialogContent>
@@ -407,13 +518,31 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
 
 interface ItemRowProps {
   item: InventoryItem
+  depth: number
+  isContainer: boolean
+  canExpand: boolean
+  expanded: boolean
+  onToggleExpand: () => void
+  onMove: () => void
   onView: () => void
   onDelete: () => void
   onAdjustQuantity: (amount: number) => void
   onUseConsumable: () => void
 }
 
-const ItemRow = memo(function ItemRow({ item, onView, onDelete, onAdjustQuantity, onUseConsumable }: ItemRowProps) {
+const ItemRow = memo(function ItemRow({
+  item,
+  depth,
+  isContainer,
+  canExpand,
+  expanded,
+  onToggleExpand,
+  onMove,
+  onView,
+  onDelete,
+  onAdjustQuantity,
+  onUseConsumable,
+}: ItemRowProps) {
   const snapshot = (item.templateSnapshot ?? null) as Record<string, unknown> | null
   const usageType = typeof snapshot?.usage_type === 'string' ? snapshot.usage_type : null
   const chargesCurrent = typeof snapshot?.charges_current === 'number' ? snapshot.charges_current : null
@@ -425,7 +554,19 @@ const ItemRow = memo(function ItemRow({ item, onView, onDelete, onAdjustQuantity
   const canUseConsumable = isConsumable && (canUseByCharges || canUseByQuantity || canUseSingle)
 
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-border bg-background/80 px-3 py-3">
+    <div className="flex items-center gap-2 rounded-lg border border-border bg-background/80 px-3 py-3" style={{ marginLeft: `${depth * 14}px` }}>
+      {canExpand ? (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-7 shrink-0"
+          onClick={onToggleExpand}
+        >
+          {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+        </Button>
+      ) : isContainer ? (
+        <span className="inline-block size-7 shrink-0" />
+      ) : null}
       <button
         onClick={onView}
         className="min-w-0 flex-1 text-left"
@@ -467,6 +608,15 @@ const ItemRow = memo(function ItemRow({ item, onView, onDelete, onAdjustQuantity
         className="size-8 shrink-0 text-destructive hover:text-destructive"
       >
         <X className="size-4" />
+      </Button>
+      <Button
+        size="icon"
+        variant="ghost"
+        onClick={onMove}
+        className="size-8 shrink-0"
+        title="Move to container"
+      >
+        <MoveHorizontal className="size-4" />
       </Button>
       {canUseConsumable ? (
         <Button
@@ -785,6 +935,7 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
         quantity: formData.quantity || 1,
         description: formData.description.trim(),
         category: formData.category || 'Equipment',
+        parentItemId: item?.parentItemId ?? null,
         sourceItemTemplateId: item?.sourceItemTemplateId ?? null,
         sourceOrigin: item?.sourceOrigin ?? 'custom',
         templateSnapshot: snapshot,

@@ -176,8 +176,10 @@ interface CharacterNotesBlob {
 const characterSelectColumnsBase = 'id, name, class_name, subclass, race, background, alignment, level, xp, proficiency_bonus, armor_class, initiative, speed, hp_max, hp_current, hp_temp, hit_dice_type, death_successes, death_failures, str_score, dex_score, con_score, int_score, wis_score, cha_score, save_str_prof, save_dex_prof, save_con_prof, save_int_prof, save_wis_prof, save_cha_prof, skill_acrobatics_prof, skill_animal_handling_prof, skill_arcana_prof, skill_athletics_prof, skill_deception_prof, skill_history_prof, skill_insight_prof, skill_intimidation_prof, skill_investigation_prof, skill_medicine_prof, skill_nature_prof, skill_perception_prof, skill_performance_prof, skill_persuasion_prof, skill_religion_prof, skill_sleight_of_hand_prof, skill_stealth_prof, skill_survival_prof, features, languages, portrait_preview_url'
 const characterSelectColumnsWithOriginal = `${characterSelectColumnsBase}, portrait_original_url`
 const characterSelectColumnsWithTemplates = `${characterSelectColumnsWithOriginal}, source_class_template_id, source_race_template_id, source_background_template_id, class_source_origin, race_source_origin, background_source_origin, class_template_snapshot, race_template_snapshot, background_template_snapshot`
-const inventoryColumnsBase = 'id, client_id, title, quantity, description, category'
+const inventoryColumnsBase = 'id, client_id, title, quantity, description, category, parent_client_id'
+const inventoryColumnsLegacyBase = 'id, client_id, title, quantity, description, category'
 const inventoryColumnsWithTemplate = `${inventoryColumnsBase}, source_item_template_id, source_origin, template_snapshot`
+const inventoryColumnsWithTemplateLegacyParent = `${inventoryColumnsLegacyBase}, source_item_template_id, source_origin, template_snapshot`
 
 function isMissingColumnError(error: unknown, columnName: string) {
   const message = typeof error === 'object' && error !== null && 'message' in error
@@ -424,10 +426,19 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       .select(inventoryColumnsWithTemplate)
       .eq('character_id', characterId)
       .order('sort_order', { ascending: true })
-    if (!withTemplateFields.error || !isMissingColumnError(withTemplateFields.error, 'source_item_template_id')) return withTemplateFields
+    if (!withTemplateFields.error) return withTemplateFields
+    if (isMissingColumnError(withTemplateFields.error, 'parent_client_id')) {
+      const withLegacyParent = await supabase
+        .from('inventory_items')
+        .select(inventoryColumnsWithTemplateLegacyParent)
+        .eq('character_id', characterId)
+        .order('sort_order', { ascending: true })
+      if (!withLegacyParent.error || !isMissingColumnError(withLegacyParent.error, 'source_item_template_id')) return withLegacyParent
+    }
+    if (!isMissingColumnError(withTemplateFields.error, 'source_item_template_id')) return withTemplateFields
     return supabase
       .from('inventory_items')
-      .select(inventoryColumnsBase)
+      .select(inventoryColumnsLegacyBase)
       .eq('character_id', characterId)
       .order('sort_order', { ascending: true })
   }
@@ -598,6 +609,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
         quantity: item.quantity,
         description: item.description,
         category: normalizeInventoryCategory(typeof item.category === 'string' ? item.category : null),
+        parentItemId: typeof itemRecord.parent_client_id === 'string' ? itemRecord.parent_client_id : null,
         sourceItemTemplateId: 'source_item_template_id' in itemRecord ? itemRecord.source_item_template_id as string | null : null,
         sourceOrigin: (typeof itemRecord.source_origin === 'string' && itemRecord.source_origin === 'template')
           ? 'template'
@@ -873,6 +885,7 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
     description: item.description,
     quantity: item.quantity,
     category: normalizeInventoryCategory(item.category),
+    parent_client_id: item.parentItemId ?? null,
     source_item_template_id: item.sourceItemTemplateId ?? null,
     source_origin: item.sourceOrigin === 'template' ? 'template' : 'custom',
     template_snapshot: item.templateSnapshot ?? null,
@@ -880,8 +893,14 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
   let { error: upsertError } = await supabase
     .from('inventory_items')
     .upsert(rows, { onConflict: 'character_id,client_id' })
+  if (upsertError && isMissingColumnError(upsertError, 'parent_client_id')) {
+    const legacyRows = rows.map(({ parent_client_id, ...legacyRow }) => legacyRow)
+    ;({ error: upsertError } = await supabase
+      .from('inventory_items')
+      .upsert(legacyRows, { onConflict: 'character_id,client_id' }))
+  }
   if (upsertError && isMissingColumnError(upsertError, 'source_item_template_id')) {
-    const legacyRows = rows.map(({ source_item_template_id, source_origin, template_snapshot, ...legacyRow }) => legacyRow)
+    const legacyRows = rows.map(({ parent_client_id, source_item_template_id, source_origin, template_snapshot, ...legacyRow }) => legacyRow)
     ;({ error: upsertError } = await supabase
       .from('inventory_items')
       .upsert(legacyRows, { onConflict: 'character_id,client_id' }))
