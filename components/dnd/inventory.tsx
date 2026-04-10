@@ -59,6 +59,14 @@ function normalizeInventoryCategory(value: string | null | undefined): string {
   return 'Other'
 }
 
+function getTemplateCategory(template: ItemTemplate): string {
+  const normalizedKind = (template.item_kind ?? '').trim().toLowerCase()
+  if (normalizedKind === 'gear') return 'Equipment'
+  if (normalizedKind === 'weapon') return 'Weapons'
+  if (normalizedKind === 'armor') return 'Armor'
+  return normalizeInventoryCategory(template.category)
+}
+
 const CATEGORY_META = {
   Weapons: { icon: Sword, labelKey: 'inventory.weapons' },
   Armor: { icon: Shield, labelKey: 'inventory.armor' },
@@ -119,6 +127,8 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         name: template.name,
         description: template.description,
         category: normalizedCategory,
+        item_kind: template.item_kind,
+        item_subtype: template.item_subtype,
         rarity: template.rarity,
         weight: template.weight,
         value_text: template.value_text,
@@ -134,6 +144,8 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         stealth_disadvantage: template.stealth_disadvantage,
         source_url: template.source_url,
         requires_attunement: template.requires_attunement,
+        capacity_text: template.capacity_text,
+        contents_summary: template.contents_summary,
         properties: template.properties,
         tags: template.tags,
       },
@@ -471,6 +483,12 @@ function ItemDetailDialog({ open, onOpenChange, item, onEdit }: ItemDetailDialog
   ].filter(Boolean) as string[]
   const showWeaponSection = normalizedCategory === 'Weapons' && weaponDetails.length > 0
   const showArmorSection = normalizedCategory === 'Armor' && armorDetails.length > 0
+  const isGearTemplate = snapshot?.item_kind === 'gear'
+  const gearDetails = [
+    typeof snapshot?.capacity_text === 'string' && snapshot.capacity_text ? `Capacity: ${snapshot.capacity_text}` : null,
+    typeof snapshot?.contents_summary === 'string' && snapshot.contents_summary ? `Contents: ${snapshot.contents_summary}` : null,
+  ].filter(Boolean) as string[]
+  const showGearSection = isGearTemplate && gearDetails.length > 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -506,6 +524,14 @@ function ItemDetailDialog({ open, onOpenChange, item, onEdit }: ItemDetailDialog
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Armor</p>
               <div className="space-y-1">
                 {armorDetails.map((detail) => <p key={detail}>{detail}</p>)}
+              </div>
+            </div>
+          ) : null}
+          {showGearSection ? (
+            <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Equipment</p>
+              <div className="space-y-1">
+                {gearDetails.map((detail) => <p key={detail}>{detail}</p>)}
               </div>
             </div>
           ) : null}
@@ -574,7 +600,7 @@ function TemplateImportDialog({
 
   const filteredTemplates = useMemo(() => {
     if (!categoryFilter) return templates
-    return templates.filter((template) => normalizeInventoryCategory(template.category) === categoryFilter)
+    return templates.filter((template) => getTemplateCategory(template) === categoryFilter)
   }, [categoryFilter, templates])
 
   useEffect(() => {
@@ -607,7 +633,7 @@ function TemplateImportDialog({
       getItemId={(template) => template.id}
       getItemTitle={(template) => template.name}
       getItemDescription={(template) => template.description ?? ''}
-      getItemGroupLabel={(template) => normalizeInventoryCategory(template.category)}
+      getItemGroupLabel={getTemplateCategory}
       groupOrder={[...CATEGORIES]}
       selectedId={selectedId}
       onSelectedIdChange={setSelectedId}

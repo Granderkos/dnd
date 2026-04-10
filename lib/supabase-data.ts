@@ -12,6 +12,8 @@ export interface ItemTemplate {
   name: string
   description: string | null
   category: string | null
+  item_kind: string | null
+  item_subtype: string | null
   rarity: string | null
   weight: number | null
   value_text: string | null
@@ -27,6 +29,8 @@ export interface ItemTemplate {
   stealth_disadvantage: boolean | null
   source_url: string | null
   requires_attunement: boolean
+  capacity_text: string | null
+  contents_summary: string | null
   properties: unknown
   tags: unknown
 }
@@ -897,7 +901,7 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
 export async function listItemTemplates() {
   const { data, error } = await supabase
     .from('item_templates')
-    .select('id, name, description, category, rarity, weight, value_text, damage_text, damage_type, range_text, weapon_kind, armor_kind, ac_base, ac_bonus, dex_cap, strength_requirement, stealth_disadvantage, source_url, requires_attunement, properties, tags')
+    .select('id, name, description, category, item_kind, item_subtype, rarity, weight, value_text, damage_text, damage_type, range_text, weapon_kind, armor_kind, ac_base, ac_bonus, dex_cap, strength_requirement, stealth_disadvantage, source_url, requires_attunement, capacity_text, contents_summary, properties, tags')
     .order('name', { ascending: true })
   if (error) throw error
   return (data ?? []) as ItemTemplate[]
