@@ -105,11 +105,11 @@ export function TemplateImportModal<T>({
             <p className="text-sm text-muted-foreground">{emptyText}</p>
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border">
-              <div>
+              <div className="space-y-3 p-2">
                 {(groupedItems ?? [{ label: '', items: filteredItems }]).map((group) => (
-                  <div key={group.label || 'ungrouped'} className="border-b last:border-b-0">
+                  <div key={group.label || 'ungrouped'} className="overflow-hidden rounded-md border border-border/70 bg-background shadow-sm">
                     {group.label ? (
-                      <div className="bg-muted/40 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <div className="border-b border-border/60 bg-primary/10 px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-foreground/90">
                         {group.label}
                       </div>
                     ) : null}

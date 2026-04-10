@@ -448,6 +448,7 @@ interface ItemDetailDialogProps {
 
 function ItemDetailDialog({ open, onOpenChange, item, onEdit }: ItemDetailDialogProps) {
   const { t } = useI18n()
+  const normalizedCategory = normalizeInventoryCategory(item.category)
   const snapshot = (item.templateSnapshot ?? null) as Record<string, unknown> | null
   const properties = Array.isArray(snapshot?.properties)
     ? snapshot?.properties.map((value) => String(value)).join(', ')
@@ -455,6 +456,21 @@ function ItemDetailDialog({ open, onOpenChange, item, onEdit }: ItemDetailDialog
   const tags = Array.isArray(snapshot?.tags)
     ? snapshot?.tags.map((value) => String(value)).join(', ')
     : null
+  const weaponDetails = [
+    typeof snapshot?.damage_text === 'string' && snapshot.damage_text ? `${t('inventory.damage')}: ${snapshot.damage_text}` : null,
+    typeof snapshot?.damage_type === 'string' && snapshot.damage_type ? `${t('inventory.damageType')}: ${snapshot.damage_type}` : null,
+    typeof snapshot?.range_text === 'string' && snapshot.range_text ? `${t('inventory.range')}: ${snapshot.range_text}` : null,
+  ].filter(Boolean) as string[]
+  const armorDetails = [
+    typeof snapshot?.armor_kind === 'string' && snapshot.armor_kind ? `Armor Kind: ${snapshot.armor_kind}` : null,
+    typeof snapshot?.ac_base === 'number' ? `AC Base: ${snapshot.ac_base}` : null,
+    typeof snapshot?.ac_bonus === 'number' ? `AC Bonus: ${snapshot.ac_bonus > 0 ? `+${snapshot.ac_bonus}` : snapshot.ac_bonus}` : null,
+    typeof snapshot?.dex_cap === 'number' ? `Dex Cap: ${snapshot.dex_cap}` : null,
+    typeof snapshot?.strength_requirement === 'number' ? `Strength Requirement: ${snapshot.strength_requirement}` : null,
+    typeof snapshot?.stealth_disadvantage === 'boolean' ? `Stealth Disadvantage: ${snapshot.stealth_disadvantage ? 'Yes' : 'No'}` : null,
+  ].filter(Boolean) as string[]
+  const showWeaponSection = normalizedCategory === 'Weapons' && weaponDetails.length > 0
+  const showArmorSection = normalizedCategory === 'Armor' && armorDetails.length > 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -476,34 +492,23 @@ function ItemDetailDialog({ open, onOpenChange, item, onEdit }: ItemDetailDialog
             {typeof snapshot?.value_text === 'string' && snapshot.value_text ? (
               <div><span className="text-muted-foreground">{t('inventory.value')}:</span> {snapshot.value_text}</div>
             ) : null}
-            {typeof snapshot?.damage_text === 'string' && snapshot.damage_text ? (
-              <div><span className="text-muted-foreground">{t('inventory.damage')}:</span> {snapshot.damage_text}</div>
-            ) : null}
-            {typeof snapshot?.damage_type === 'string' && snapshot.damage_type ? (
-              <div><span className="text-muted-foreground">{t('inventory.damageType')}:</span> {snapshot.damage_type}</div>
-            ) : null}
-            {typeof snapshot?.range_text === 'string' && snapshot.range_text ? (
-              <div><span className="text-muted-foreground">{t('inventory.range')}:</span> {snapshot.range_text}</div>
-            ) : null}
-            {typeof snapshot?.armor_kind === 'string' && snapshot.armor_kind ? (
-              <div><span className="text-muted-foreground">Armor Kind:</span> {snapshot.armor_kind}</div>
-            ) : null}
-            {typeof snapshot?.ac_base === 'number' ? (
-              <div><span className="text-muted-foreground">AC Base:</span> {snapshot.ac_base}</div>
-            ) : null}
-            {typeof snapshot?.ac_bonus === 'number' ? (
-              <div><span className="text-muted-foreground">AC Bonus:</span> {snapshot.ac_bonus > 0 ? `+${snapshot.ac_bonus}` : snapshot.ac_bonus}</div>
-            ) : null}
-            {typeof snapshot?.dex_cap === 'number' ? (
-              <div><span className="text-muted-foreground">Dex Cap:</span> {snapshot.dex_cap}</div>
-            ) : null}
-            {typeof snapshot?.strength_requirement === 'number' ? (
-              <div><span className="text-muted-foreground">Strength Requirement:</span> {snapshot.strength_requirement}</div>
-            ) : null}
-            {typeof snapshot?.stealth_disadvantage === 'boolean' ? (
-              <div><span className="text-muted-foreground">Stealth Disadvantage:</span> {snapshot.stealth_disadvantage ? 'Yes' : 'No'}</div>
-            ) : null}
           </div>
+          {showWeaponSection ? (
+            <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Weapon</p>
+              <div className="space-y-1">
+                {weaponDetails.map((detail) => <p key={detail}>{detail}</p>)}
+              </div>
+            </div>
+          ) : null}
+          {showArmorSection ? (
+            <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Armor</p>
+              <div className="space-y-1">
+                {armorDetails.map((detail) => <p key={detail}>{detail}</p>)}
+              </div>
+            </div>
+          ) : null}
           {item.description ? (
             <div className="rounded-md bg-muted/25 p-3">
               <p className="whitespace-pre-wrap text-sm leading-relaxed">{item.description}</p>
