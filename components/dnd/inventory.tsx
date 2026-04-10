@@ -84,7 +84,6 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
   const { t } = useI18n()
   const [isAddingItem, setIsAddingItem] = useState(false)
   const [isImportingTemplate, setIsImportingTemplate] = useState(false)
-  const [templateCategoryFilter, setTemplateCategoryFilter] = useState<string | null>(null)
   const [templates, setTemplates] = useState<ItemTemplate[]>([])
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
   const [templateLoadError, setTemplateLoadError] = useState<string | null>(null)
@@ -303,10 +302,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
           </Button>
           <Button
             variant="outline"
-            onClick={() => {
-              setTemplateCategoryFilter(null)
-              setIsImportingTemplate(true)
-            }}
+            onClick={() => setIsImportingTemplate(true)}
             className="h-10"
           >
             <Package className="mr-2 size-5" />
@@ -328,17 +324,6 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
                   <Badge variant="secondary" className="ml-auto text-xs">
                     {items.length}
                   </Badge>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 px-2 text-xs"
-                    onClick={() => {
-                      setTemplateCategoryFilter(category)
-                      setIsImportingTemplate(true)
-                    }}
-                  >
-                    {t('inventory.importFromTemplate')}
-                  </Button>
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -371,7 +356,6 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         open={isImportingTemplate}
         onOpenChange={setIsImportingTemplate}
         templates={templates}
-        categoryFilter={templateCategoryFilter}
         isLoading={isLoadingTemplates}
         loadError={templateLoadError}
         onImport={importItemTemplate}
@@ -641,7 +625,6 @@ interface TemplateImportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   templates: ItemTemplate[]
-  categoryFilter: string | null
   isLoading: boolean
   loadError: string | null
   onImport: (template: ItemTemplate, quantity: number) => void
@@ -651,7 +634,6 @@ function TemplateImportDialog({
   open,
   onOpenChange,
   templates,
-  categoryFilter,
   isLoading,
   loadError,
   onImport,
@@ -660,23 +642,18 @@ function TemplateImportDialog({
   const [selectedId, setSelectedId] = useState<string>('')
   const [quantity, setQuantity] = useState<number>(1)
 
-  const filteredTemplates = useMemo(() => {
-    if (!categoryFilter) return templates
-    return templates.filter((template) => getTemplateCategory(template) === categoryFilter)
-  }, [categoryFilter, templates])
-
   useEffect(() => {
     if (!open) return
     setSelectedId((current) => {
-      if (current && filteredTemplates.some((template) => template.id === current)) return current
-      return filteredTemplates[0]?.id || ''
+      if (current && templates.some((template) => template.id === current)) return current
+      return templates[0]?.id || ''
     })
     setQuantity(1)
-  }, [open, filteredTemplates])
+  }, [open, templates])
 
   const selectedTemplate = useMemo(
-    () => filteredTemplates.find((template) => template.id === selectedId) ?? null,
-    [filteredTemplates, selectedId]
+    () => templates.find((template) => template.id === selectedId) ?? null,
+    [templates, selectedId]
   )
 
   return (
@@ -691,12 +668,20 @@ function TemplateImportDialog({
       emptyText={t('inventory.noTemplates')}
       errorText={loadError}
       importLabel={t('inventory.importFromTemplate')}
-      items={filteredTemplates}
+      items={templates}
       getItemId={(template) => template.id}
       getItemTitle={(template) => template.name}
       getItemDescription={(template) => template.description ?? ''}
       getItemGroupLabel={getTemplateCategory}
       groupOrder={[...CATEGORIES]}
+      categoryFilters={[
+        { label: 'All', value: 'all' },
+        ...CATEGORIES.map((category) => ({
+          label: t(CATEGORY_META[category].labelKey),
+          value: category,
+        })),
+      ]}
+      allCategoryFilterValue="all"
       selectedId={selectedId}
       onSelectedIdChange={setSelectedId}
       onImport={() => selectedTemplate && onImport(selectedTemplate, quantity)}
