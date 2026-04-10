@@ -294,6 +294,17 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
                   <Badge variant="secondary" className="ml-auto text-xs">
                     {items.length}
                   </Badge>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 px-2 text-xs"
+                    onClick={() => {
+                      setTemplateCategoryFilter(category)
+                      setIsImportingTemplate(true)
+                    }}
+                  >
+                    {t('inventory.importFromTemplate')}
+                  </Button>
                 </CardTitle>
               </CardHeader>
               <CardContent>
