@@ -602,6 +602,8 @@ function TemplateImportDialog({
       getItemId={(template) => template.id}
       getItemTitle={(template) => template.name}
       getItemDescription={(template) => template.description ?? ''}
+      getItemGroupLabel={(template) => normalizeInventoryCategory(template.category)}
+      groupOrder={[...CATEGORIES]}
       selectedId={selectedId}
       onSelectedIdChange={setSelectedId}
       onImport={() => selectedTemplate && onImport(selectedTemplate, quantity)}

@@ -20,6 +20,8 @@ interface TemplateImportModalProps<T> {
   getItemId: (item: T) => string
   getItemTitle: (item: T) => string
   getItemDescription?: (item: T) => string | null
+  getItemGroupLabel?: (item: T) => string
+  groupOrder?: string[]
   selectedId: string
   onSelectedIdChange: (id: string) => void
   onImport: () => void
@@ -42,6 +44,8 @@ export function TemplateImportModal<T>({
   getItemId,
   getItemTitle,
   getItemDescription,
+  getItemGroupLabel,
+  groupOrder,
   selectedId,
   onSelectedIdChange,
   onImport,
@@ -59,6 +63,21 @@ export function TemplateImportModal<T>({
       return titleText.includes(normalized) || descriptionText.includes(normalized)
     })
   }, [getItemDescription, getItemTitle, items, query])
+
+  const groupedItems = useMemo(() => {
+    if (!getItemGroupLabel) return null
+    const groups = new Map<string, T[]>()
+    for (const item of filteredItems) {
+      const label = getItemGroupLabel(item)
+      const current = groups.get(label)
+      if (current) current.push(item)
+      else groups.set(label, [item])
+    }
+    const labels = groupOrder?.length
+      ? groupOrder.filter((label) => groups.has(label))
+      : Array.from(groups.keys())
+    return labels.map((label) => ({ label, items: groups.get(label) ?? [] }))
+  }, [filteredItems, getItemGroupLabel, groupOrder])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -86,24 +105,35 @@ export function TemplateImportModal<T>({
             <p className="text-sm text-muted-foreground">{emptyText}</p>
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border">
-              <div className="divide-y">
-                {filteredItems.map((item) => {
-                  const id = getItemId(item)
-                  const isSelected = id === selectedId
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => onSelectedIdChange(id)}
-                      className={`w-full px-3 py-2 text-left transition-colors ${isSelected ? 'bg-primary/10' : 'hover:bg-muted/40'}`}
-                    >
-                      <p className="text-sm font-medium">{getItemTitle(item)}</p>
-                      {getItemDescription ? (
-                        <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{getItemDescription(item)}</p>
-                      ) : null}
-                    </button>
-                  )
-                })}
+              <div>
+                {(groupedItems ?? [{ label: '', items: filteredItems }]).map((group) => (
+                  <div key={group.label || 'ungrouped'} className="border-b last:border-b-0">
+                    {group.label ? (
+                      <div className="bg-muted/40 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {group.label}
+                      </div>
+                    ) : null}
+                    <div className="divide-y">
+                      {group.items.map((item) => {
+                        const id = getItemId(item)
+                        const isSelected = id === selectedId
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => onSelectedIdChange(id)}
+                            className={`w-full px-3 py-2 text-left transition-colors ${isSelected ? 'bg-primary/10' : 'hover:bg-muted/40'}`}
+                          >
+                            <p className="text-sm font-medium">{getItemTitle(item)}</p>
+                            {getItemDescription ? (
+                              <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{getItemDescription(item)}</p>
+                            ) : null}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
