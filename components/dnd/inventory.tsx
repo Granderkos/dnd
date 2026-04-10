@@ -289,7 +289,6 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
                       key={item.id}
                       item={item}
                       onView={() => setViewingItem(item)}
-                      onEdit={() => setEditingItem(item)}
                       onDelete={() => deleteItem(item.id, item.name)}
                       onAdjustQuantity={(amount) => adjustQuantity(item.id, amount)}
                     />
@@ -361,13 +360,11 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
 interface ItemRowProps {
   item: InventoryItem
   onView: () => void
-  onEdit: () => void
   onDelete: () => void
   onAdjustQuantity: (amount: number) => void
 }
 
-const ItemRow = memo(function ItemRow({ item, onView, onEdit, onDelete, onAdjustQuantity }: ItemRowProps) {
-  const { t } = useI18n()
+const ItemRow = memo(function ItemRow({ item, onView, onDelete, onAdjustQuantity }: ItemRowProps) {
   return (
     <div className="flex items-center gap-2 rounded-lg border border-border bg-background/80 px-3 py-3">
       <button
@@ -404,14 +401,6 @@ const ItemRow = memo(function ItemRow({ item, onView, onEdit, onDelete, onAdjust
           <Plus className="size-4" />
         </Button>
       </div>
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={onEdit}
-        className="h-8 px-2 text-xs"
-      >
-        {t('inventory.editAction')}
-      </Button>
       <Button
         size="icon"
         variant="ghost"
@@ -472,7 +461,9 @@ function ItemDetailDialog({ open, onOpenChange, item, onEdit }: ItemDetailDialog
             ) : null}
           </div>
           {item.description ? (
-            <p className="rounded-md border border-border bg-muted/30 p-3 text-sm">{item.description}</p>
+            <div className="rounded-md bg-muted/25 p-3">
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">{item.description}</p>
+            </div>
           ) : null}
           {properties ? (
             <p><span className="text-muted-foreground">{t('inventory.properties')}:</span> {properties}</p>
