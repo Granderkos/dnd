@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,8 @@ interface TemplateImportModalProps<T> {
   getItemDescription?: (item: T) => string | null
   getItemGroupLabel?: (item: T) => string
   groupOrder?: string[]
+  categoryFilters?: Array<{ label: string; value: string }>
+  allCategoryFilterValue?: string
   selectedId: string
   onSelectedIdChange: (id: string) => void
   onImport: () => void
@@ -46,6 +48,8 @@ export function TemplateImportModal<T>({
   getItemDescription,
   getItemGroupLabel,
   groupOrder,
+  categoryFilters,
+  allCategoryFilterValue = 'all',
   selectedId,
   onSelectedIdChange,
   onImport,
@@ -53,19 +57,38 @@ export function TemplateImportModal<T>({
   footerContent,
 }: TemplateImportModalProps<T>) {
   const [query, setQuery] = useState('')
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState(allCategoryFilterValue)
+
+  useEffect(() => {
+    if (!open) {
+      setQuery('')
+      setActiveCategoryFilter(allCategoryFilterValue)
+    }
+  }, [allCategoryFilterValue, open])
+
+  const categoryFilteredItems = useMemo(() => {
+    if (!getItemGroupLabel || activeCategoryFilter === allCategoryFilterValue) return items
+    return items.filter((item) => getItemGroupLabel(item) === activeCategoryFilter)
+  }, [activeCategoryFilter, allCategoryFilterValue, getItemGroupLabel, items])
 
   const filteredItems = useMemo(() => {
     const normalized = query.trim().toLowerCase()
-    if (!normalized) return items
-    return items.filter((item) => {
+    if (!normalized) return categoryFilteredItems
+    return categoryFilteredItems.filter((item) => {
       const titleText = getItemTitle(item).toLowerCase()
       const descriptionText = (getItemDescription?.(item) ?? '').toLowerCase()
       return titleText.includes(normalized) || descriptionText.includes(normalized)
     })
-  }, [getItemDescription, getItemTitle, items, query])
+  }, [categoryFilteredItems, getItemDescription, getItemTitle, query])
+
+  useEffect(() => {
+    if (!filteredItems.length) return
+    const hasSelected = filteredItems.some((item) => getItemId(item) === selectedId)
+    if (!hasSelected) onSelectedIdChange(getItemId(filteredItems[0]))
+  }, [filteredItems, getItemId, onSelectedIdChange, selectedId])
 
   const groupedItems = useMemo(() => {
-    if (!getItemGroupLabel) return null
+    if (!getItemGroupLabel || activeCategoryFilter !== allCategoryFilterValue) return null
     const groups = new Map<string, T[]>()
     for (const item of filteredItems) {
       const label = getItemGroupLabel(item)
@@ -77,7 +100,7 @@ export function TemplateImportModal<T>({
       ? groupOrder.filter((label) => groups.has(label))
       : Array.from(groups.keys())
     return labels.map((label) => ({ label, items: groups.get(label) ?? [] }))
-  }, [filteredItems, getItemGroupLabel, groupOrder])
+  }, [activeCategoryFilter, allCategoryFilterValue, filteredItems, getItemGroupLabel, groupOrder])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -94,6 +117,25 @@ export function TemplateImportModal<T>({
             placeholder={searchPlaceholder}
             className="h-10 shrink-0"
           />
+          {categoryFilters?.length ? (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {categoryFilters.map((filter) => {
+                const isActive = filter.value === activeCategoryFilter
+                return (
+                  <Button
+                    key={filter.value}
+                    type="button"
+                    size="sm"
+                    variant={isActive ? 'default' : 'outline'}
+                    className="h-8 shrink-0 rounded-full px-3 text-xs"
+                    onClick={() => setActiveCategoryFilter(filter.value)}
+                  >
+                    {filter.label}
+                  </Button>
+                )
+              })}
+            </div>
+          ) : null}
 
           {errorText ? (
             <p className="text-sm text-destructive">{errorText}</p>
