@@ -116,6 +116,7 @@ export interface InventoryItem {
   quantity: number
   description: string
   category: string
+  parentItemId?: string | null
   sourceItemTemplateId?: string | null
   sourceOrigin?: 'custom' | 'template'
   templateSnapshot?: Record<string, unknown> | null
