@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Plus, X, Minus, Package, Sword, Shield, Backpack, FlaskConical, ScrollText, Gem, Boxes } from 'lucide-react'
+import { Plus, X, Minus, Package, Sword, Shield, Backpack, FlaskConical, ScrollText, Gem, Boxes, Wrench } from 'lucide-react'
 import { Inventory as InventoryType, InventoryItem, Currency } from '@/lib/dnd-types'
 import { useI18n } from '@/lib/i18n'
 import { PageShell } from '@/components/app/page-shell'
@@ -43,7 +43,7 @@ interface InventoryProps {
   onChange: (inventory: InventoryType) => void
 }
 
-const CATEGORIES = ['Weapons', 'Armor', 'Equipment', 'Consumables', 'Supplies', 'Treasure', 'Other'] as const
+const CATEGORIES = ['Weapons', 'Armor', 'Equipment', 'Tools', 'Consumables', 'Supplies', 'Treasure', 'Other'] as const
 const CATEGORY_SET = new Set<string>(CATEGORIES)
 
 function normalizeInventoryCategory(value: string | null | undefined): string {
@@ -52,6 +52,7 @@ function normalizeInventoryCategory(value: string | null | undefined): string {
   if (['weapon', 'weapons'].includes(normalized)) return 'Weapons'
   if (['armor', 'armour'].includes(normalized)) return 'Armor'
   if (['equipment', 'gear'].includes(normalized)) return 'Equipment'
+  if (['tool', 'tools', 'kit', 'kits'].includes(normalized)) return 'Tools'
   if (['consumable', 'consumables', 'potion', 'potions'].includes(normalized)) return 'Consumables'
   if (['supply', 'supplies'].includes(normalized)) return 'Supplies'
   if (['treasure', 'treasures', 'loot'].includes(normalized)) return 'Treasure'
@@ -62,6 +63,7 @@ function normalizeInventoryCategory(value: string | null | undefined): string {
 function getTemplateCategory(template: ItemTemplate): string {
   const normalizedKind = (template.item_kind ?? '').trim().toLowerCase()
   if (normalizedKind === 'consumable') return 'Consumables'
+  if (normalizedKind === 'tool') return 'Tools'
   if (normalizedKind === 'gear') return 'Equipment'
   if (normalizedKind === 'weapon') return 'Weapons'
   if (normalizedKind === 'armor') return 'Armor'
@@ -74,6 +76,7 @@ const CATEGORY_META = {
   Weapons: { icon: Sword, labelKey: 'inventory.weapons' },
   Armor: { icon: Shield, labelKey: 'inventory.armor' },
   Equipment: { icon: Backpack, labelKey: 'inventory.equipment' },
+  Tools: { icon: Wrench, labelKey: 'inventory.tools' },
   Consumables: { icon: FlaskConical, labelKey: 'inventory.consumables' },
   Supplies: { icon: ScrollText, labelKey: 'inventory.supplies' },
   Treasure: { icon: Gem, labelKey: 'inventory.treasure' },

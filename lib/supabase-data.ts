@@ -99,7 +99,7 @@ const characterSaveSignatures = new Map<string, {
   spells: string
   blob: string
 }>()
-const INVENTORY_CATEGORIES = new Set(['Weapons', 'Armor', 'Equipment', 'Consumables', 'Supplies', 'Treasure', 'Other'])
+const INVENTORY_CATEGORIES = new Set(['Weapons', 'Armor', 'Equipment', 'Tools', 'Consumables', 'Supplies', 'Treasure', 'Other'])
 
 function normalizeInventoryCategory(value: string | null | undefined): string {
   const normalized = (value ?? '').trim().toLowerCase()
@@ -107,6 +107,7 @@ function normalizeInventoryCategory(value: string | null | undefined): string {
   if (['weapon', 'weapons'].includes(normalized)) return 'Weapons'
   if (['armor', 'armour'].includes(normalized)) return 'Armor'
   if (['equipment', 'gear'].includes(normalized)) return 'Equipment'
+  if (['tool', 'tools', 'kit', 'kits'].includes(normalized)) return 'Tools'
   if (['consumable', 'consumables', 'potion', 'potions'].includes(normalized)) return 'Consumables'
   if (['supply', 'supplies'].includes(normalized)) return 'Supplies'
   if (['treasure', 'treasures', 'loot'].includes(normalized)) return 'Treasure'

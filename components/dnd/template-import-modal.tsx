@@ -118,22 +118,24 @@ export function TemplateImportModal<T>({
             className="h-10 shrink-0"
           />
           {categoryFilters?.length ? (
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {categoryFilters.map((filter) => {
-                const isActive = filter.value === activeCategoryFilter
-                return (
-                  <Button
-                    key={filter.value}
-                    type="button"
-                    size="sm"
-                    variant={isActive ? 'default' : 'outline'}
-                    className="h-8 shrink-0 rounded-full px-3 text-xs"
-                    onClick={() => setActiveCategoryFilter(filter.value)}
-                  >
-                    {filter.label}
-                  </Button>
-                )
-              })}
+            <div className="-mx-1 overflow-hidden">
+              <div className="flex w-full gap-2 overflow-x-auto px-1 pb-2 touch-pan-x [scrollbar-width:thin]">
+                {categoryFilters.map((filter) => {
+                  const isActive = filter.value === activeCategoryFilter
+                  return (
+                    <Button
+                      key={filter.value}
+                      type="button"
+                      size="sm"
+                      variant={isActive ? 'default' : 'outline'}
+                      className="h-8 shrink-0 rounded-full px-3 text-xs"
+                      onClick={() => setActiveCategoryFilter(filter.value)}
+                    >
+                      {filter.label}
+                    </Button>
+                  )
+                })}
+              </div>
             </div>
           ) : null}
 
