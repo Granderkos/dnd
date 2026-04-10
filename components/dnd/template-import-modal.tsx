@@ -62,18 +62,18 @@ export function TemplateImportModal<T>({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] max-w-2xl max-h-[85vh] overflow-hidden p-0">
-        <DialogHeader className="border-b px-4 py-3">
+      <DialogContent className="flex w-[calc(100vw-1rem)] max-w-2xl flex-col overflow-hidden p-0 sm:w-[95vw] max-h-[calc(100dvh-1rem)] sm:max-h-[85vh]">
+        <DialogHeader className="shrink-0 border-b px-4 py-3">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-3 px-4 py-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 py-3">
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={searchPlaceholder}
-            className="h-10"
+            className="h-10 shrink-0"
           />
 
           {errorText ? (
@@ -85,7 +85,7 @@ export function TemplateImportModal<T>({
           ) : filteredItems.length === 0 ? (
             <p className="text-sm text-muted-foreground">{emptyText}</p>
           ) : (
-            <div className="max-h-[46vh] overflow-y-auto rounded-md border border-border">
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border">
               <div className="divide-y">
                 {filteredItems.map((item) => {
                   const id = getItemId(item)
@@ -109,7 +109,7 @@ export function TemplateImportModal<T>({
           )}
         </div>
 
-        <div className="sticky bottom-0 border-t bg-background px-4 py-3">
+        <div className="shrink-0 border-t bg-background px-4 py-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="w-full sm:w-auto">{footerContent}</div>
             <Button className="h-10 w-full sm:w-auto" onClick={onImport} disabled={importDisabled}>{importLabel}</Button>
