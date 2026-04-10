@@ -289,7 +289,6 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
                       key={item.id}
                       item={item}
                       onView={() => setViewingItem(item)}
-                      onEdit={() => setEditingItem(item)}
                       onDelete={() => deleteItem(item.id, item.name)}
                       onAdjustQuantity={(amount) => adjustQuantity(item.id, amount)}
                     />
@@ -361,13 +360,11 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
 interface ItemRowProps {
   item: InventoryItem
   onView: () => void
-  onEdit: () => void
   onDelete: () => void
   onAdjustQuantity: (amount: number) => void
 }
 
-const ItemRow = memo(function ItemRow({ item, onView, onEdit, onDelete, onAdjustQuantity }: ItemRowProps) {
-  const { t } = useI18n()
+const ItemRow = memo(function ItemRow({ item, onView, onDelete, onAdjustQuantity }: ItemRowProps) {
   return (
     <div className="flex items-center gap-2 rounded-lg border border-border bg-background/80 px-3 py-3">
       <button
@@ -404,14 +401,6 @@ const ItemRow = memo(function ItemRow({ item, onView, onEdit, onDelete, onAdjust
           <Plus className="size-4" />
         </Button>
       </div>
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={onEdit}
-        className="h-8 px-2 text-xs"
-      >
-        {t('inventory.editAction')}
-      </Button>
       <Button
         size="icon"
         variant="ghost"
@@ -472,7 +461,9 @@ function ItemDetailDialog({ open, onOpenChange, item, onEdit }: ItemDetailDialog
             ) : null}
           </div>
           {item.description ? (
-            <p className="rounded-md border border-border bg-muted/30 p-3 text-sm">{item.description}</p>
+            <div className="rounded-md bg-muted/25 p-3">
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">{item.description}</p>
+            </div>
           ) : null}
           {properties ? (
             <p><span className="text-muted-foreground">{t('inventory.properties')}:</span> {properties}</p>
@@ -480,7 +471,7 @@ function ItemDetailDialog({ open, onOpenChange, item, onEdit }: ItemDetailDialog
           {tags ? (
             <p><span className="text-muted-foreground">{t('inventory.tags')}:</span> {tags}</p>
           ) : null}
-          <Button onClick={onEdit} className="w-full h-10">{t('inventory.saveChanges')}</Button>
+          <Button onClick={onEdit} className="w-full h-10">{t('inventory.editAction')}</Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -492,6 +483,21 @@ interface ItemDialogProps {
   onOpenChange: (open: boolean) => void
   item?: InventoryItem
   onSave: (item: InventoryItem) => void
+}
+
+interface ItemFormState {
+  name: string
+  quantity: number
+  description: string
+  category: string
+  rarity: string
+  weight: string
+  valueText: string
+  damageText: string
+  damageType: string
+  rangeText: string
+  propertiesText: string
+  tagsText: string
 }
 
 interface TemplateImportDialogProps {
@@ -564,40 +570,68 @@ function TemplateImportDialog({
 
 function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
   const { t } = useI18n()
-  const [formData, setFormData] = useState<Partial<InventoryItem>>(
-    item || {
-      name: '',
-      quantity: 1,
-      description: '',
-      category: 'Equipment',
+  const buildFormState = useCallback((current?: InventoryItem): ItemFormState => {
+    const snapshot = (current?.templateSnapshot ?? null) as Record<string, unknown> | null
+    const listToText = (value: unknown): string => Array.isArray(value)
+      ? value.map((entry) => String(entry).trim()).filter(Boolean).join(', ')
+      : ''
+
+    return {
+      name: current?.name ?? '',
+      quantity: current?.quantity ?? 1,
+      description: current?.description ?? '',
+      category: current?.category ?? 'Equipment',
+      rarity: typeof snapshot?.rarity === 'string' ? snapshot.rarity : '',
+      weight: typeof snapshot?.weight === 'number' ? String(snapshot.weight) : '',
+      valueText: typeof snapshot?.value_text === 'string' ? snapshot.value_text : '',
+      damageText: typeof snapshot?.damage_text === 'string' ? snapshot.damage_text : '',
+      damageType: typeof snapshot?.damage_type === 'string' ? snapshot.damage_type : '',
+      rangeText: typeof snapshot?.range_text === 'string' ? snapshot.range_text : '',
+      propertiesText: listToText(snapshot?.properties),
+      tagsText: listToText(snapshot?.tags),
     }
-  )
+  }, [])
+
+  const [formData, setFormData] = useState<ItemFormState>(buildFormState(item))
 
   useEffect(() => {
-    setFormData(item || {
-      name: '',
-      quantity: 1,
-      description: '',
-      category: 'Equipment',
-    })
-  }, [item, open])
+    setFormData(buildFormState(item))
+  }, [item, open, buildFormState])
+
+  const parseCommaSeparated = useCallback((value: string): string[] => (
+    value
+      .split(',')
+      .map((token) => token.trim())
+      .filter(Boolean)
+  ), [])
 
   const handleSubmit = () => {
-    if (formData.name) {
+    if (formData.name.trim()) {
+      const parsedWeight = Number.parseFloat(formData.weight)
+      const snapshot: Record<string, unknown> = {
+        ...(item?.templateSnapshot && typeof item.templateSnapshot === 'object' ? item.templateSnapshot : {}),
+        rarity: formData.rarity.trim() || null,
+        weight: Number.isFinite(parsedWeight) ? parsedWeight : null,
+        value_text: formData.valueText.trim() || null,
+        damage_text: formData.damageText.trim() || null,
+        damage_type: formData.damageType.trim().toLowerCase() || null,
+        range_text: formData.rangeText.trim() || null,
+        properties: parseCommaSeparated(formData.propertiesText),
+        tags: parseCommaSeparated(formData.tagsText),
+      }
+
       onSave({
         id: item?.id || generateClientId(),
-        name: formData.name,
+        name: formData.name.trim(),
         quantity: formData.quantity || 1,
-        description: formData.description || '',
+        description: formData.description.trim(),
         category: formData.category || 'Equipment',
+        sourceItemTemplateId: item?.sourceItemTemplateId ?? null,
+        sourceOrigin: item?.sourceOrigin ?? 'custom',
+        templateSnapshot: snapshot,
       })
       if (!item) {
-        setFormData({
-          name: '',
-          quantity: 1,
-          description: '',
-          category: 'Equipment',
-        })
+        setFormData(buildFormState())
       }
     }
   }
@@ -658,6 +692,85 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder={t('inventory.description') + '...'}
               className="min-h-20"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-sm text-muted-foreground">{t('inventory.rarity')}</label>
+              <Input
+                value={formData.rarity}
+                onChange={(e) => setFormData({ ...formData, rarity: e.target.value })}
+                placeholder={t('inventory.rarity')}
+                className="h-10"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm text-muted-foreground">{t('inventory.weight')}</label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={formData.weight}
+                onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                placeholder={t('inventory.weight')}
+                className="h-10"
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm text-muted-foreground">{t('inventory.value')}</label>
+            <Input
+              value={formData.valueText}
+              onChange={(e) => setFormData({ ...formData, valueText: e.target.value })}
+              placeholder={t('inventory.value')}
+              className="h-10"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-sm text-muted-foreground">{t('inventory.damage')}</label>
+              <Input
+                value={formData.damageText}
+                onChange={(e) => setFormData({ ...formData, damageText: e.target.value })}
+                placeholder={t('inventory.damage')}
+                className="h-10"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm text-muted-foreground">{t('inventory.damageType')}</label>
+              <Input
+                value={formData.damageType}
+                onChange={(e) => setFormData({ ...formData, damageType: e.target.value })}
+                placeholder={t('inventory.damageType')}
+                className="h-10"
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm text-muted-foreground">{t('inventory.range')}</label>
+            <Input
+              value={formData.rangeText}
+              onChange={(e) => setFormData({ ...formData, rangeText: e.target.value })}
+              placeholder={t('inventory.range')}
+              className="h-10"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm text-muted-foreground">{t('inventory.properties')}</label>
+            <Input
+              value={formData.propertiesText}
+              onChange={(e) => setFormData({ ...formData, propertiesText: e.target.value })}
+              placeholder="finesse, light, thrown"
+              className="h-10"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm text-muted-foreground">{t('inventory.tags')}</label>
+            <Input
+              value={formData.tagsText}
+              onChange={(e) => setFormData({ ...formData, tagsText: e.target.value })}
+              placeholder="weapon, martial, melee"
+              className="h-10"
             />
           </div>
           <Button onClick={handleSubmit} className="w-full h-10">
