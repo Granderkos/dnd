@@ -73,6 +73,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
   const { t } = useI18n()
   const [isAddingItem, setIsAddingItem] = useState(false)
   const [isImportingTemplate, setIsImportingTemplate] = useState(false)
+  const [templateCategoryFilter, setTemplateCategoryFilter] = useState<string | null>(null)
   const [templates, setTemplates] = useState<ItemTemplate[]>([])
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
   const [templateLoadError, setTemplateLoadError] = useState<string | null>(null)
@@ -125,6 +126,12 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         damage_type: template.damage_type,
         range_text: template.range_text,
         weapon_kind: template.weapon_kind,
+        armor_kind: template.armor_kind,
+        ac_base: template.ac_base,
+        ac_bonus: template.ac_bonus,
+        dex_cap: template.dex_cap,
+        strength_requirement: template.strength_requirement,
+        stealth_disadvantage: template.stealth_disadvantage,
         source_url: template.source_url,
         requires_attunement: template.requires_attunement,
         properties: template.properties,
@@ -260,7 +267,14 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
             <Plus className="mr-2 size-5" />
             {t('inventory.createCustomItem')}
           </Button>
-          <Button variant="outline" onClick={() => setIsImportingTemplate(true)} className="h-10">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setTemplateCategoryFilter(null)
+              setIsImportingTemplate(true)
+            }}
+            className="h-10"
+          >
             <Package className="mr-2 size-5" />
             {t('inventory.importFromTemplate')}
           </Button>
@@ -280,6 +294,17 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
                   <Badge variant="secondary" className="ml-auto text-xs">
                     {items.length}
                   </Badge>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 px-2 text-xs"
+                    onClick={() => {
+                      setTemplateCategoryFilter(category)
+                      setIsImportingTemplate(true)
+                    }}
+                  >
+                    {t('inventory.importFromTemplate')}
+                  </Button>
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -311,6 +336,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         open={isImportingTemplate}
         onOpenChange={setIsImportingTemplate}
         templates={templates}
+        categoryFilter={templateCategoryFilter}
         isLoading={isLoadingTemplates}
         loadError={templateLoadError}
         onImport={importItemTemplate}
@@ -459,6 +485,24 @@ function ItemDetailDialog({ open, onOpenChange, item, onEdit }: ItemDetailDialog
             {typeof snapshot?.range_text === 'string' && snapshot.range_text ? (
               <div><span className="text-muted-foreground">{t('inventory.range')}:</span> {snapshot.range_text}</div>
             ) : null}
+            {typeof snapshot?.armor_kind === 'string' && snapshot.armor_kind ? (
+              <div><span className="text-muted-foreground">Armor Kind:</span> {snapshot.armor_kind}</div>
+            ) : null}
+            {typeof snapshot?.ac_base === 'number' ? (
+              <div><span className="text-muted-foreground">AC Base:</span> {snapshot.ac_base}</div>
+            ) : null}
+            {typeof snapshot?.ac_bonus === 'number' ? (
+              <div><span className="text-muted-foreground">AC Bonus:</span> {snapshot.ac_bonus > 0 ? `+${snapshot.ac_bonus}` : snapshot.ac_bonus}</div>
+            ) : null}
+            {typeof snapshot?.dex_cap === 'number' ? (
+              <div><span className="text-muted-foreground">Dex Cap:</span> {snapshot.dex_cap}</div>
+            ) : null}
+            {typeof snapshot?.strength_requirement === 'number' ? (
+              <div><span className="text-muted-foreground">Strength Requirement:</span> {snapshot.strength_requirement}</div>
+            ) : null}
+            {typeof snapshot?.stealth_disadvantage === 'boolean' ? (
+              <div><span className="text-muted-foreground">Stealth Disadvantage:</span> {snapshot.stealth_disadvantage ? 'Yes' : 'No'}</div>
+            ) : null}
           </div>
           {item.description ? (
             <div className="rounded-md bg-muted/25 p-3">
@@ -504,6 +548,7 @@ interface TemplateImportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   templates: ItemTemplate[]
+  categoryFilter: string | null
   isLoading: boolean
   loadError: string | null
   onImport: (template: ItemTemplate, quantity: number) => void
@@ -513,6 +558,7 @@ function TemplateImportDialog({
   open,
   onOpenChange,
   templates,
+  categoryFilter,
   isLoading,
   loadError,
   onImport,
@@ -521,15 +567,23 @@ function TemplateImportDialog({
   const [selectedId, setSelectedId] = useState<string>('')
   const [quantity, setQuantity] = useState<number>(1)
 
+  const filteredTemplates = useMemo(() => {
+    if (!categoryFilter) return templates
+    return templates.filter((template) => normalizeInventoryCategory(template.category) === categoryFilter)
+  }, [categoryFilter, templates])
+
   useEffect(() => {
     if (!open) return
-    setSelectedId((current) => current || templates[0]?.id || '')
+    setSelectedId((current) => {
+      if (current && filteredTemplates.some((template) => template.id === current)) return current
+      return filteredTemplates[0]?.id || ''
+    })
     setQuantity(1)
-  }, [open, templates])
+  }, [open, filteredTemplates])
 
   const selectedTemplate = useMemo(
-    () => templates.find((template) => template.id === selectedId) ?? null,
-    [templates, selectedId]
+    () => filteredTemplates.find((template) => template.id === selectedId) ?? null,
+    [filteredTemplates, selectedId]
   )
 
   return (
@@ -544,7 +598,7 @@ function TemplateImportDialog({
       emptyText={t('inventory.noTemplates')}
       errorText={loadError}
       importLabel={t('inventory.importFromTemplate')}
-      items={templates}
+      items={filteredTemplates}
       getItemId={(template) => template.id}
       getItemTitle={(template) => template.name}
       getItemDescription={(template) => template.description ?? ''}
