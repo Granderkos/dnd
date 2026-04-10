@@ -35,6 +35,9 @@ export interface CharacterCompanion {
   notes: string | null
   is_active: boolean
   custom_data: Record<string, unknown>
+  source_companion_template_id?: string | null
+  source_origin?: 'custom' | 'template'
+  template_snapshot?: Record<string, unknown> | null
   created_at: string
 }
 
