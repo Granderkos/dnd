@@ -262,13 +262,6 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
     return sections.join('\n\n')
   }, [])
 
-  const shouldApplyPrefill = useCallback((currentValue: string, previousPrefill: string, nextPrefill: string): boolean => {
-    const current = currentValue.trim()
-    if (!nextPrefill.trim()) return false
-    if (!current) return true
-    return current === previousPrefill.trim()
-  }, [])
-
   const parseAbilityNames = useCallback((value: string | null | undefined): AbilityName[] => {
     if (!value) return []
     const normalized = value.toUpperCase()
@@ -316,6 +309,12 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
   }, [character, onChange])
 
   useEffect(() => {
+    if (!isNewCharacter || creationMode !== 'template') {
+      setClassTemplates([])
+      setRaceTemplates([])
+      setBackgroundTemplates([])
+      return
+    }
     let active = true
     void Promise.all([
       listClassTemplates(),
@@ -336,7 +335,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
     return () => {
       active = false
     }
-  }, [])
+  }, [creationMode, isNewCharacter])
 
   useEffect(() => {
     if (!isNewCharacter && creationMode === null) {
@@ -350,109 +349,6 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
     if (character.proficiencyBonus === derivedProficiencyBonus) return
     onChange({ ...character, proficiencyBonus: derivedProficiencyBonus })
   }, [character, onChange])
-
-  const applyClassTemplate = useCallback((templateId: string) => {
-    const template = classTemplates.find((row) => row.id === templateId)
-    if (!template) return
-    const previousTemplate = (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null
-    const previousClassPrefill = previousTemplate ? deriveClassFeatures(previousTemplate) : ''
-    const nextClassPrefill = deriveClassFeatures(template)
-    const previousLanguagesPrefill = composeTemplateProficienciesAndLanguages({
-      classTemplate: previousTemplate,
-      raceTemplate: (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null,
-      backgroundTemplate: (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null,
-    })
-    const nextLanguagesPrefill = composeTemplateProficienciesAndLanguages({
-      classTemplate: template,
-      raceTemplate: (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null,
-      backgroundTemplate: (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null,
-    })
-    const nextCharacter: Character = {
-      ...character,
-      info: {
-        ...character.info,
-        class: template.name,
-        sourceClassTemplateId: template.id,
-        classSourceOrigin: 'template',
-        classTemplateSnapshot: template as unknown as Record<string, unknown>,
-      },
-      classFeatures: shouldApplyPrefill(character.classFeatures, previousClassPrefill, nextClassPrefill)
-        ? nextClassPrefill
-        : character.classFeatures,
-      languages: shouldApplyPrefill(character.languages, previousLanguagesPrefill, nextLanguagesPrefill)
-        ? nextLanguagesPrefill
-        : character.languages,
-    }
-    onChange(applyClassDerivedAutomation(nextCharacter, template))
-  }, [applyClassDerivedAutomation, character, classTemplates, composeTemplateProficienciesAndLanguages, deriveClassFeatures, onChange, shouldApplyPrefill])
-
-  const applyRaceTemplate = useCallback((templateId: string) => {
-    const template = raceTemplates.find((row) => row.id === templateId)
-    if (!template) return
-    const previousTemplate = (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null
-    const previousRacePrefill = previousTemplate ? deriveRaceFeatures(previousTemplate) : ''
-    const nextRacePrefill = deriveRaceFeatures(template)
-    const previousLanguagesPrefill = composeTemplateProficienciesAndLanguages({
-      classTemplate: (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null,
-      raceTemplate: previousTemplate,
-      backgroundTemplate: (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null,
-    })
-    const nextLanguagesPrefill = composeTemplateProficienciesAndLanguages({
-      classTemplate: (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null,
-      raceTemplate: template,
-      backgroundTemplate: (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null,
-    })
-    onChange({
-      ...character,
-      info: {
-        ...character.info,
-        race: template.name,
-        sourceRaceTemplateId: template.id,
-        raceSourceOrigin: 'template',
-        raceTemplateSnapshot: template as unknown as Record<string, unknown>,
-      },
-      raceFeatures: shouldApplyPrefill(character.raceFeatures, previousRacePrefill, nextRacePrefill)
-        ? nextRacePrefill
-        : character.raceFeatures,
-      languages: shouldApplyPrefill(character.languages, previousLanguagesPrefill, nextLanguagesPrefill)
-        ? nextLanguagesPrefill
-        : character.languages,
-    })
-  }, [character, composeTemplateProficienciesAndLanguages, deriveRaceFeatures, onChange, raceTemplates, shouldApplyPrefill])
-
-  const applyBackgroundTemplate = useCallback((templateId: string) => {
-    const template = backgroundTemplates.find((row) => row.id === templateId)
-    if (!template) return
-    const previousTemplate = (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null
-    const previousBackgroundPrefill = previousTemplate ? deriveBackgroundFeatures(previousTemplate) : ''
-    const nextBackgroundPrefill = deriveBackgroundFeatures(template)
-    const previousLanguagesPrefill = composeTemplateProficienciesAndLanguages({
-      classTemplate: (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null,
-      raceTemplate: (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null,
-      backgroundTemplate: previousTemplate,
-    })
-    const nextLanguagesPrefill = composeTemplateProficienciesAndLanguages({
-      classTemplate: (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null,
-      raceTemplate: (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null,
-      backgroundTemplate: template,
-    })
-    onChange({
-      ...character,
-      info: {
-        ...character.info,
-        background: template.name,
-        sourceBackgroundTemplateId: template.id,
-        backgroundSourceOrigin: 'template',
-        backgroundTemplateSnapshot: template as unknown as Record<string, unknown>,
-      },
-      backgroundFeatures: shouldApplyPrefill(character.backgroundFeatures, previousBackgroundPrefill, nextBackgroundPrefill)
-        ? nextBackgroundPrefill
-        : character.backgroundFeatures,
-      languages: shouldApplyPrefill(character.languages, previousLanguagesPrefill, nextLanguagesPrefill)
-        ? nextLanguagesPrefill
-        : character.languages,
-    })
-  }, [backgroundTemplates, character, composeTemplateProficienciesAndLanguages, deriveBackgroundFeatures, onChange, shouldApplyPrefill])
 
   const updateAbility = useCallback((ability: AbilityName, value: number) => {
     onChange({
