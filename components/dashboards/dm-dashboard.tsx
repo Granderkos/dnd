@@ -82,7 +82,7 @@ function formatErrorMessage(error: unknown, fallback: string) {
 }
 
 const COMBAT_CONDITIONS = ['Poisoned', 'Prone', 'Restrained', 'Grappled', 'Stunned', 'Blinded', 'Frightened', 'Invisible', 'Unconscious', 'Downed'] as const
-const AUTO_SKIP_CONDITIONS = new Set(['Unconscious', 'Downed', 'Stunned'])
+const UNIVERSAL_AUTO_SKIP_CONDITIONS = new Set(['Unconscious', 'Stunned'])
 
 function parseFightEntityNotes(notes: string | null) {
   const meta: { ac: string | null; conditions: string[] } = { ac: null, conditions: [] }
@@ -116,8 +116,11 @@ function isDownedEntity(entity: FightEntity) {
 }
 
 function isAutoSkipEntity(entity: FightEntity) {
+  const conditions = getEntityConditions(entity)
+  if (conditions.some((condition) => UNIVERSAL_AUTO_SKIP_CONDITIONS.has(condition))) return true
+  if (entity.entity_type === 'player') return false
   if ((entity.current_hp ?? 0) <= 0) return true
-  return getEntityConditions(entity).some((condition) => AUTO_SKIP_CONDITIONS.has(condition))
+  return conditions.includes('Downed')
 }
 
 function getEntityHpSnapshot(
@@ -1059,7 +1062,7 @@ function DMFightPanel({
                           }}
                         />
                       </div>
-                      {entity.entity_type === 'player' && entity.character_id && characterCombatState[entity.character_id] ? (
+                      {entity.entity_type === 'player' && entity.character_id && characterCombatState[entity.character_id] && isDownedEntity(entity) ? (
                         <div className="mt-1.5 text-[11px] text-muted-foreground">
                           {labels.deathSaves}: {labels.deathSuccess} {characterCombatState[entity.character_id].deathSuccesses}/3 • {labels.deathFailure} {characterCombatState[entity.character_id].deathFailures}/3
                           <div className="mt-1 flex justify-end gap-1">
