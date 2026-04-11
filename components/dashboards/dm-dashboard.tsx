@@ -753,10 +753,17 @@ function DMFightPanel({
   }
 }) {
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const [roundNumber, setRoundNumber] = useState(1)
+  const [roundAnchorId, setRoundAnchorId] = useState<string | null>(null)
+  const [previousTurnId, setPreviousTurnId] = useState<string | null>(null)
 
   const activeEntity = entities.find((entity) => !isDownedEntity(entity)) ?? null
   const activeEntityId = activeEntity?.id ?? null
   const hasActiveTurn = Boolean(activeEntity)
+  const activeEntityIndex = activeEntityId ? entities.findIndex((entity) => entity.id === activeEntityId) : -1
+  const nextEntity = activeEntityIndex >= 0
+    ? entities.slice(activeEntityIndex + 1).concat(entities.slice(0, activeEntityIndex)).find((entity) => !isDownedEntity(entity)) ?? null
+    : null
   const emptyStateMessage = fightStatus === 'collecting_initiative'
     ? labels.noEntitiesCollecting
     : fightStatus === 'draft'
@@ -776,6 +783,29 @@ function DMFightPanel({
     if (!activeEntityId) return
     rowRefs.current[activeEntityId]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [activeEntityId])
+
+  useEffect(() => {
+    if (!fightId || fightStatus !== 'active' || !activeEntityId) {
+      setRoundNumber(1)
+      setRoundAnchorId(null)
+      setPreviousTurnId(null)
+      return
+    }
+    setRoundAnchorId((currentAnchor) => currentAnchor ?? activeEntityId)
+    setPreviousTurnId((prevTurn) => {
+      if (!prevTurn) return activeEntityId
+      if (prevTurn === activeEntityId) return prevTurn
+      if (roundAnchorId && activeEntityId === roundAnchorId) {
+        setRoundNumber((round) => round + 1)
+      }
+      return activeEntityId
+    })
+  }, [activeEntityId, fightId, fightStatus, roundAnchorId])
+
+  const formatTurnEntity = useCallback((entity: FightEntity | null) => {
+    if (!entity) return '—'
+    return `${entity.name} (${entity.entity_type})`
+  }, [])
 
   if (isLoading) {
     return <div className="flex h-full items-center justify-center text-muted-foreground">{labels.loading}</div>
@@ -811,6 +841,22 @@ function DMFightPanel({
             {isClearingFight ? labels.clearing : labels.clearFight}
           </Button>
           <Button size="sm" onClick={() => void onAdvanceTurn()} disabled={!fightId || entities.length === 0 || isAdvancingTurn || !hasActiveTurn || fightStatus !== 'active'}>{labels.nextTurn}</Button>
+        </div>
+      </div>
+      <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
+        <div className="grid gap-2 text-sm sm:grid-cols-3">
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Round</div>
+            <div className="font-semibold">{fightStatus === 'active' ? roundNumber : '—'}</div>
+          </div>
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Current Turn</div>
+            <div className="font-semibold">{fightStatus === 'active' ? formatTurnEntity(activeEntity) : '—'}</div>
+          </div>
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Next Turn</div>
+            <div className="font-semibold">{fightStatus === 'active' ? formatTurnEntity(nextEntity) : '—'}</div>
+          </div>
         </div>
       </div>
       {error ? <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
