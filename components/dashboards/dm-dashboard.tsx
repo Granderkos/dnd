@@ -21,6 +21,7 @@ import { useAuth } from '@/lib/auth-context'
 import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
+import { DmItemTemplatePanel } from '@/components/dm/DmItemTemplatePanel'
 import { clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listFightCharacterCombatState, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, setFightRoundNumber, startCombatForCampaign, updateFightEntityNotes } from '@/lib/supabase-v3'
 import type { FightStatus } from '@/lib/v3-types'
 import type { FightEntity } from '@/lib/v3-types'
@@ -710,7 +711,12 @@ export const DMDashboard = memo(function DMDashboard() {
             <p className="mt-2 text-xs text-muted-foreground">{t('dashboard.autoSaves')}</p>
           </div>
         </TabsContent>
-        <TabsContent value="bestiary" className="mt-0 flex-1 overflow-hidden"><DmBestiaryPanel onMonsterAdded={() => void loadFightState()} /></TabsContent>
+        <TabsContent value="bestiary" className="mt-0 flex-1 overflow-hidden">
+          <div className="h-full min-h-0 overflow-y-auto p-3 space-y-3">
+            <DmBestiaryPanel onMonsterAdded={() => void loadFightState()} />
+            <DmItemTemplatePanel />
+          </div>
+        </TabsContent>
         <TabsContent value="fight" className="mt-0 flex-1 overflow-hidden">
           <DMFightPanel
             fightId={fightId}

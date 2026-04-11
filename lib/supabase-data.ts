@@ -38,6 +38,27 @@ export interface ItemTemplate {
   tags: unknown
 }
 
+export interface CreateItemTemplateInput {
+  name: string
+  description?: string | null
+  category: string
+  item_kind: string
+  item_subtype?: string | null
+  rarity?: string | null
+  weight?: number | null
+  value_text?: string | null
+  damage_text?: string | null
+  damage_type?: string | null
+  range_text?: string | null
+  armor_kind?: string | null
+  ac_base?: number | null
+  charges_max?: number | null
+  charges_current?: number | null
+  usage_type?: string | null
+  properties?: unknown
+  tags?: unknown
+}
+
 export interface SpellTemplate {
   id: string
   name: string
@@ -955,6 +976,50 @@ export async function listItemTemplates() {
   const normalizedRows = (rows ?? []) as unknown as ItemTemplate[]
   templateQueryCache.set('item_templates', { expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS, data: normalizedRows as unknown[] })
   return normalizedRows
+}
+
+function slugifyTemplateName(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+export async function createItemTemplate(userId: string, input: CreateItemTemplateInput) {
+  const baseSlug = slugifyTemplateName(input.name) || 'custom-item'
+  const slug = `${baseSlug}-${Date.now().toString(36)}`
+  const { data, error } = await supabase
+    .from('item_templates')
+    .insert({
+      slug,
+      name: input.name.trim(),
+      description: input.description?.trim() || null,
+      category: normalizeInventoryCategory(input.category),
+      item_kind: input.item_kind,
+      item_subtype: input.item_subtype ?? null,
+      rarity: input.rarity ?? null,
+      weight: input.weight ?? null,
+      value_text: input.value_text?.trim() || null,
+      damage_text: input.damage_text?.trim() || null,
+      damage_type: input.damage_type?.trim() || null,
+      range_text: input.range_text?.trim() || null,
+      armor_kind: input.armor_kind ?? null,
+      ac_base: input.ac_base ?? null,
+      charges_max: input.charges_max ?? null,
+      charges_current: input.charges_current ?? null,
+      usage_type: input.usage_type ?? null,
+      properties: input.properties ?? [],
+      tags: input.tags ?? ['custom'],
+      is_official: false,
+      created_by: userId,
+    })
+    .select('id, name, description, category, item_kind, item_subtype, rarity, weight, value_text, damage_text, damage_type, range_text, weapon_kind, armor_kind, ac_base, ac_bonus, dex_cap, strength_requirement, stealth_disadvantage, source_url, requires_attunement, capacity_text, contents_summary, charges_max, charges_current, usage_type, properties, tags')
+    .single()
+
+  if (error) throw error
+  templateQueryCache.delete('item_templates')
+  return data as ItemTemplate
 }
 
 export async function listSpellTemplates() {
