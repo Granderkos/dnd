@@ -50,13 +50,42 @@ interface SpellbookProps {
   spellbook: SpellbookType
   proficiencyBonus: number
   abilityScores: Record<AbilityName, { value: number; proficient: boolean }>
+  characterClass: string
+  characterLevel: number
+  controlledSpellcastingAbility?: AbilityName | null
   onChange: (spellbook: SpellbookType) => void
+}
+
+const CLASS_SPELL_NAME_ALLOWLIST: Record<string, string[]> = {
+  wizard: ['Fire Bolt', 'Ray of Frost', 'Mage Hand', 'Minor Illusion', 'Prestidigitation', 'Magic Missile', 'Shield', 'Mage Armor', 'Sleep', 'Detect Magic', 'Identify', 'Burning Hands', 'Chromatic Orb', 'Misty Step', 'Scorching Ray', 'Invisibility', 'Mirror Image', 'Web'],
+  druid: ['Guidance', 'Cure Wounds', 'Healing Word', 'Faerie Fire', 'Lesser Restoration', 'Hold Person'],
+  cleric: ['Guidance', 'Sacred Flame', 'Cure Wounds', 'Healing Word', 'Guiding Bolt', 'Bless', 'Detect Magic', 'Lesser Restoration', 'Spiritual Weapon', 'Hold Person'],
+  bard: ['Vicious Mockery', 'Healing Word', 'Cure Wounds', 'Sleep', 'Faerie Fire', 'Detect Magic', 'Identify', 'Suggestion', 'Invisibility'],
+  warlock: ['Eldritch Blast', 'Mage Hand', 'Minor Illusion', 'Hex', 'Sleep', 'Armor of Agathys', 'Suggestion'],
+  sorcerer: ['Fire Bolt', 'Ray of Frost', 'Mage Hand', 'Minor Illusion', 'Prestidigitation', 'Magic Missile', 'Shield', 'Sleep', 'Burning Hands', 'Chromatic Orb', 'Scorching Ray', 'Misty Step'],
+  paladin: ['Bless', 'Cure Wounds', 'Detect Magic', 'Lesser Restoration'],
+  ranger: ['Cure Wounds', 'Detect Magic', 'Faerie Fire', 'Lesser Restoration'],
+}
+
+function normalizeClassName(value: string): string {
+  return value.trim().toLowerCase()
+}
+
+function maxSpellLevelForClass(level: number, className: string): number {
+  const normalized = normalizeClassName(className)
+  const clampedLevel = Math.max(1, Math.min(20, level))
+  if (['paladin', 'ranger'].includes(normalized)) return Math.max(0, Math.floor((clampedLevel + 1) / 4))
+  if (['fighter', 'rogue', 'barbarian', 'monk'].includes(normalized)) return 0
+  return Math.max(0, Math.min(9, Math.ceil(clampedLevel / 2)))
 }
 
 export function Spellbook({
   spellbook,
   proficiencyBonus,
   abilityScores,
+  characterClass,
+  characterLevel,
+  controlledSpellcastingAbility = null,
   onChange,
 }: SpellbookProps) {
   const { t, language } = useI18n()
@@ -71,6 +100,9 @@ export function Spellbook({
     onConfirm: () => void
   }>({ open: false, title: '', description: '', onConfirm: () => {} })
 
+  const normalizedClass = normalizeClassName(characterClass)
+  const maxAvailableSpellLevel = maxSpellLevelForClass(characterLevel, normalizedClass)
+
   const spellcastingScore = useMemo(
     () => abilityScores[spellbook.spellcastingAbility].value,
     [abilityScores, spellbook.spellcastingAbility],
@@ -79,8 +111,9 @@ export function Spellbook({
   const calculatedAttack = calculateSpellAttackBonus(proficiencyBonus, spellcastingScore)
 
   const updateSpellcastingAbility = useCallback((ability: AbilityName) => {
+    if (controlledSpellcastingAbility) return
     onChange({ ...spellbook, spellcastingAbility: ability })
-  }, [spellbook, onChange])
+  }, [controlledSpellcastingAbility, spellbook, onChange])
 
   const toggleSlot = useCallback((level: number, index: number) => {
     const currentSlots = spellbook.slots[level]
@@ -155,11 +188,11 @@ export function Spellbook({
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 pb-24">
         <Card>
           <CardContent className="pt-4">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <div className="flex flex-col items-center justify-center rounded-lg border bg-muted/30 p-3">
                 <span className="text-xs text-muted-foreground">{t('spellbook.ability')}</span>
                 <Select value={spellbook.spellcastingAbility} onValueChange={(v) => updateSpellcastingAbility(v as AbilityName)}>
-                  <SelectTrigger className="mt-1 h-9 w-full border-0 bg-transparent text-center text-lg font-bold shadow-none">
+                  <SelectTrigger className="mt-1 h-9 w-full border-0 bg-transparent text-center text-lg font-bold shadow-none" disabled={!!controlledSpellcastingAbility}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -168,6 +201,9 @@ export function Spellbook({
                     <SelectItem value="CHA">CHA</SelectItem>
                   </SelectContent>
                 </Select>
+                {controlledSpellcastingAbility ? (
+                  <span className="mt-1 text-[10px] text-muted-foreground">{t('spellbook.classControlledAbility')}</span>
+                ) : null}
               </div>
               <div className="flex flex-col items-center justify-center rounded-lg border bg-primary/10 p-3">
                 <span className="text-xs text-muted-foreground">{t('spellbook.spellDc')}</span>
@@ -183,7 +219,7 @@ export function Spellbook({
 
         <Card>
           <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-[0.08em]">
                 <span className="flex size-6 items-center justify-center rounded bg-muted text-xs font-bold">0</span>
                 {t('spellbook.cantrips')}
@@ -214,16 +250,16 @@ export function Spellbook({
           return (
             <Card key={level}>
               <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-[0.08em]">
                     <span className="flex size-6 items-center justify-center rounded bg-muted text-xs font-bold">{level}</span>
                     {t('spellbook.level', { level })}
                   </CardTitle>
                   <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" className="h-8" onClick={() => { setNewSpellLevel(level); setIsAddingSpell(true) }}>
+                    <Button size="sm" variant="outline" className="h-8" disabled={level > maxAvailableSpellLevel} onClick={() => { setNewSpellLevel(level); setIsAddingSpell(true) }}>
                       <Plus className="size-4" />
                     </Button>
-                    <Button size="sm" variant="outline" className="h-8" onClick={() => { setNewSpellLevel(level); setIsImportingSpell(true) }}>
+                    <Button size="sm" variant="outline" className="h-8" disabled={level > maxAvailableSpellLevel} onClick={() => { setNewSpellLevel(level); setIsImportingSpell(true) }}>
                       <Package className="size-4" />
                     </Button>
                   </div>
@@ -260,16 +296,16 @@ export function Spellbook({
           return (
             <Card key={level} className="opacity-50 transition-opacity hover:opacity-100">
               <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-[0.08em]">
                     <span className="flex size-6 items-center justify-center rounded bg-muted text-xs font-bold">{level}</span>
                     {t('spellbook.level', { level })}
                   </CardTitle>
                   <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" className="h-8" onClick={() => { setNewSpellLevel(level); setIsAddingSpell(true) }}>
+                    <Button size="sm" variant="outline" className="h-8" disabled={level > maxAvailableSpellLevel} onClick={() => { setNewSpellLevel(level); setIsAddingSpell(true) }}>
                       <Plus className="size-4" />
                     </Button>
-                    <Button size="sm" variant="outline" className="h-8" onClick={() => { setNewSpellLevel(level); setIsImportingSpell(true) }}>
+                    <Button size="sm" variant="outline" className="h-8" disabled={level > maxAvailableSpellLevel} onClick={() => { setNewSpellLevel(level); setIsImportingSpell(true) }}>
                       <Package className="size-4" />
                     </Button>
                   </div>
@@ -300,7 +336,7 @@ export function Spellbook({
                   {selectedSpell.concentration && <Badge variant="outline" className="gap-1"><Eye className="size-3" /> {t('spellbook.concentration')}</Badge>}
                   {selectedSpell.reaction && <Badge variant="outline" className="gap-1"><Zap className="size-3" /> {t('spellbook.reaction')}</Badge>}
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                   <div><span className="text-muted-foreground">{t('spellbook.castingTime')}: </span><span className="break-words">{selectedSpell.castingTime}</span></div>
                   <div><span className="text-muted-foreground">{t('spellbook.range')}: </span><span className="break-words">{formatFeetWithSquares(selectedSpell.range, language)}</span></div>
                   <div><span className="text-muted-foreground">{t('spellbook.duration')}: </span><span className="break-words">{selectedSpell.duration}</span></div>
@@ -313,11 +349,12 @@ export function Spellbook({
         </DialogContent>
       </Dialog>
 
-      <AddSpellDialog open={isAddingSpell} onOpenChange={setIsAddingSpell} level={newSpellLevel} onAdd={addSpell} />
+      <AddSpellDialog open={isAddingSpell} onOpenChange={setIsAddingSpell} level={newSpellLevel} characterClass={characterClass} onAdd={addSpell} />
       <SpellTemplateImportDialog
         open={isImportingSpell}
         onOpenChange={setIsImportingSpell}
         level={newSpellLevel}
+        characterClass={characterClass}
         onImport={addSpell}
       />
 
@@ -352,14 +389,14 @@ const SpellRow = memo(function SpellRow({ spell, onClick, onTogglePrepared, onDe
       {!isCantrip && <Checkbox checked={spell.prepared} onCheckedChange={onTogglePrepared} title={t('spellbook.prepared')} className="size-5 shrink-0" />}
       <button onClick={onClick} className="min-w-0 flex-1 text-left">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-sm truncate max-w-[120px]">{spell.name}</span>
+          <span className="font-medium text-sm truncate">{spell.name}</span>
           <div className="flex shrink-0 gap-1">
             {spell.ritual && <Badge variant="outline" className="h-5 px-1.5 text-xs">R</Badge>}
             {spell.concentration && <Badge variant="outline" className="h-5 px-1.5 text-xs">C</Badge>}
             {spell.reaction && <Badge variant="outline" className="h-5 px-1.5 text-xs"><Zap className="size-3" /></Badge>}
           </div>
         </div>
-        <p className="text-xs text-muted-foreground truncate max-w-[180px] mt-0.5">{spell.castingTime} | {spell.range} | {spell.duration}</p>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">{spell.castingTime} | {spell.range} | {spell.duration}</p>
       </button>
       <Button size="icon" variant="ghost" onClick={onDelete} className="size-8 shrink-0 text-destructive hover:text-destructive"><X className="size-4" /></Button>
     </div>
@@ -370,10 +407,11 @@ interface AddSpellDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   level: number
+  characterClass: string
   onAdd: (spell: Spell) => void
 }
 
-function AddSpellDialog({ open, onOpenChange, level, onAdd }: AddSpellDialogProps) {
+function AddSpellDialog({ open, onOpenChange, level, characterClass, onAdd }: AddSpellDialogProps) {
   const { t } = useI18n()
   const [mode, setMode] = useState<'custom' | 'template'>('custom')
   const [templates, setTemplates] = useState<SpellTemplate[]>([])
@@ -454,10 +492,14 @@ function AddSpellDialog({ open, onOpenChange, level, onAdd }: AddSpellDialogProp
     setSelectedTemplateId('')
   }
 
-  const templatesForLevel = useMemo(
-    () => templates.filter((row) => row.level === level),
-    [level, templates],
-  )
+  const templatesForLevel = useMemo(() => {
+    const classAllowlist = CLASS_SPELL_NAME_ALLOWLIST[normalizeClassName(characterClass)] ?? null
+    return templates.filter((row) => {
+      if (row.level !== level) return false
+      if (!classAllowlist) return true
+      return classAllowlist.includes(row.name)
+    })
+  }, [characterClass, level, templates])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -467,7 +509,7 @@ function AddSpellDialog({ open, onOpenChange, level, onAdd }: AddSpellDialogProp
           <DialogDescription className="sr-only">{t('spellbook.enterSpellDetails')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Button variant={mode === 'custom' ? 'default' : 'outline'} onClick={() => setMode('custom')}>{t('spellbook.createCustomSpell')}</Button>
             <Button variant={mode === 'template' ? 'default' : 'outline'} onClick={() => setMode('template')}>{t('spellbook.importFromTemplate')}</Button>
           </div>
@@ -482,7 +524,7 @@ function AddSpellDialog({ open, onOpenChange, level, onAdd }: AddSpellDialogProp
                 <label className="flex items-center gap-2 text-sm"><Checkbox checked={spell.concentration} onCheckedChange={(checked) => setSpell({ ...spell, concentration: !!checked })} />{t('spellbook.concentration')}</label>
                 <label className="flex items-center gap-2 text-sm"><Checkbox checked={spell.reaction} onCheckedChange={(checked) => setSpell({ ...spell, reaction: !!checked })} />{t('spellbook.reaction')}</label>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-sm text-muted-foreground">{t('spellbook.castingTime')}</label>
                   <Input value={spell.castingTime} onChange={(e) => setSpell({ ...spell, castingTime: e.target.value })} placeholder="1 action" className="h-10" />
@@ -538,10 +580,11 @@ interface SpellTemplateImportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   level: number
+  characterClass: string
   onImport: (spell: Spell) => void
 }
 
-function SpellTemplateImportDialog({ open, onOpenChange, level, onImport }: SpellTemplateImportDialogProps) {
+function SpellTemplateImportDialog({ open, onOpenChange, level, characterClass, onImport }: SpellTemplateImportDialogProps) {
   const { t } = useI18n()
   const [templates, setTemplates] = useState<SpellTemplate[]>([])
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
@@ -557,7 +600,8 @@ function SpellTemplateImportDialog({ open, onOpenChange, level, onImport }: Spel
       .then((rows) => {
         if (cancelled) return
         setTemplates(rows)
-        const firstForLevel = rows.find((row) => row.level === level)
+        const classAllowlist = CLASS_SPELL_NAME_ALLOWLIST[normalizeClassName(characterClass)] ?? null
+        const firstForLevel = rows.find((row) => row.level === level && (!classAllowlist || classAllowlist.includes(row.name)))
         setSelectedTemplateId((current) => current || firstForLevel?.id || '')
       })
       .catch((error) => {
@@ -570,12 +614,16 @@ function SpellTemplateImportDialog({ open, onOpenChange, level, onImport }: Spel
     return () => {
       cancelled = true
     }
-  }, [level, open, t])
+  }, [characterClass, level, open, t])
 
-  const templatesForLevel = useMemo(
-    () => templates.filter((template) => template.level === level),
-    [level, templates],
-  )
+  const templatesForLevel = useMemo(() => {
+    const classAllowlist = CLASS_SPELL_NAME_ALLOWLIST[normalizeClassName(characterClass)] ?? null
+    return templates.filter((template) => {
+      if (template.level !== level) return false
+      if (!classAllowlist) return true
+      return classAllowlist.includes(template.name)
+    })
+  }, [characterClass, level, templates])
   const selectedTemplate = useMemo(
     () => templatesForLevel.find((template) => template.id === selectedTemplateId) ?? null,
     [selectedTemplateId, templatesForLevel],

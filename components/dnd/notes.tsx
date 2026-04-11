@@ -158,15 +158,15 @@ export function Notes({ notes, onChange }: NotesProps) {
   }
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto px-3 py-4">
+    <div className="h-full min-h-0 overflow-y-auto px-3 py-3 sm:py-4">
       <div>
         <PageShell>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+          <div className="flex gap-1 overflow-x-auto pb-1">
               <Button
                 size="sm"
                 variant={selectedCategory === 'all' ? 'default' : 'outline'}
                 onClick={() => setSelectedCategory('all')}
-                className="h-9 w-full px-3 text-xs"
+                className="h-8 shrink-0 px-2 text-[11px]"
               >
                 {t('common.all')}
               </Button>
@@ -176,34 +176,34 @@ export function Notes({ notes, onChange }: NotesProps) {
                   size="sm"
                   variant={selectedCategory === id ? 'default' : 'outline'}
                   onClick={() => setSelectedCategory(id)}
-                  className="h-9 w-full px-3 text-xs"
+                  className="h-8 shrink-0 px-2 text-[11px]"
                 >
                   {t(labelKey)}
                 </Button>
               ))}
             </div>
 
-          <Card className="mt-4">
-            <CardContent className="pb-3 pt-3">
-              <div className="grid grid-cols-5 gap-3">
+          <Card className="mt-2">
+            <CardContent className="pb-2 pt-2 sm:pb-3 sm:pt-3">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 sm:gap-3">
                 {NOTE_CATEGORIES.map(({ id, icon: Icon, labelKey }) => (
                   <Button
                     key={id}
                     size="sm"
                     variant="outline"
                     onClick={() => addNote(id)}
-                    className="h-12 w-full gap-1.5"
+                    className="h-10 w-full gap-1.5 px-2"
                     title={t(labelKey)}
                   >
-                    <Icon className="size-5" />
-                    <span className="hidden sm:inline text-sm">{t(labelKey)}</span>
+                    <Icon className="size-4" />
+                    <span className="hidden sm:inline text-xs">{t(labelKey)}</span>
                   </Button>
                 ))}
               </div>
             </CardContent>
           </Card>
 
-          <div className="mt-4 space-y-3">
+          <div className="mt-3 space-y-2.5">
             {sortedNotes.length === 0 ? (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">
