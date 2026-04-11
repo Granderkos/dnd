@@ -45,7 +45,13 @@ export async function listCreatures() {
   return (data ?? []) as CompendiumEntry[]
 }
 
-export async function createCreature(input: Omit<CompendiumEntry, 'id' | 'created_at' | 'is_system' | 'type'>) {
+export async function createCreature(input: {
+  subtype: CompendiumEntry['subtype']
+  slug: string
+  name: string
+  description?: string | null
+  data?: Record<string, unknown>
+}) {
   const { data, error } = await supabase
     .from('compendium_entries')
     .insert({
@@ -429,6 +435,20 @@ export async function listFightCharacterCombatState(fightId: string) {
   }>
 }
 
+export async function setCharacterDeathSaves(characterId: string, deathSuccesses: number, deathFailures: number) {
+  const nextSuccesses = Math.max(0, Math.min(3, Math.floor(deathSuccesses)))
+  const nextFailures = Math.max(0, Math.min(3, Math.floor(deathFailures)))
+  const { error } = await supabase
+    .from('characters')
+    .update({
+      death_successes: nextSuccesses,
+      death_failures: nextFailures,
+    })
+    .eq('id', characterId)
+
+  if (error) throw error
+}
+
 export async function clearFightEntities(fightId: string) {
   const { error } = await supabase
     .from('fight_entities')
@@ -540,6 +560,14 @@ export async function activateCompanion(companionId: string, isActive: boolean) 
 
   if (error) throw error
   return data as CharacterCompanion
+}
+
+export async function deleteCompanionAssignment(companionId: string) {
+  const { error } = await supabase
+    .from('character_companions')
+    .delete()
+    .eq('id', companionId)
+  if (error) throw error
 }
 
 export async function startCombat(fightId: string, submissions: InitiativeSubmission[]) {
