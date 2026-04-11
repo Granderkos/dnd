@@ -1061,6 +1061,30 @@ async function appendInventoryRow(
     templateSnapshot?: Record<string, unknown> | null
   }
 ) {
+  const formatGrantRpcError = (error: {
+    message?: string | null
+    details?: string | null
+    hint?: string | null
+    code?: string | null
+  }) => {
+    const message = error.message ?? 'Unknown grant error'
+    const details = error.details ? ` (${error.details})` : ''
+    const hint = error.hint ? ` Hint: ${error.hint}` : ''
+    if (/invalid input syntax for type uuid/i.test(message)) {
+      return new Error(`Failed to grant item: invalid character or template id.${details}${hint}`)
+    }
+    if (/Invalid target character/i.test(message)) {
+      return new Error(`Failed to grant item: target character is not eligible for DM rewards.${details}${hint}`)
+    }
+    if (/Only DM can grant inventory items/i.test(message)) {
+      return new Error(`Failed to grant item: your account is missing DM permissions.${details}${hint}`)
+    }
+    if (/Not authenticated/i.test(message)) {
+      return new Error(`Failed to grant item: please sign in again.${details}${hint}`)
+    }
+    return new Error(`Failed to grant item: ${message}${details}${hint}`)
+  }
+
   const rpc = await supabase.rpc('grant_inventory_item_for_dm', {
     p_character_id: characterId,
     p_title: payload.title,
@@ -1073,7 +1097,7 @@ async function appendInventoryRow(
   })
   if (!rpc.error) return
   if (!rpc.error.message?.toLowerCase().includes('grant_inventory_item_for_dm')) {
-    throw rpc.error
+    throw formatGrantRpcError(rpc.error)
   }
 
   const { data: lastRow, error: sortError } = await supabase
@@ -1108,7 +1132,7 @@ async function appendInventoryRow(
     const { parent_client_id, source_item_template_id, source_origin, template_snapshot, ...legacyRow } = row
     ;({ error } = await supabase.from('inventory_items').insert(legacyRow))
   }
-  if (error) throw error
+  if (error) throw formatGrantRpcError(error)
 }
 
 export async function grantItemTemplateToCharacter(characterId: string, template: ItemTemplate, quantity = 1) {
