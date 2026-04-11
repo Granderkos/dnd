@@ -435,6 +435,20 @@ export async function listFightCharacterCombatState(fightId: string) {
   }>
 }
 
+export async function setCharacterDeathSaves(characterId: string, deathSuccesses: number, deathFailures: number) {
+  const nextSuccesses = Math.max(0, Math.min(3, Math.floor(deathSuccesses)))
+  const nextFailures = Math.max(0, Math.min(3, Math.floor(deathFailures)))
+  const { error } = await supabase
+    .from('characters')
+    .update({
+      death_successes: nextSuccesses,
+      death_failures: nextFailures,
+    })
+    .eq('id', characterId)
+
+  if (error) throw error
+}
+
 export async function clearFightEntities(fightId: string) {
   const { error } = await supabase
     .from('fight_entities')
