@@ -46,6 +46,7 @@ export interface Fight {
   campaign_id: string
   is_active: boolean
   status: FightStatus
+  round_number?: number
   created_at: string
 }
 
