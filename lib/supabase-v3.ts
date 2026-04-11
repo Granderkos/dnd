@@ -45,7 +45,13 @@ export async function listCreatures() {
   return (data ?? []) as CompendiumEntry[]
 }
 
-export async function createCreature(input: Omit<CompendiumEntry, 'id' | 'created_at' | 'is_system' | 'type'>) {
+export async function createCreature(input: {
+  subtype: CompendiumEntry['subtype']
+  slug: string
+  name: string
+  description?: string | null
+  data?: Record<string, unknown>
+}) {
   const { data, error } = await supabase
     .from('compendium_entries')
     .insert({
@@ -540,6 +546,14 @@ export async function activateCompanion(companionId: string, isActive: boolean) 
 
   if (error) throw error
   return data as CharacterCompanion
+}
+
+export async function deleteCompanionAssignment(companionId: string) {
+  const { error } = await supabase
+    .from('character_companions')
+    .delete()
+    .eq('id', companionId)
+  if (error) throw error
 }
 
 export async function startCombat(fightId: string, submissions: InitiativeSubmission[]) {
