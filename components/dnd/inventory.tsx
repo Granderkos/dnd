@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Plus, X, Minus, Package, Sword, Shield, Backpack, FlaskConical, ScrollText, Gem, Boxes } from 'lucide-react'
+import { Plus, X, Minus, Package, Sword, Shield, Backpack, FlaskConical, ScrollText, Gem, Boxes, Wrench, ChevronRight, ChevronDown, MoveHorizontal } from 'lucide-react'
 import { Inventory as InventoryType, InventoryItem, Currency } from '@/lib/dnd-types'
 import { useI18n } from '@/lib/i18n'
 import { PageShell } from '@/components/app/page-shell'
@@ -43,7 +43,7 @@ interface InventoryProps {
   onChange: (inventory: InventoryType) => void
 }
 
-const CATEGORIES = ['Weapons', 'Armor', 'Equipment', 'Consumables', 'Supplies', 'Treasure', 'Other'] as const
+const CATEGORIES = ['Weapons', 'Armor', 'Equipment', 'Tools', 'Consumables', 'Supplies', 'Treasure', 'Other'] as const
 const CATEGORY_SET = new Set<string>(CATEGORIES)
 
 function normalizeInventoryCategory(value: string | null | undefined): string {
@@ -52,6 +52,7 @@ function normalizeInventoryCategory(value: string | null | undefined): string {
   if (['weapon', 'weapons'].includes(normalized)) return 'Weapons'
   if (['armor', 'armour'].includes(normalized)) return 'Armor'
   if (['equipment', 'gear'].includes(normalized)) return 'Equipment'
+  if (['tool', 'tools', 'kit', 'kits'].includes(normalized)) return 'Tools'
   if (['consumable', 'consumables', 'potion', 'potions'].includes(normalized)) return 'Consumables'
   if (['supply', 'supplies'].includes(normalized)) return 'Supplies'
   if (['treasure', 'treasures', 'loot'].includes(normalized)) return 'Treasure'
@@ -59,10 +60,23 @@ function normalizeInventoryCategory(value: string | null | undefined): string {
   return 'Other'
 }
 
+function getTemplateCategory(template: ItemTemplate): string {
+  const normalizedKind = (template.item_kind ?? '').trim().toLowerCase()
+  if (normalizedKind === 'consumable') return 'Consumables'
+  if (normalizedKind === 'tool') return 'Tools'
+  if (normalizedKind === 'gear') return 'Equipment'
+  if (normalizedKind === 'weapon') return 'Weapons'
+  if (normalizedKind === 'armor') return 'Armor'
+  const normalizedCategory = normalizeInventoryCategory(template.category)
+  if (normalizedCategory === 'Other') return 'Equipment'
+  return normalizedCategory
+}
+
 const CATEGORY_META = {
   Weapons: { icon: Sword, labelKey: 'inventory.weapons' },
   Armor: { icon: Shield, labelKey: 'inventory.armor' },
   Equipment: { icon: Backpack, labelKey: 'inventory.equipment' },
+  Tools: { icon: Wrench, labelKey: 'inventory.tools' },
   Consumables: { icon: FlaskConical, labelKey: 'inventory.consumables' },
   Supplies: { icon: ScrollText, labelKey: 'inventory.supplies' },
   Treasure: { icon: Gem, labelKey: 'inventory.treasure' },
@@ -73,7 +87,6 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
   const { t } = useI18n()
   const [isAddingItem, setIsAddingItem] = useState(false)
   const [isImportingTemplate, setIsImportingTemplate] = useState(false)
-  const [templateCategoryFilter, setTemplateCategoryFilter] = useState<string | null>(null)
   const [templates, setTemplates] = useState<ItemTemplate[]>([])
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
   const [templateLoadError, setTemplateLoadError] = useState<string | null>(null)
@@ -85,6 +98,9 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
     description: string
     onConfirm: () => void
   }>({ open: false, title: '', description: '', onConfirm: () => {} })
+  const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({})
+  const [moveDialog, setMoveDialog] = useState<{ open: boolean; itemId: string | null }>({ open: false, itemId: null })
+  const [moveTargetContainerId, setMoveTargetContainerId] = useState<string>('top-level')
 
   const updateCurrency = useCallback((coin: keyof Currency, value: number) => {
     onChange({
@@ -105,13 +121,19 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
   }, [inventory, onChange])
 
   const importItemTemplate = useCallback((template: ItemTemplate, quantity: number) => {
-    const normalizedCategory = normalizeInventoryCategory(template.category)
+    const normalizedCategory = getTemplateCategory(template)
+    const normalizedUsageType = (template.usage_type ?? '').trim().toLowerCase()
+    const chargesMax = typeof template.charges_max === 'number' ? template.charges_max : null
+    const chargesCurrent = typeof template.charges_current === 'number'
+      ? template.charges_current
+      : chargesMax
     const importedItem: InventoryItem = {
       id: generateClientId(),
       name: template.name,
       quantity: Math.max(1, quantity),
       description: template.description ?? '',
       category: normalizedCategory,
+      parentItemId: null,
       sourceItemTemplateId: template.id,
       sourceOrigin: 'template',
       templateSnapshot: {
@@ -119,6 +141,8 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         name: template.name,
         description: template.description,
         category: normalizedCategory,
+        item_kind: template.item_kind,
+        item_subtype: template.item_subtype,
         rarity: template.rarity,
         weight: template.weight,
         value_text: template.value_text,
@@ -134,6 +158,11 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         stealth_disadvantage: template.stealth_disadvantage,
         source_url: template.source_url,
         requires_attunement: template.requires_attunement,
+        capacity_text: template.capacity_text,
+        contents_summary: template.contents_summary,
+        charges_max: chargesMax,
+        charges_current: chargesCurrent,
+        usage_type: normalizedUsageType || null,
         properties: template.properties,
         tags: template.tags,
       },
@@ -168,7 +197,9 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
       onConfirm: () => {
         onChange({
           ...inventory,
-          items: inventory.items.filter((i) => i.id !== id),
+          items: inventory.items
+            .filter((i) => i.id !== id)
+            .map((i) => (i.parentItemId === id ? { ...i, parentItemId: null } : i)),
         })
       },
     })
@@ -183,10 +214,32 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
     })
   }, [inventory, onChange])
 
+  const consumeItemUse = useCallback((id: string) => {
+    onChange({
+      ...inventory,
+      items: inventory.items.flatMap((item) => {
+        if (item.id !== id) return [item]
+        const updated = applyConsumableUse(item)
+        return updated ? [updated] : []
+      }),
+    })
+  }, [inventory, onChange])
+
+  const itemsByParent = useMemo(() => {
+    const map = new Map<string | null, InventoryItem[]>()
+    for (const item of inventory.items) {
+      const parent = item.parentItemId ?? null
+      const current = map.get(parent)
+      if (current) current.push(item)
+      else map.set(parent, [item])
+    }
+    return map
+  }, [inventory.items])
+
   const groupedItems = useMemo(() => {
     return CATEGORIES.reduce(
       (acc, category) => {
-        acc[category] = inventory.items.filter((item) => item.category === category)
+        acc[category] = inventory.items.filter((item) => item.category === category && !item.parentItemId)
         return acc
       },
       {} as Record<string, InventoryItem[]>
@@ -231,18 +284,91 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
     }
   }, [isImportingTemplate, templates.length, t])
 
+  const isContainerItem = useCallback((item: InventoryItem) => {
+    const snapshot = (item.templateSnapshot ?? null) as Record<string, unknown> | null
+    const subtype = typeof snapshot?.item_subtype === 'string' ? snapshot.item_subtype.toLowerCase() : ''
+    const hasCapacity = typeof snapshot?.capacity_text === 'string' && snapshot.capacity_text.trim().length > 0
+    return hasCapacity || ['backpack', 'pouch', 'container', 'chest', 'bag'].includes(subtype)
+  }, [])
+
+  const moveItemToContainer = useCallback((itemId: string, parentId: string | null) => {
+    onChange({
+      ...inventory,
+      items: inventory.items.map((item) => (
+        item.id === itemId ? { ...item, parentItemId: parentId } : item
+      )),
+    })
+  }, [inventory, onChange])
+
+  const collectDescendantIds = useCallback((rootId: string): Set<string> => {
+    const descendants = new Set<string>()
+    const queue = [rootId]
+    while (queue.length) {
+      const current = queue.shift()
+      if (!current) continue
+      for (const child of itemsByParent.get(current) ?? []) {
+        if (descendants.has(child.id)) continue
+        descendants.add(child.id)
+        queue.push(child.id)
+      }
+    }
+    return descendants
+  }, [itemsByParent])
+
+  const containerCandidates = useMemo(() => {
+    if (!moveDialog.itemId) return []
+    const blocked = collectDescendantIds(moveDialog.itemId)
+    blocked.add(moveDialog.itemId)
+    return inventory.items.filter((item) => isContainerItem(item) && !blocked.has(item.id))
+  }, [collectDescendantIds, inventory.items, isContainerItem, moveDialog.itemId])
+
+  const renderItemTree = useCallback((item: InventoryItem, depth = 0) => {
+    const children = itemsByParent.get(item.id) ?? []
+    const canExpand = isContainerItem(item) && children.length > 0
+    const expanded = expandedContainers[item.id] ?? true
+    return (
+      <div key={item.id} className="space-y-1.5">
+        <ItemRow
+          item={item}
+          depth={depth}
+          isContainer={isContainerItem(item)}
+          canExpand={canExpand}
+          expanded={expanded}
+          onToggleExpand={() => setExpandedContainers((current) => ({ ...current, [item.id]: !expanded }))}
+          onMove={() => {
+            setMoveDialog({ open: true, itemId: item.id })
+            setMoveTargetContainerId(item.parentItemId ?? 'top-level')
+          }}
+          onView={() => setViewingItem(item)}
+          onDelete={() => deleteItem(item.id, item.name)}
+          onAdjustQuantity={(amount) => adjustQuantity(item.id, amount)}
+          onUseConsumable={() => consumeItemUse(item.id)}
+        />
+        {canExpand && expanded ? (
+          <div className="space-y-1.5">
+            {children.map((child) => renderItemTree(child, depth + 1))}
+          </div>
+        ) : null}
+      </div>
+    )
+  }, [adjustQuantity, consumeItemUse, deleteItem, expandedContainers, isContainerItem, itemsByParent])
+
   return (
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="px-3 py-4"><PageShell><div className="flex flex-col gap-4 pb-24">
         {/* Currency */}
         <Card>
           <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              {coins.map(({ key, label, color }) => (
-                <div key={key} className="flex flex-1 flex-col items-center">
-                  <div
-                    className={`mb-1 flex size-10 items-center justify-center rounded-full ${color} text-xs font-bold text-white shadow-sm`}
-                  >
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Wallet</p>
+              <p className="text-sm font-semibold">
+                {totalGP} <span className="text-xs text-muted-foreground">GP</span>
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              {coins.map(({ key, label }) => (
+                <div key={key} className="flex items-center justify-between rounded-md border border-border/70 bg-muted/20 px-3 py-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     {label}
                   </div>
                   <Input
@@ -250,14 +376,11 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
                     min={0}
                     value={inventory.currency[key]}
                     onChange={(e) => updateCurrency(key, parseInt(e.target.value) || 0)}
-                    className="h-9 w-full text-center text-sm"
+                    className="h-8 w-24 text-right text-sm"
                   />
                 </div>
               ))}
             </div>
-            <p className="mt-2 text-center text-xs text-muted-foreground">
-              {t('inventory.treasureTotal')}: {totalGP} GP
-            </p>
           </CardContent>
         </Card>
 
@@ -269,10 +392,7 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
           </Button>
           <Button
             variant="outline"
-            onClick={() => {
-              setTemplateCategoryFilter(null)
-              setIsImportingTemplate(true)
-            }}
+            onClick={() => setIsImportingTemplate(true)}
             className="h-10"
           >
             <Package className="mr-2 size-5" />
@@ -294,30 +414,11 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
                   <Badge variant="secondary" className="ml-auto text-xs">
                     {items.length}
                   </Badge>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 px-2 text-xs"
-                    onClick={() => {
-                      setTemplateCategoryFilter(category)
-                      setIsImportingTemplate(true)
-                    }}
-                  >
-                    {t('inventory.importFromTemplate')}
-                  </Button>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-1.5">
-                  {items.map((item) => (
-                    <ItemRow
-                      key={item.id}
-                      item={item}
-                      onView={() => setViewingItem(item)}
-                      onDelete={() => deleteItem(item.id, item.name)}
-                      onAdjustQuantity={(amount) => adjustQuantity(item.id, amount)}
-                    />
-                  ))}
+                  {items.map((item) => renderItemTree(item, 0))}
                 </div>
               </CardContent>
             </Card>
@@ -336,7 +437,6 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         open={isImportingTemplate}
         onOpenChange={setIsImportingTemplate}
         templates={templates}
-        categoryFilter={templateCategoryFilter}
         isLoading={isLoadingTemplates}
         loadError={templateLoadError}
         onImport={importItemTemplate}
@@ -364,6 +464,40 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         />
       )}
 
+      <Dialog open={moveDialog.open} onOpenChange={(open) => setMoveDialog({ open, itemId: open ? moveDialog.itemId : null })}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Move to container</DialogTitle>
+            <DialogDescription>Select a destination container or keep the item at top level.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Select value={moveTargetContainerId} onValueChange={setMoveTargetContainerId}>
+              <SelectTrigger className="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="top-level">Top level</SelectItem>
+                {containerCandidates.map((container) => (
+                  <SelectItem key={container.id} value={container.id}>
+                    {container.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              className="w-full"
+              onClick={() => {
+                if (!moveDialog.itemId) return
+                moveItemToContainer(moveDialog.itemId, moveTargetContainerId === 'top-level' ? null : moveTargetContainerId)
+                setMoveDialog({ open: false, itemId: null })
+              }}
+            >
+              Move item
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Confirmation Dialog */}
       <AlertDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog({ ...confirmDialog, open })}>
         <AlertDialogContent>
@@ -385,23 +519,64 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
 
 interface ItemRowProps {
   item: InventoryItem
+  depth: number
+  isContainer: boolean
+  canExpand: boolean
+  expanded: boolean
+  onToggleExpand: () => void
+  onMove: () => void
   onView: () => void
   onDelete: () => void
   onAdjustQuantity: (amount: number) => void
+  onUseConsumable: () => void
 }
 
-const ItemRow = memo(function ItemRow({ item, onView, onDelete, onAdjustQuantity }: ItemRowProps) {
+const ItemRow = memo(function ItemRow({
+  item,
+  depth,
+  isContainer,
+  canExpand,
+  expanded,
+  onToggleExpand,
+  onMove,
+  onView,
+  onDelete,
+  onAdjustQuantity,
+  onUseConsumable,
+}: ItemRowProps) {
+  const snapshot = (item.templateSnapshot ?? null) as Record<string, unknown> | null
+  const usageType = typeof snapshot?.usage_type === 'string' ? snapshot.usage_type : null
+  const chargesCurrent = typeof snapshot?.charges_current === 'number' ? snapshot.charges_current : null
+  const chargesMax = typeof snapshot?.charges_max === 'number' ? snapshot.charges_max : null
+  const isConsumable = snapshot?.item_kind === 'consumable'
+  const canUseByCharges = usageType === 'charges' && chargesCurrent !== null && chargesCurrent > 0
+  const canUseByQuantity = usageType === 'quantity' && item.quantity > 0
+  const canUseSingle = usageType === 'single_use'
+  const canUseConsumable = isConsumable && (canUseByCharges || canUseByQuantity || canUseSingle)
+
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-border bg-background/80 px-3 py-3">
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-background/80 px-3 py-3 sm:flex-nowrap" style={{ marginLeft: `${depth * 8}px` }}>
+      {canExpand ? (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-7 shrink-0"
+          onClick={onToggleExpand}
+        >
+          {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+        </Button>
+      ) : isContainer ? (
+        <span className="inline-block size-7 shrink-0" />
+      ) : null}
       <button
         onClick={onView}
         className="min-w-0 flex-1 text-left"
       >
-        <p className="text-sm font-medium truncate max-w-[140px]">
+        <p className="truncate text-sm font-medium">
           {item.name}
         </p>
         {item.description && (
-          <p className="text-xs text-muted-foreground truncate max-w-[140px]">
+          <p className="truncate text-xs text-muted-foreground">
             {item.description}
           </p>
         )}
@@ -435,6 +610,26 @@ const ItemRow = memo(function ItemRow({ item, onView, onDelete, onAdjustQuantity
       >
         <X className="size-4" />
       </Button>
+      <Button
+        size="icon"
+        variant="ghost"
+        onClick={onMove}
+        className="size-8 shrink-0"
+        title="Move to container"
+      >
+        <MoveHorizontal className="size-4" />
+      </Button>
+      {canUseConsumable ? (
+        <Button
+          size="sm"
+          variant="secondary"
+          className="h-8 shrink-0 px-2 text-xs"
+          onClick={onUseConsumable}
+        >
+          Use
+          {usageType === 'charges' && chargesCurrent !== null && chargesMax !== null ? ` (${chargesCurrent}/${chargesMax})` : ''}
+        </Button>
+      ) : null}
     </div>
   )
 })
@@ -471,6 +666,21 @@ function ItemDetailDialog({ open, onOpenChange, item, onEdit }: ItemDetailDialog
   ].filter(Boolean) as string[]
   const showWeaponSection = normalizedCategory === 'Weapons' && weaponDetails.length > 0
   const showArmorSection = normalizedCategory === 'Armor' && armorDetails.length > 0
+  const isGearTemplate = snapshot?.item_kind === 'gear'
+  const isConsumableTemplate = snapshot?.item_kind === 'consumable'
+  const usageType = typeof snapshot?.usage_type === 'string' ? snapshot.usage_type : null
+  const chargesCurrent = typeof snapshot?.charges_current === 'number' ? snapshot.charges_current : null
+  const chargesMax = typeof snapshot?.charges_max === 'number' ? snapshot.charges_max : null
+  const gearDetails = [
+    typeof snapshot?.capacity_text === 'string' && snapshot.capacity_text ? `Capacity: ${snapshot.capacity_text}` : null,
+    typeof snapshot?.contents_summary === 'string' && snapshot.contents_summary ? `Contents: ${snapshot.contents_summary}` : null,
+  ].filter(Boolean) as string[]
+  const showGearSection = isGearTemplate && gearDetails.length > 0
+  const consumableDetails = [
+    usageType === 'quantity' || usageType === 'single_use' ? `Quantity: ${item.quantity}` : null,
+    usageType === 'charges' && chargesCurrent !== null && chargesMax !== null ? `Charges: ${chargesCurrent} / ${chargesMax}` : null,
+  ].filter(Boolean) as string[]
+  const showConsumableSection = isConsumableTemplate && consumableDetails.length > 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -506,6 +716,22 @@ function ItemDetailDialog({ open, onOpenChange, item, onEdit }: ItemDetailDialog
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Armor</p>
               <div className="space-y-1">
                 {armorDetails.map((detail) => <p key={detail}>{detail}</p>)}
+              </div>
+            </div>
+          ) : null}
+          {showGearSection ? (
+            <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Equipment</p>
+              <div className="space-y-1">
+                {gearDetails.map((detail) => <p key={detail}>{detail}</p>)}
+              </div>
+            </div>
+          ) : null}
+          {showConsumableSection ? (
+            <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Consumable</p>
+              <div className="space-y-1">
+                {consumableDetails.map((detail) => <p key={detail}>{detail}</p>)}
               </div>
             </div>
           ) : null}
@@ -553,7 +779,6 @@ interface TemplateImportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   templates: ItemTemplate[]
-  categoryFilter: string | null
   isLoading: boolean
   loadError: string | null
   onImport: (template: ItemTemplate, quantity: number) => void
@@ -563,7 +788,6 @@ function TemplateImportDialog({
   open,
   onOpenChange,
   templates,
-  categoryFilter,
   isLoading,
   loadError,
   onImport,
@@ -572,23 +796,18 @@ function TemplateImportDialog({
   const [selectedId, setSelectedId] = useState<string>('')
   const [quantity, setQuantity] = useState<number>(1)
 
-  const filteredTemplates = useMemo(() => {
-    if (!categoryFilter) return templates
-    return templates.filter((template) => normalizeInventoryCategory(template.category) === categoryFilter)
-  }, [categoryFilter, templates])
-
   useEffect(() => {
     if (!open) return
     setSelectedId((current) => {
-      if (current && filteredTemplates.some((template) => template.id === current)) return current
-      return filteredTemplates[0]?.id || ''
+      if (current && templates.some((template) => template.id === current)) return current
+      return templates[0]?.id || ''
     })
     setQuantity(1)
-  }, [open, filteredTemplates])
+  }, [open, templates])
 
   const selectedTemplate = useMemo(
-    () => filteredTemplates.find((template) => template.id === selectedId) ?? null,
-    [filteredTemplates, selectedId]
+    () => templates.find((template) => template.id === selectedId) ?? null,
+    [templates, selectedId]
   )
 
   return (
@@ -603,12 +822,20 @@ function TemplateImportDialog({
       emptyText={t('inventory.noTemplates')}
       errorText={loadError}
       importLabel={t('inventory.importFromTemplate')}
-      items={filteredTemplates}
+      items={templates}
       getItemId={(template) => template.id}
       getItemTitle={(template) => template.name}
       getItemDescription={(template) => template.description ?? ''}
-      getItemGroupLabel={(template) => normalizeInventoryCategory(template.category)}
+      getItemGroupLabel={getTemplateCategory}
       groupOrder={[...CATEGORIES]}
+      categoryFilters={[
+        { label: 'All', value: 'all' },
+        ...CATEGORIES.map((category) => ({
+          label: t(CATEGORY_META[category].labelKey),
+          value: category,
+        })),
+      ]}
+      allCategoryFilterValue="all"
       selectedId={selectedId}
       onSelectedIdChange={setSelectedId}
       onImport={() => selectedTemplate && onImport(selectedTemplate, quantity)}
@@ -627,6 +854,28 @@ function TemplateImportDialog({
       )}
     />
   )
+}
+
+function applyConsumableUse(item: InventoryItem): InventoryItem | null {
+  const snapshot = (item.templateSnapshot ?? null) as Record<string, unknown> | null
+  if (snapshot?.item_kind !== 'consumable') return item
+  const usageType = typeof snapshot?.usage_type === 'string' ? snapshot.usage_type : null
+  if (usageType === 'charges') {
+    const current = typeof snapshot?.charges_current === 'number' ? snapshot.charges_current : null
+    if (current === null || current <= 0) return item
+    return {
+      ...item,
+      templateSnapshot: {
+        ...snapshot,
+        charges_current: Math.max(0, current - 1),
+      },
+    }
+  }
+  if (usageType === 'quantity') {
+    return { ...item, quantity: Math.max(0, item.quantity - 1) }
+  }
+  if (usageType === 'single_use') return null
+  return item
 }
 
 function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
@@ -687,6 +936,7 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
         quantity: formData.quantity || 1,
         description: formData.description.trim(),
         category: formData.category || 'Equipment',
+        parentItemId: item?.parentItemId ?? null,
         sourceItemTemplateId: item?.sourceItemTemplateId ?? null,
         sourceOrigin: item?.sourceOrigin ?? 'custom',
         templateSnapshot: snapshot,
