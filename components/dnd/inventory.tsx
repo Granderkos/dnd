@@ -365,10 +365,10 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
                 {totalGP} <span className="text-xs text-muted-foreground">GP</span>
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <div className="space-y-1.5">
               {coins.map(({ key, label }) => (
-                <div key={key} className="rounded-md border border-border/70 bg-muted/20 p-2">
-                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <div key={key} className="flex items-center justify-between rounded-md border border-border/70 bg-muted/20 px-3 py-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     {label}
                   </div>
                   <Input
@@ -376,14 +376,11 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
                     min={0}
                     value={inventory.currency[key]}
                     onChange={(e) => updateCurrency(key, parseInt(e.target.value) || 0)}
-                    className="h-8 text-center text-sm"
+                    className="h-8 w-24 text-right text-sm"
                   />
                 </div>
               ))}
             </div>
-            <p className="mt-2 text-right text-[11px] text-muted-foreground">
-              {t('inventory.treasureTotal')}
-            </p>
           </CardContent>
         </Card>
 
