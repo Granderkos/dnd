@@ -1,0 +1,47 @@
+insert into public.item_templates (
+  slug,
+  name,
+  category,
+  rarity,
+  weight,
+  value_text,
+  requires_attunement,
+  description,
+  properties,
+  tags,
+  item_kind,
+  item_subtype,
+  source_name,
+  source_code,
+  source_page,
+  source_url,
+  is_official
+)
+values
+  ('thieves-tools', 'Thieves'' Tools', 'Tools', null, 1, '25 gp', false, 'Lock picks, files, mirrors, and precision instruments for disarming traps and opening locks.', '["utility","proficiency"]'::jsonb, '["tools","thievery"]'::jsonb, 'tool', 'toolkit', 'Player''s Handbook', 'PHB', 'PHB p.154', 'https://dnd5e.wikidot.com/adventuring-gear', false),
+  ('smiths-tools', 'Smith''s Tools', 'Tools', null, 8, '20 gp', false, 'Hammers, tongs, charcoal tools, and shaping implements for metalwork.', '["crafting","proficiency"]'::jsonb, '["tools","crafting"]'::jsonb, 'tool', 'toolkit', 'Player''s Handbook', 'PHB', 'PHB p.154', 'https://dnd5e.wikidot.com/adventuring-gear', false),
+  ('herbalism-kit', 'Herbalism Kit', 'Tools', null, 3, '5 gp', false, 'Pouches, clippers, and containers for gathering and preparing medicinal herbs.', '["crafting","proficiency"]'::jsonb, '["tools","healing"]'::jsonb, 'tool', 'kit', 'Player''s Handbook', 'PHB', 'PHB p.154', 'https://dnd5e.wikidot.com/adventuring-gear', false),
+  ('disguise-kit', 'Disguise Kit', 'Tools', null, 3, '25 gp', false, 'Cosmetics, dyes, and props used to alter appearance and create disguises.', '["utility","proficiency"]'::jsonb, '["tools","social"]'::jsonb, 'tool', 'kit', 'Player''s Handbook', 'PHB', 'PHB p.154', 'https://dnd5e.wikidot.com/adventuring-gear', false),
+  ('navigators-tools', 'Navigator''s Tools', 'Tools', null, 2, '25 gp', false, 'Instruments, maps, and measuring tools for charting routes and sea travel.', '["utility","proficiency"]'::jsonb, '["tools","navigation"]'::jsonb, 'tool', 'toolkit', 'Player''s Handbook', 'PHB', 'PHB p.154', 'https://dnd5e.wikidot.com/adventuring-gear', false),
+  ('tinkers-tools', 'Tinker''s Tools', 'Tools', null, 10, '50 gp', false, 'A collection of hand tools for repairs, construction, and small inventions.', '["crafting","proficiency"]'::jsonb, '["tools","crafting"]'::jsonb, 'tool', 'toolkit', 'Player''s Handbook', 'PHB', 'PHB p.154', 'https://dnd5e.wikidot.com/adventuring-gear', false),
+  ('gaming-set', 'Gaming Set', 'Tools', null, 0, '1 gp', false, 'A boxed set for games of chance or strategy such as dice, cards, or chess.', '["entertainment","proficiency"]'::jsonb, '["tools","gaming"]'::jsonb, 'tool', 'set', 'Player''s Handbook', 'PHB', 'PHB p.154', 'https://dnd5e.wikidot.com/adventuring-gear', false),
+  ('musical-instrument', 'Musical Instrument', 'Tools', null, 3, '30 gp', false, 'A general musical instrument category used for bardic and performance proficiencies.', '["entertainment","proficiency"]'::jsonb, '["tools","instrument"]'::jsonb, 'tool', 'instrument', 'Player''s Handbook', 'PHB', 'PHB p.154', 'https://dnd5e.wikidot.com/adventuring-gear', false)
+on conflict (slug) do update
+set
+  name = excluded.name,
+  category = excluded.category,
+  rarity = excluded.rarity,
+  weight = excluded.weight,
+  value_text = excluded.value_text,
+  requires_attunement = excluded.requires_attunement,
+  description = excluded.description,
+  properties = excluded.properties,
+  tags = excluded.tags,
+  item_kind = excluded.item_kind,
+  item_subtype = excluded.item_subtype,
+  source_name = excluded.source_name,
+  source_code = excluded.source_code,
+  source_page = excluded.source_page,
+  source_url = excluded.source_url,
+  is_official = excluded.is_official,
+  updated_at = now();

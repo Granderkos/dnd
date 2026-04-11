@@ -558,7 +558,7 @@ export const DMDashboard = memo(function DMDashboard() {
               </Button>
             </div>
           </div>
-          <TabsList className="w-full justify-between">
+          <TabsList className="w-full justify-between overflow-x-auto scrollbar-hidden">
             <TabsTrigger value="players" className="flex-1 gap-1 px-2"><Users className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.players')}</span></TabsTrigger>
             <TabsTrigger value="maps" className="flex-1 gap-1 px-2"><Map className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.maps')}</span></TabsTrigger>
             <TabsTrigger value="notes" className="flex-1 gap-1 px-2"><FileText className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.notes')}</span></TabsTrigger>
