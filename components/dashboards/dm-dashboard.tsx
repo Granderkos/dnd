@@ -887,8 +887,8 @@ function DMFightPanel({
 }) {
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [roundNumber, setRoundNumber] = useState(initialRoundNumber)
-  const [roundAnchorId, setRoundAnchorId] = useState<string | null>(null)
-  const [previousTurnId, setPreviousTurnId] = useState<string | null>(null)
+  const roundAnchorIdRef = useRef<string | null>(null)
+  const previousTurnIdRef = useRef<string | null>(null)
   const [conditionDraftByEntity, setConditionDraftByEntity] = useState<Record<string, string>>({})
 
   const activeEntity = entities.find((entity) => !isAutoSkipEntity(entity)) ?? null
@@ -917,6 +917,10 @@ function DMFightPanel({
     })
     return [...acting, ...skipped]
   }, [entities])
+  const orderedActingEntityIds = useMemo(
+    () => entities.filter((entity) => !isAutoSkipEntity(entity)).map((entity) => entity.id),
+    [entities]
+  )
   const fightStateLabel = fightStatus === 'active'
     ? labels.stateActive
     : fightStatus === 'collecting_initiative'
@@ -937,24 +941,26 @@ function DMFightPanel({
   useEffect(() => {
     if (!fightId || fightStatus !== 'active' || !activeEntityId) {
       setRoundNumber(initialRoundNumber)
-      setRoundAnchorId(null)
-      setPreviousTurnId(null)
+      roundAnchorIdRef.current = null
+      previousTurnIdRef.current = null
       return
     }
-    setRoundAnchorId((currentAnchor) => currentAnchor ?? activeEntityId)
-    setPreviousTurnId((prevTurn) => {
-      if (!prevTurn) return activeEntityId
-      if (prevTurn === activeEntityId) return prevTurn
-      if (roundAnchorId && activeEntityId === roundAnchorId) {
-        setRoundNumber((round) => {
-          const nextRound = round + 1
-          void onRoundNumberChange(nextRound)
-          return nextRound
-        })
-      }
-      return activeEntityId
-    })
-  }, [activeEntityId, fightId, fightStatus, initialRoundNumber, onRoundNumberChange, roundAnchorId])
+    const firstActingId = orderedActingEntityIds[0] ?? null
+    if (!firstActingId) return
+    if (!roundAnchorIdRef.current || !orderedActingEntityIds.includes(roundAnchorIdRef.current)) {
+      roundAnchorIdRef.current = firstActingId
+    }
+    const prevTurn = previousTurnIdRef.current
+    const anchor = roundAnchorIdRef.current
+    if (prevTurn && prevTurn !== activeEntityId && activeEntityId === anchor) {
+      setRoundNumber((round) => {
+        const nextRound = round + 1
+        void onRoundNumberChange(nextRound)
+        return nextRound
+      })
+    }
+    previousTurnIdRef.current = activeEntityId
+  }, [activeEntityId, fightId, fightStatus, initialRoundNumber, onRoundNumberChange, orderedActingEntityIds])
 
   const formatTurnEntity = useCallback((entity: FightEntity | null) => {
     if (!entity) return '—'
