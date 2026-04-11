@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { createItemTemplate, grantCustomInventoryItemToCharacter, grantItemTemplateToCharacter, listItemTemplates, type CreateItemTemplateInput, type ItemTemplate } from '@/lib/supabase-data'
+import { createItemTemplate, grantGoldToCharacter, grantItemTemplateToCharacter, listItemTemplates, type CreateItemTemplateInput, type ItemTemplate } from '@/lib/supabase-data'
 import { useAuth } from '@/lib/auth-context'
 
 type ItemTypeOption = 'Weapons' | 'Armor' | 'Equipment' | 'Consumables' | 'Tools' | 'Treasure' | 'Other'
@@ -38,7 +38,7 @@ export function DmItemTemplatePanel({ players }: { players: Array<{ characterId:
   const [isSaving, setIsSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
-  const [selectedCharacterId, setSelectedCharacterId] = useState('')
+  const [selectedGiveCharacterId, setSelectedGiveCharacterId] = useState('')
   const [grantQuantity, setGrantQuantity] = useState('1')
   const [grantMessage, setGrantMessage] = useState<string | null>(null)
   const [isGranting, setIsGranting] = useState(false)
@@ -49,6 +49,7 @@ export function DmItemTemplatePanel({ players }: { players: Array<{ characterId:
   const [generatedLoot, setGeneratedLoot] = useState<{ gold: number; items: Array<{ template: ItemTemplate; quantity: number }> } | null>(null)
   const [isGivingGenerated, setIsGivingGenerated] = useState(false)
   const [generatedMessage, setGeneratedMessage] = useState<string | null>(null)
+  const [selectedLootCharacterId, setSelectedLootCharacterId] = useState('')
   const selectedType = useMemo(() => mapTypeToKind(itemType), [itemType])
 
   useEffect(() => {
@@ -104,14 +105,14 @@ export function DmItemTemplatePanel({ players }: { players: Array<{ characterId:
   }
 
   const handleGrant = async () => {
-    if (!selectedTemplateId || !selectedCharacterId || isGranting) return
+    if (!selectedTemplateId || !selectedGiveCharacterId || isGranting) return
     const template = templates.find((row) => row.id === selectedTemplateId)
     if (!template) return
     setIsGranting(true)
     setGrantMessage(null)
     try {
-      await grantItemTemplateToCharacter(selectedCharacterId, template, Number.parseInt(grantQuantity, 10) || 1)
-      const target = players.find((player) => player.characterId === selectedCharacterId)
+      await grantItemTemplateToCharacter(selectedGiveCharacterId, template, Number.parseInt(grantQuantity, 10) || 1)
+      const target = players.find((player) => player.characterId === selectedGiveCharacterId)
       setGrantMessage(`Granted ${template.name}${target ? ` to ${target.characterName}` : ''}.`)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to grant item.'
@@ -149,22 +150,18 @@ export function DmItemTemplatePanel({ players }: { players: Array<{ characterId:
   }
 
   const handleGiveGeneratedLoot = async () => {
-    if (!generatedLoot || !selectedCharacterId || isGivingGenerated) return
+    if (!generatedLoot || !selectedLootCharacterId || isGivingGenerated) return
     setIsGivingGenerated(true)
     setGeneratedMessage(null)
     try {
       for (const reward of generatedLoot.items) {
-        await grantItemTemplateToCharacter(selectedCharacterId, reward.template, reward.quantity)
+        await grantItemTemplateToCharacter(selectedLootCharacterId, reward.template, reward.quantity)
       }
       if (generatedLoot.gold > 0) {
-        await grantCustomInventoryItemToCharacter(selectedCharacterId, {
-          name: 'Gold Coins',
-          description: `Generated loot gold payout (${generatedLoot.gold} gp).`,
-          category: 'Treasure',
-          quantity: 1,
-        })
+        await grantGoldToCharacter(selectedLootCharacterId, generatedLoot.gold)
       }
-      setGeneratedMessage('Generated loot delivered to player inventory.')
+      const target = players.find((player) => player.characterId === selectedLootCharacterId)
+      setGeneratedMessage(`Generated loot delivered${target ? ` to ${target.characterName}` : ''}${generatedLoot.gold > 0 ? `, including ${generatedLoot.gold} gp` : ''}.`)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to deliver generated loot.'
       setGeneratedMessage(message)
@@ -197,19 +194,46 @@ export function DmItemTemplatePanel({ players }: { players: Array<{ characterId:
           <Button onClick={() => void handleCreate()} disabled={!name.trim() || isSaving}>{isSaving ? 'Saving…' : 'Create Template'}</Button>
         </div>
         <div className="h-px bg-border" />
-        <div className="space-y-2">
+        <div className="space-y-3 rounded-lg border border-border/70 bg-muted/20 p-3">
           <div className="text-sm font-semibold uppercase tracking-wide text-primary">Loot Generator (MVP)</div>
-          <div className="grid gap-2 sm:grid-cols-4">
-            <select className="h-9 rounded-md border border-border bg-background px-2 text-sm" value={lootTier} onChange={(e) => setLootTier(e.target.value as LootTier)}>
-              <option value="common">Common</option>
-              <option value="uncommon">Uncommon</option>
-              <option value="rare">Rare</option>
-              <option value="epic">Epic / Any</option>
-            </select>
-            <Input value={goldMin} onChange={(e) => setGoldMin(e.target.value)} inputMode="numeric" placeholder="Gold min" />
-            <Input value={goldMax} onChange={(e) => setGoldMax(e.target.value)} inputMode="numeric" placeholder="Gold max" />
-            <Input value={lootItemCount} onChange={(e) => setLootItemCount(e.target.value)} inputMode="numeric" placeholder="Item count" />
+          <p className="text-xs text-muted-foreground">Generate random item rewards and optional gold for a selected player.</p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="space-y-1 text-xs">
+              <span className="font-medium text-foreground">Rarity tier</span>
+              <select className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm" value={lootTier} onChange={(e) => setLootTier(e.target.value as LootTier)}>
+                <option value="common">Common</option>
+                <option value="uncommon">Uncommon</option>
+                <option value="rare">Rare</option>
+                <option value="epic">Epic / Any</option>
+              </select>
+              <span className="block text-[11px] text-muted-foreground">Filters eligible templates by rarity.</span>
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="font-medium text-foreground">Minimum gold (gp)</span>
+              <Input value={goldMin} onChange={(e) => setGoldMin(e.target.value)} inputMode="numeric" placeholder="e.g. 5" />
+              <span className="block text-[11px] text-muted-foreground">Lowest possible gold roll.</span>
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="font-medium text-foreground">Maximum gold (gp)</span>
+              <Input value={goldMax} onChange={(e) => setGoldMax(e.target.value)} inputMode="numeric" placeholder="e.g. 25" />
+              <span className="block text-[11px] text-muted-foreground">Highest possible gold roll.</span>
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="font-medium text-foreground">Number of item rewards</span>
+              <Input value={lootItemCount} onChange={(e) => setLootItemCount(e.target.value)} inputMode="numeric" placeholder="e.g. 2" />
+              <span className="block text-[11px] text-muted-foreground">How many item templates to draw.</span>
+            </label>
           </div>
+          <label className="space-y-1 text-xs">
+            <span className="font-medium text-foreground">Loot delivery target</span>
+            <select className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm" value={selectedLootCharacterId} onChange={(e) => setSelectedLootCharacterId(e.target.value)}>
+              <option value="">Select player</option>
+              {players.map((player) => (
+                <option key={`loot-${player.characterId}`} value={player.characterId}>{player.characterName} ({player.username})</option>
+              ))}
+            </select>
+            <span className="block text-[11px] text-muted-foreground">Generated items and gold will be delivered to this player.</span>
+          </label>
           <div className="flex justify-end">
             <Button variant="outline" onClick={handleGenerateLoot}>Generate Loot</Button>
           </div>
@@ -228,7 +252,7 @@ export function DmItemTemplatePanel({ players }: { players: Array<{ characterId:
               )}
               <div className="mt-2 flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">{generatedMessage ?? 'Review before assigning to a player.'}</span>
-                <Button size="sm" onClick={() => void handleGiveGeneratedLoot()} disabled={!selectedCharacterId || isGivingGenerated}>
+                <Button size="sm" onClick={() => void handleGiveGeneratedLoot()} disabled={!selectedLootCharacterId || isGivingGenerated}>
                   {isGivingGenerated ? 'Giving…' : 'Give Generated Loot'}
                 </Button>
               </div>
@@ -236,26 +260,35 @@ export function DmItemTemplatePanel({ players }: { players: Array<{ characterId:
           ) : null}
         </div>
         <div className="h-px bg-border" />
-        <div className="space-y-2">
+        <div className="space-y-3 rounded-lg border border-border/70 bg-muted/20 p-3">
           <div className="text-sm font-semibold uppercase tracking-wide text-primary">Give Item to Player</div>
-          <div className="grid gap-2 sm:grid-cols-3">
-            <select className="h-9 rounded-md border border-border bg-background px-2 text-sm" value={selectedTemplateId} onChange={(e) => setSelectedTemplateId(e.target.value)}>
-              <option value="">Select template</option>
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>{template.name} ({template.category ?? 'Other'})</option>
-              ))}
-            </select>
-            <select className="h-9 rounded-md border border-border bg-background px-2 text-sm" value={selectedCharacterId} onChange={(e) => setSelectedCharacterId(e.target.value)}>
-              <option value="">Select player</option>
-              {players.map((player) => (
-                <option key={player.characterId} value={player.characterId}>{player.characterName} ({player.username})</option>
-              ))}
-            </select>
-            <Input value={grantQuantity} onChange={(e) => setGrantQuantity(e.target.value)} inputMode="numeric" placeholder="Quantity" />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="space-y-1 text-xs">
+              <span className="font-medium text-foreground">Item template</span>
+              <select className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm" value={selectedTemplateId} onChange={(e) => setSelectedTemplateId(e.target.value)}>
+                <option value="">Select template</option>
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>{template.name} ({template.category ?? 'Other'})</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="font-medium text-foreground">Give Item target</span>
+              <select className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm" value={selectedGiveCharacterId} onChange={(e) => setSelectedGiveCharacterId(e.target.value)}>
+                <option value="">Select player</option>
+                {players.map((player) => (
+                  <option key={`give-${player.characterId}`} value={player.characterId}>{player.characterName} ({player.username})</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="font-medium text-foreground">Quantity</span>
+              <Input value={grantQuantity} onChange={(e) => setGrantQuantity(e.target.value)} inputMode="numeric" placeholder="e.g. 1" />
+            </label>
           </div>
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground">{grantMessage ?? 'Delivered items appear as normal inventory entries for the target character.'}</p>
-            <Button onClick={() => void handleGrant()} disabled={!selectedTemplateId || !selectedCharacterId || isGranting}>{isGranting ? 'Giving…' : 'Give Item'}</Button>
+            <Button onClick={() => void handleGrant()} disabled={!selectedTemplateId || !selectedGiveCharacterId || isGranting}>{isGranting ? 'Giving…' : 'Give Item'}</Button>
           </div>
         </div>
       </CardContent>

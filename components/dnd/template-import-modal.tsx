@@ -118,8 +118,8 @@ export function TemplateImportModal<T>({
             className="h-10 shrink-0"
           />
           {categoryFilters?.length ? (
-            <div className="-mx-1 overflow-hidden">
-              <div className="flex w-full gap-2 overflow-x-auto px-1 pb-2 touch-pan-x sm:flex-wrap sm:overflow-visible">
+            <div className="rounded-md border border-border/60 bg-muted/20 p-2">
+              <div className="flex flex-wrap gap-2 overflow-y-visible">
                 {categoryFilters.map((filter) => {
                   const isActive = filter.value === activeCategoryFilter
                   return (
@@ -128,10 +128,10 @@ export function TemplateImportModal<T>({
                       type="button"
                       size="sm"
                       variant={isActive ? 'default' : 'outline'}
-                      className="h-8 shrink-0 rounded-full px-3 text-xs"
+                      className="h-8 max-w-full rounded-full px-3 text-xs leading-none"
                       onClick={() => setActiveCategoryFilter(filter.value)}
                     >
-                      {filter.label}
+                      <span className="truncate">{filter.label}</span>
                     </Button>
                   )
                 })}

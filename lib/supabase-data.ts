@@ -1162,6 +1162,19 @@ export async function grantCustomInventoryItemToCharacter(
   })
 }
 
+export async function grantGoldToCharacter(characterId: string, goldAmount: number) {
+  const normalizedGold = Math.max(0, Math.floor(goldAmount))
+  if (normalizedGold <= 0) return
+  const { error } = await supabase.rpc('grant_currency_to_character_for_dm', {
+    p_character_id: characterId,
+    p_gold: normalizedGold,
+  })
+  if (!error) return
+  const details = error.details ? ` (${error.details})` : ''
+  const hint = error.hint ? ` Hint: ${error.hint}` : ''
+  throw new Error(`Failed to grant gold: ${error.message ?? 'Unknown error'}${details}${hint}`)
+}
+
 export async function listSpellTemplates() {
   const cached = templateQueryCache.get('spell_templates')
   if (cached && cached.expiresAt > Date.now()) return cached.data as SpellTemplate[]

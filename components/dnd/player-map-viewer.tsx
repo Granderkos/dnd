@@ -20,6 +20,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   const [isLoadingMap, setIsLoadingMap] = useState(true)
   const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isViewportEngaged, setIsViewportEngaged] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const isDragging = useRef(false)
@@ -165,6 +166,18 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   }, [isPseudoFullscreen, isFullscreen])
 
   useEffect(() => {
+    if (!isViewportEngaged) return
+    const originalOverflow = document.body.style.overflow
+    const originalOverscroll = document.body.style.overscrollBehavior
+    document.body.style.overflow = 'hidden'
+    document.body.style.overscrollBehavior = 'contain'
+    return () => {
+      document.body.style.overflow = originalOverflow
+      document.body.style.overscrollBehavior = originalOverscroll
+    }
+  }, [isViewportEngaged])
+
+  useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
@@ -254,14 +267,18 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
         ref={viewportRef}
         className="flex-1 overflow-hidden cursor-grab active:cursor-grabbing select-none"
         style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
+        onMouseEnter={() => setIsViewportEngaged(true)}
+        onMouseLeave={() => {
+          setIsViewportEngaged(false)
+          handleMouseUp()
+        }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onWheel={(e) => e.preventDefault()}
-        onTouchStart={handleTouchStart}
+        onWheel={(e) => { e.preventDefault(); e.stopPropagation() }}
+        onTouchStart={(e) => { setIsViewportEngaged(true); handleTouchStart(e) }}
         onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+        onTouchEnd={() => { setIsViewportEngaged(false); handleTouchEnd() }}
       >
         <div className="w-full h-full flex items-center justify-center" style={{ transform: `translate(${settings.panX}px, ${settings.panY}px) scale(${settings.zoom})`, transformOrigin: 'center' }}>
           <img src={activeMap.imageData} alt={activeMap.name} className="max-w-none" draggable={false} />
