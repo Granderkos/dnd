@@ -554,7 +554,7 @@ const ItemRow = memo(function ItemRow({
   const canUseConsumable = isConsumable && (canUseByCharges || canUseByQuantity || canUseSingle)
 
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-border bg-background/80 px-3 py-3" style={{ marginLeft: `${depth * 14}px` }}>
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-background/80 px-3 py-3 sm:flex-nowrap" style={{ marginLeft: `${depth * 8}px` }}>
       {canExpand ? (
         <Button
           size="icon"
@@ -571,11 +571,11 @@ const ItemRow = memo(function ItemRow({
         onClick={onView}
         className="min-w-0 flex-1 text-left"
       >
-        <p className="text-sm font-medium truncate max-w-[140px]">
+        <p className="truncate text-sm font-medium">
           {item.name}
         </p>
         {item.description && (
-          <p className="text-xs text-muted-foreground truncate max-w-[140px]">
+          <p className="truncate text-xs text-muted-foreground">
             {item.description}
           </p>
         )}

@@ -664,12 +664,12 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         <TabsContent value="map" className="mt-0 flex-1 overflow-hidden">
           {activeTab === 'map' && <PlayerMapViewer settings={mapSettings} onSettingsChange={setMapSettings} />}
         </TabsContent>
-        <TabsContent value="compendium" className="mt-0 flex-1 overflow-y-auto px-4 py-4">
+        <TabsContent value="compendium" className="mt-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4">
           <div className="mx-auto w-full max-w-4xl space-y-6">
             <section className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">{t('compendium.companionsTitle')}</h2>
-                <div className="flex items-center gap-2">
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
                   <Button size="sm" variant="outline" onClick={() => setIsCreateCompanionOpen(true)}>
                     <Plus className="mr-1 size-4" />
                     {t('compendium.addCustom')}
@@ -685,12 +685,12 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
               ) : (
                 <div className="space-y-2">
                   {companions.map((companion) => (
-                    <div key={companion.id} className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
-                      <div>
+                    <div key={companion.id} className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
                         <p className="font-medium">{companion.name_override || companion.entry?.name || t('compendium.unnamedCompanion')}</p>
                         <p className="text-xs text-muted-foreground">{companion.kind} · {companion.source_origin ?? 'custom'}</p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Button
                           variant={companion.is_active ? 'default' : 'outline'}
                           size="sm"
@@ -717,7 +717,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
             </section>
 
             <section className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">{t('compendium.creaturesTitle')}</h2>
                 <Button variant="outline" size="sm" onClick={() => void refreshCompendium()}>{t('fight.refresh')}</Button>
               </div>
@@ -731,7 +731,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
               {creatureRows.length === 0 && !isCompendiumLoading ? (
                 <p className="text-sm text-muted-foreground">{t('compendium.emptyCreatures')}</p>
               ) : null}
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {creatureRows.map((row) => (
                   <button
                     key={row.entry_id}

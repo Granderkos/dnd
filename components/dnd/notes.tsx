@@ -161,7 +161,7 @@ export function Notes({ notes, onChange }: NotesProps) {
     <div className="h-full min-h-0 overflow-y-auto px-3 py-4">
       <div>
         <PageShell>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
               <Button
                 size="sm"
                 variant={selectedCategory === 'all' ? 'default' : 'outline'}
@@ -185,7 +185,7 @@ export function Notes({ notes, onChange }: NotesProps) {
 
           <Card className="mt-4">
             <CardContent className="pb-3 pt-3">
-              <div className="grid grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-3">
                 {NOTE_CATEGORIES.map(({ id, icon: Icon, labelKey }) => (
                   <Button
                     key={id}

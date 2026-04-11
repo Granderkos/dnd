@@ -648,7 +648,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
             />
             
             {/* Character details grid */}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div className="space-y-1">
                 <label className="text-xs uppercase text-muted-foreground">{t('character.class')}</label>
                 <DebouncedInput
@@ -725,7 +725,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
             </div>
 
             {/* Ability Scores Grid */}
-            <div className="grid grid-cols-3 gap-2 justify-items-center sm:grid-cols-6">
+            <div className="grid grid-cols-2 gap-2 justify-items-center sm:grid-cols-3 lg:grid-cols-6">
               {abilities.map((ability) => {
                 const score = character.abilities[ability].value
                 const mod = calculateModifier(score)
@@ -735,7 +735,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 return (
                   <div
                     key={ability}
-                    className="flex w-[104px] md:w-[120px] flex-col items-center rounded border bg-muted/30 p-1.5 text-center md:p-2"
+                    className="flex w-full max-w-[120px] flex-col items-center rounded border bg-muted/30 p-1.5 text-center md:p-2"
                   >
                     <span className="text-xs font-medium text-muted-foreground">{ability}</span>
                     <span className="text-xl font-bold md:text-2xl">{formatModifier(mod)}</span>
@@ -803,7 +803,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
         <Card>
           <CardContent className="pt-4">
             {/* AC, Initiative, Speed row */}
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <div className="flex flex-col items-center rounded-lg border border-border bg-background/80 p-3">
                 <Shield className="mb-1 size-5 text-muted-foreground" />
                 <span className="text-xs uppercase text-muted-foreground">{t('character.combat.ac')}</span>

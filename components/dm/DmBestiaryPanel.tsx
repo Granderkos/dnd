@@ -187,8 +187,8 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
             <DialogTitle>Add custom creature</DialogTitle>
             <DialogDescription>Create a custom bestiary creature entry.</DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="col-span-2 text-xs font-medium text-muted-foreground">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="sm:col-span-2 text-xs font-medium text-muted-foreground">
               Name
               <Input value={customName} onChange={(e) => setCustomName(e.target.value)} />
             </label>
@@ -249,7 +249,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
               Hit Points
               <Input type="number" placeholder="22" value={customHp} onChange={(e) => setCustomHp(e.target.value)} />
             </label>
-            <label className="col-span-2 text-xs font-medium text-muted-foreground">
+            <label className="sm:col-span-2 text-xs font-medium text-muted-foreground">
               Speed
               <Input placeholder="30 ft." value={customSpeed} onChange={(e) => setCustomSpeed(e.target.value)} />
             </label>
@@ -277,7 +277,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
               CHA
               <Input type="number" value={customCha} onChange={(e) => setCustomCha(e.target.value)} />
             </label>
-            <label className="col-span-2 text-xs font-medium text-muted-foreground">
+            <label className="sm:col-span-2 text-xs font-medium text-muted-foreground">
               Notes / Description
               <Textarea value={customNotes} onChange={(e) => setCustomNotes(e.target.value)} className="min-h-20" />
             </label>

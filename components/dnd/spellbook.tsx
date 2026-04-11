@@ -188,7 +188,7 @@ export function Spellbook({
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 pb-24">
         <Card>
           <CardContent className="pt-4">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <div className="flex flex-col items-center justify-center rounded-lg border bg-muted/30 p-3">
                 <span className="text-xs text-muted-foreground">{t('spellbook.ability')}</span>
                 <Select value={spellbook.spellcastingAbility} onValueChange={(v) => updateSpellcastingAbility(v as AbilityName)}>
@@ -219,7 +219,7 @@ export function Spellbook({
 
         <Card>
           <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-[0.08em]">
                 <span className="flex size-6 items-center justify-center rounded bg-muted text-xs font-bold">0</span>
                 {t('spellbook.cantrips')}
@@ -250,7 +250,7 @@ export function Spellbook({
           return (
             <Card key={level}>
               <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-[0.08em]">
                     <span className="flex size-6 items-center justify-center rounded bg-muted text-xs font-bold">{level}</span>
                     {t('spellbook.level', { level })}
@@ -296,7 +296,7 @@ export function Spellbook({
           return (
             <Card key={level} className="opacity-50 transition-opacity hover:opacity-100">
               <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-[0.08em]">
                     <span className="flex size-6 items-center justify-center rounded bg-muted text-xs font-bold">{level}</span>
                     {t('spellbook.level', { level })}
@@ -336,7 +336,7 @@ export function Spellbook({
                   {selectedSpell.concentration && <Badge variant="outline" className="gap-1"><Eye className="size-3" /> {t('spellbook.concentration')}</Badge>}
                   {selectedSpell.reaction && <Badge variant="outline" className="gap-1"><Zap className="size-3" /> {t('spellbook.reaction')}</Badge>}
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                   <div><span className="text-muted-foreground">{t('spellbook.castingTime')}: </span><span className="break-words">{selectedSpell.castingTime}</span></div>
                   <div><span className="text-muted-foreground">{t('spellbook.range')}: </span><span className="break-words">{formatFeetWithSquares(selectedSpell.range, language)}</span></div>
                   <div><span className="text-muted-foreground">{t('spellbook.duration')}: </span><span className="break-words">{selectedSpell.duration}</span></div>
@@ -389,14 +389,14 @@ const SpellRow = memo(function SpellRow({ spell, onClick, onTogglePrepared, onDe
       {!isCantrip && <Checkbox checked={spell.prepared} onCheckedChange={onTogglePrepared} title={t('spellbook.prepared')} className="size-5 shrink-0" />}
       <button onClick={onClick} className="min-w-0 flex-1 text-left">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-sm truncate max-w-[120px]">{spell.name}</span>
+          <span className="font-medium text-sm truncate">{spell.name}</span>
           <div className="flex shrink-0 gap-1">
             {spell.ritual && <Badge variant="outline" className="h-5 px-1.5 text-xs">R</Badge>}
             {spell.concentration && <Badge variant="outline" className="h-5 px-1.5 text-xs">C</Badge>}
             {spell.reaction && <Badge variant="outline" className="h-5 px-1.5 text-xs"><Zap className="size-3" /></Badge>}
           </div>
         </div>
-        <p className="text-xs text-muted-foreground truncate max-w-[180px] mt-0.5">{spell.castingTime} | {spell.range} | {spell.duration}</p>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">{spell.castingTime} | {spell.range} | {spell.duration}</p>
       </button>
       <Button size="icon" variant="ghost" onClick={onDelete} className="size-8 shrink-0 text-destructive hover:text-destructive"><X className="size-4" /></Button>
     </div>
@@ -509,7 +509,7 @@ function AddSpellDialog({ open, onOpenChange, level, characterClass, onAdd }: Ad
           <DialogDescription className="sr-only">{t('spellbook.enterSpellDetails')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Button variant={mode === 'custom' ? 'default' : 'outline'} onClick={() => setMode('custom')}>{t('spellbook.createCustomSpell')}</Button>
             <Button variant={mode === 'template' ? 'default' : 'outline'} onClick={() => setMode('template')}>{t('spellbook.importFromTemplate')}</Button>
           </div>
@@ -524,7 +524,7 @@ function AddSpellDialog({ open, onOpenChange, level, characterClass, onAdd }: Ad
                 <label className="flex items-center gap-2 text-sm"><Checkbox checked={spell.concentration} onCheckedChange={(checked) => setSpell({ ...spell, concentration: !!checked })} />{t('spellbook.concentration')}</label>
                 <label className="flex items-center gap-2 text-sm"><Checkbox checked={spell.reaction} onCheckedChange={(checked) => setSpell({ ...spell, reaction: !!checked })} />{t('spellbook.reaction')}</label>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-sm text-muted-foreground">{t('spellbook.castingTime')}</label>
                   <Input value={spell.castingTime} onChange={(e) => setSpell({ ...spell, castingTime: e.target.value })} placeholder="1 action" className="h-10" />
