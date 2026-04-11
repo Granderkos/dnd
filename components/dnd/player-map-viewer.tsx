@@ -265,7 +265,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
       </div>
       <div
         ref={viewportRef}
-        className="flex-1 overflow-hidden cursor-grab active:cursor-grabbing select-none"
+        className="flex-1 overflow-hidden overscroll-contain cursor-grab active:cursor-grabbing select-none"
         style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
         onMouseEnter={() => setIsViewportEngaged(true)}
         onMouseLeave={() => {
@@ -279,6 +279,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
         onTouchStart={(e) => { setIsViewportEngaged(true); handleTouchStart(e) }}
         onTouchMove={handleTouchMove}
         onTouchEnd={() => { setIsViewportEngaged(false); handleTouchEnd() }}
+        onTouchCancel={() => { setIsViewportEngaged(false); handleTouchEnd() }}
       >
         <div className="w-full h-full flex items-center justify-center" style={{ transform: `translate(${settings.panX}px, ${settings.panY}px) scale(${settings.zoom})`, transformOrigin: 'center' }}>
           <img src={activeMap.imageData} alt={activeMap.name} className="max-w-none" draggable={false} />
