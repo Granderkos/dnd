@@ -989,34 +989,61 @@ function slugifyTemplateName(value: string) {
 export async function createItemTemplate(userId: string, input: CreateItemTemplateInput) {
   const baseSlug = slugifyTemplateName(input.name) || 'custom-item'
   const slug = `${baseSlug}-${Date.now().toString(36)}`
-  const { data, error } = await supabase
-    .from('item_templates')
-    .insert({
-      slug,
-      name: input.name.trim(),
-      description: input.description?.trim() || null,
-      category: normalizeInventoryCategory(input.category),
-      item_kind: input.item_kind,
-      item_subtype: input.item_subtype ?? null,
-      rarity: input.rarity ?? null,
-      weight: input.weight ?? null,
-      value_text: input.value_text?.trim() || null,
-      damage_text: input.damage_text?.trim() || null,
-      damage_type: input.damage_type?.trim() || null,
-      range_text: input.range_text?.trim() || null,
-      armor_kind: input.armor_kind ?? null,
-      ac_base: input.ac_base ?? null,
-      charges_max: input.charges_max ?? null,
-      charges_current: input.charges_current ?? null,
-      usage_type: input.usage_type ?? null,
-      properties: input.properties ?? [],
-      tags: input.tags ?? ['custom'],
-      is_official: false,
-      created_by: userId,
-    })
-    .select('id, name, description, category, item_kind, item_subtype, rarity, weight, value_text, damage_text, damage_type, range_text, weapon_kind, armor_kind, ac_base, ac_bonus, dex_cap, strength_requirement, stealth_disadvantage, source_url, requires_attunement, capacity_text, contents_summary, charges_max, charges_current, usage_type, properties, tags')
-    .single()
+  const rpcResult = await supabase.rpc('create_item_template_for_dm', {
+    p_slug: slug,
+    p_name: input.name.trim(),
+    p_description: input.description?.trim() || null,
+    p_category: normalizeInventoryCategory(input.category),
+    p_item_kind: input.item_kind,
+    p_item_subtype: input.item_subtype ?? null,
+    p_rarity: input.rarity ?? null,
+    p_weight: input.weight ?? null,
+    p_value_text: input.value_text?.trim() || null,
+    p_damage_text: input.damage_text?.trim() || null,
+    p_damage_type: input.damage_type?.trim() || null,
+    p_range_text: input.range_text?.trim() || null,
+    p_armor_kind: input.armor_kind ?? null,
+    p_ac_base: input.ac_base ?? null,
+    p_charges_max: input.charges_max ?? null,
+    p_charges_current: input.charges_current ?? null,
+    p_usage_type: input.usage_type ?? null,
+    p_properties: input.properties ?? [],
+    p_tags: input.tags ?? ['custom'],
+  })
 
+  let data = rpcResult.data as ItemTemplate | null
+  let error = rpcResult.error
+  if (error && error.message?.toLowerCase().includes('create_item_template_for_dm')) {
+    const fallback = await supabase
+      .from('item_templates')
+      .insert({
+        slug,
+        name: input.name.trim(),
+        description: input.description?.trim() || null,
+        category: normalizeInventoryCategory(input.category),
+        item_kind: input.item_kind,
+        item_subtype: input.item_subtype ?? null,
+        rarity: input.rarity ?? null,
+        weight: input.weight ?? null,
+        value_text: input.value_text?.trim() || null,
+        damage_text: input.damage_text?.trim() || null,
+        damage_type: input.damage_type?.trim() || null,
+        range_text: input.range_text?.trim() || null,
+        armor_kind: input.armor_kind ?? null,
+        ac_base: input.ac_base ?? null,
+        charges_max: input.charges_max ?? null,
+        charges_current: input.charges_current ?? null,
+        usage_type: input.usage_type ?? null,
+        properties: input.properties ?? [],
+        tags: input.tags ?? ['custom'],
+        is_official: false,
+        created_by: userId,
+      })
+      .select('id, name, description, category, item_kind, item_subtype, rarity, weight, value_text, damage_text, damage_type, range_text, weapon_kind, armor_kind, ac_base, ac_bonus, dex_cap, strength_requirement, stealth_disadvantage, source_url, requires_attunement, capacity_text, contents_summary, charges_max, charges_current, usage_type, properties, tags')
+      .single()
+    data = fallback.data as ItemTemplate | null
+    error = fallback.error
+  }
   if (error) throw error
   templateQueryCache.delete('item_templates')
   return data as ItemTemplate
@@ -1034,6 +1061,21 @@ async function appendInventoryRow(
     templateSnapshot?: Record<string, unknown> | null
   }
 ) {
+  const rpc = await supabase.rpc('grant_inventory_item_for_dm', {
+    p_character_id: characterId,
+    p_title: payload.title,
+    p_description: payload.description,
+    p_quantity: payload.quantity,
+    p_category: payload.category,
+    p_source_item_template_id: payload.sourceItemTemplateId ?? null,
+    p_source_origin: payload.sourceOrigin ?? 'custom',
+    p_template_snapshot: payload.templateSnapshot ?? null,
+  })
+  if (!rpc.error) return
+  if (!rpc.error.message?.toLowerCase().includes('grant_inventory_item_for_dm')) {
+    throw rpc.error
+  }
+
   const { data: lastRow, error: sortError } = await supabase
     .from('inventory_items')
     .select('sort_order')
