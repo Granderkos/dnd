@@ -213,6 +213,10 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
   const [classTemplates, setClassTemplates] = useState<ClassTemplate[]>([])
   const [raceTemplates, setRaceTemplates] = useState<RaceTemplate[]>([])
   const [backgroundTemplates, setBackgroundTemplates] = useState<BackgroundTemplate[]>([])
+  const [creationMode, setCreationMode] = useState<'custom' | 'template' | null>(null)
+  const [guidedClassTemplateId, setGuidedClassTemplateId] = useState('')
+  const [guidedRaceTemplateId, setGuidedRaceTemplateId] = useState('')
+  const [guidedBackgroundTemplateId, setGuidedBackgroundTemplateId] = useState('')
 
   const deriveRaceFeatures = useCallback((template: RaceTemplate): string => {
     if (Array.isArray(template.traits)) {
@@ -258,12 +262,44 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
     return sections.join('\n\n')
   }, [])
 
-  const shouldApplyPrefill = useCallback((currentValue: string, previousPrefill: string, nextPrefill: string): boolean => {
-    const current = currentValue.trim()
-    if (!nextPrefill.trim()) return false
-    if (!current) return true
-    return current === previousPrefill.trim()
+  const parseAbilityNames = useCallback((value: string | null | undefined): AbilityName[] => {
+    if (!value) return []
+    const normalized = value.toUpperCase()
+    const found: AbilityName[] = []
+    ;(['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'] as AbilityName[]).forEach((ability) => {
+      if (normalized.includes(ability)) found.push(ability)
+    })
+    return found
   }, [])
+
+  const applyClassDerivedAutomation = useCallback((baseCharacter: Character, template: ClassTemplate): Character => {
+    const saveProficiencies = new Set(parseAbilityNames(template.saving_throw_proficiencies))
+    const nextAbilities = { ...baseCharacter.abilities }
+    ;(['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'] as AbilityName[]).forEach((ability) => {
+      nextAbilities[ability] = { ...nextAbilities[ability], proficient: saveProficiencies.has(ability) }
+    })
+    const level = Math.max(1, Number(baseCharacter.info.level) || 1)
+    return {
+      ...baseCharacter,
+      abilities: nextAbilities,
+      proficiencyBonus: Math.floor((level - 1) / 4) + 2,
+      combat: {
+        ...baseCharacter.combat,
+        hitDice: `${level}${template.hit_die}`,
+      },
+    }
+  }, [parseAbilityNames])
+
+  const isNewCharacter = !character.info.name.trim()
+    && !character.info.class.trim()
+    && !character.info.race.trim()
+    && !character.info.background.trim()
+    && !character.info.sourceClassTemplateId
+    && !character.info.sourceRaceTemplateId
+    && !character.info.sourceBackgroundTemplateId
+    && !character.info.classSourceOrigin
+    && !character.info.raceSourceOrigin
+    && !character.info.backgroundSourceOrigin
 
   const updateInfo = useCallback((field: keyof Character['info'], value: string | number) => {
     onChange({
@@ -273,6 +309,12 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
   }, [character, onChange])
 
   useEffect(() => {
+    if (!isNewCharacter || creationMode !== 'template') {
+      setClassTemplates([])
+      setRaceTemplates([])
+      setBackgroundTemplates([])
+      return
+    }
     let active = true
     void Promise.all([
       listClassTemplates(),
@@ -293,109 +335,20 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
     return () => {
       active = false
     }
-  }, [])
+  }, [creationMode, isNewCharacter])
 
-  const applyClassTemplate = useCallback((templateId: string) => {
-    const template = classTemplates.find((row) => row.id === templateId)
-    if (!template) return
-    const previousTemplate = (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null
-    const previousClassPrefill = previousTemplate ? deriveClassFeatures(previousTemplate) : ''
-    const nextClassPrefill = deriveClassFeatures(template)
-    const previousLanguagesPrefill = composeTemplateProficienciesAndLanguages({
-      classTemplate: previousTemplate,
-      raceTemplate: (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null,
-      backgroundTemplate: (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null,
-    })
-    const nextLanguagesPrefill = composeTemplateProficienciesAndLanguages({
-      classTemplate: template,
-      raceTemplate: (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null,
-      backgroundTemplate: (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null,
-    })
-    onChange({
-      ...character,
-      info: {
-        ...character.info,
-        class: template.name,
-        sourceClassTemplateId: template.id,
-        classSourceOrigin: 'template',
-        classTemplateSnapshot: template as unknown as Record<string, unknown>,
-      },
-      classFeatures: shouldApplyPrefill(character.classFeatures, previousClassPrefill, nextClassPrefill)
-        ? nextClassPrefill
-        : character.classFeatures,
-      languages: shouldApplyPrefill(character.languages, previousLanguagesPrefill, nextLanguagesPrefill)
-        ? nextLanguagesPrefill
-        : character.languages,
-    })
-  }, [character, classTemplates, composeTemplateProficienciesAndLanguages, deriveClassFeatures, onChange, shouldApplyPrefill])
+  useEffect(() => {
+    if (!isNewCharacter && creationMode === null) {
+      setCreationMode('custom')
+    }
+  }, [creationMode, isNewCharacter])
 
-  const applyRaceTemplate = useCallback((templateId: string) => {
-    const template = raceTemplates.find((row) => row.id === templateId)
-    if (!template) return
-    const previousTemplate = (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null
-    const previousRacePrefill = previousTemplate ? deriveRaceFeatures(previousTemplate) : ''
-    const nextRacePrefill = deriveRaceFeatures(template)
-    const previousLanguagesPrefill = composeTemplateProficienciesAndLanguages({
-      classTemplate: (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null,
-      raceTemplate: previousTemplate,
-      backgroundTemplate: (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null,
-    })
-    const nextLanguagesPrefill = composeTemplateProficienciesAndLanguages({
-      classTemplate: (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null,
-      raceTemplate: template,
-      backgroundTemplate: (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null,
-    })
-    onChange({
-      ...character,
-      info: {
-        ...character.info,
-        race: template.name,
-        sourceRaceTemplateId: template.id,
-        raceSourceOrigin: 'template',
-        raceTemplateSnapshot: template as unknown as Record<string, unknown>,
-      },
-      raceFeatures: shouldApplyPrefill(character.raceFeatures, previousRacePrefill, nextRacePrefill)
-        ? nextRacePrefill
-        : character.raceFeatures,
-      languages: shouldApplyPrefill(character.languages, previousLanguagesPrefill, nextLanguagesPrefill)
-        ? nextLanguagesPrefill
-        : character.languages,
-    })
-  }, [character, composeTemplateProficienciesAndLanguages, deriveRaceFeatures, onChange, raceTemplates, shouldApplyPrefill])
-
-  const applyBackgroundTemplate = useCallback((templateId: string) => {
-    const template = backgroundTemplates.find((row) => row.id === templateId)
-    if (!template) return
-    const previousTemplate = (character.info.backgroundTemplateSnapshot ?? null) as BackgroundTemplate | null
-    const previousBackgroundPrefill = previousTemplate ? deriveBackgroundFeatures(previousTemplate) : ''
-    const nextBackgroundPrefill = deriveBackgroundFeatures(template)
-    const previousLanguagesPrefill = composeTemplateProficienciesAndLanguages({
-      classTemplate: (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null,
-      raceTemplate: (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null,
-      backgroundTemplate: previousTemplate,
-    })
-    const nextLanguagesPrefill = composeTemplateProficienciesAndLanguages({
-      classTemplate: (character.info.classTemplateSnapshot ?? null) as ClassTemplate | null,
-      raceTemplate: (character.info.raceTemplateSnapshot ?? null) as RaceTemplate | null,
-      backgroundTemplate: template,
-    })
-    onChange({
-      ...character,
-      info: {
-        ...character.info,
-        background: template.name,
-        sourceBackgroundTemplateId: template.id,
-        backgroundSourceOrigin: 'template',
-        backgroundTemplateSnapshot: template as unknown as Record<string, unknown>,
-      },
-      backgroundFeatures: shouldApplyPrefill(character.backgroundFeatures, previousBackgroundPrefill, nextBackgroundPrefill)
-        ? nextBackgroundPrefill
-        : character.backgroundFeatures,
-      languages: shouldApplyPrefill(character.languages, previousLanguagesPrefill, nextLanguagesPrefill)
-        ? nextLanguagesPrefill
-        : character.languages,
-    })
-  }, [backgroundTemplates, character, composeTemplateProficienciesAndLanguages, deriveBackgroundFeatures, onChange, shouldApplyPrefill])
+  useEffect(() => {
+    const level = Math.max(1, Number(character.info.level) || 1)
+    const derivedProficiencyBonus = Math.floor((level - 1) / 4) + 2
+    if (character.proficiencyBonus === derivedProficiencyBonus) return
+    onChange({ ...character, proficiencyBonus: derivedProficiencyBonus })
+  }, [character, onChange])
 
   const updateAbility = useCallback((ability: AbilityName, value: number) => {
     onChange({
@@ -562,6 +515,99 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
       <div className="px-3 py-4">
         <PageShell>
           <div className="space-y-4 pb-24">
+        {isNewCharacter && creationMode === null ? (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">{t('character.creationModeTitle')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">{t('character.creationModeDescription')}</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Button onClick={() => {
+                  setCreationMode('custom')
+                  onChange({
+                    ...character,
+                    info: {
+                      ...character.info,
+                      classSourceOrigin: 'custom',
+                      raceSourceOrigin: 'custom',
+                      backgroundSourceOrigin: 'custom',
+                    },
+                  })
+                }}>{t('character.creationCustom')}</Button>
+                <Button variant="outline" onClick={() => setCreationMode('template')}>{t('character.creationTemplate')}</Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {isNewCharacter && creationMode === 'template' ? (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">{t('character.templateSetupTitle')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs uppercase text-muted-foreground">{t('character.classTemplate')}</label>
+                <select className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" value={guidedClassTemplateId} onChange={(e) => setGuidedClassTemplateId(e.target.value)}>
+                  <option value="">{t('character.selectTemplate')}</option>
+                  {classTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs uppercase text-muted-foreground">{t('character.raceTemplate')}</label>
+                <select className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" value={guidedRaceTemplateId} onChange={(e) => setGuidedRaceTemplateId(e.target.value)}>
+                  <option value="">{t('character.selectTemplate')}</option>
+                  {raceTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs uppercase text-muted-foreground">{t('character.backgroundTemplate')}</label>
+                <select className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" value={guidedBackgroundTemplateId} onChange={(e) => setGuidedBackgroundTemplateId(e.target.value)}>
+                  <option value="">{t('character.selectTemplate')}</option>
+                  {backgroundTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+                </select>
+              </div>
+              <Button
+                className="w-full"
+                disabled={!guidedClassTemplateId || !guidedRaceTemplateId || !guidedBackgroundTemplateId}
+                onClick={() => {
+                  const classTemplate = classTemplates.find((template) => template.id === guidedClassTemplateId)
+                  const raceTemplate = raceTemplates.find((template) => template.id === guidedRaceTemplateId)
+                  const backgroundTemplate = backgroundTemplates.find((template) => template.id === guidedBackgroundTemplateId)
+                  if (!classTemplate || !raceTemplate || !backgroundTemplate) return
+                  const nextCharacter: Character = {
+                    ...character,
+                    info: {
+                      ...character.info,
+                      class: classTemplate.name,
+                      race: raceTemplate.name,
+                      background: backgroundTemplate.name,
+                      sourceClassTemplateId: classTemplate.id,
+                      sourceRaceTemplateId: raceTemplate.id,
+                      sourceBackgroundTemplateId: backgroundTemplate.id,
+                      classSourceOrigin: 'template',
+                      raceSourceOrigin: 'template',
+                      backgroundSourceOrigin: 'template',
+                      classTemplateSnapshot: classTemplate as unknown as Record<string, unknown>,
+                      raceTemplateSnapshot: raceTemplate as unknown as Record<string, unknown>,
+                      backgroundTemplateSnapshot: backgroundTemplate as unknown as Record<string, unknown>,
+                    },
+                    classFeatures: deriveClassFeatures(classTemplate),
+                    raceFeatures: deriveRaceFeatures(raceTemplate),
+                    backgroundFeatures: deriveBackgroundFeatures(backgroundTemplate),
+                    languages: composeTemplateProficienciesAndLanguages({ classTemplate, raceTemplate, backgroundTemplate }),
+                  }
+                  onChange(applyClassDerivedAutomation(nextCharacter, classTemplate))
+                  setCreationMode('custom')
+                }}
+              >
+                {t('character.templateConfirmCreate')}
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
+
         {/* Character Info - Portrait ABOVE inputs */}
         <Card>
           <CardContent className="pt-4">
@@ -602,7 +648,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
             />
             
             {/* Character details grid */}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div className="space-y-1">
                 <label className="text-xs uppercase text-muted-foreground">{t('character.class')}</label>
                 <DebouncedInput
@@ -656,77 +702,6 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
               </div>
             </div>
 
-            <div className="mt-3 space-y-2 rounded-md border border-border bg-muted/20 p-2">
-              <p className="text-xs uppercase text-muted-foreground">{t('character.templateSources')}</p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">{t('character.classTemplate')}</label>
-                  <select
-                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                    value={character.info.sourceClassTemplateId ?? ''}
-                    onChange={(e) => applyClassTemplate(e.target.value)}
-                  >
-                    <option value="">{t('character.selectTemplate')}</option>
-                    {classTemplates.map((template) => (
-                      <option key={template.id} value={template.id}>{template.name}</option>
-                    ))}
-                  </select>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => onChange({ ...character, info: { ...character.info, sourceClassTemplateId: null, classSourceOrigin: 'custom', classTemplateSnapshot: null } })}
-                  >
-                    {t('character.useCustom')}
-                  </Button>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">{t('character.raceTemplate')}</label>
-                  <select
-                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                    value={character.info.sourceRaceTemplateId ?? ''}
-                    onChange={(e) => applyRaceTemplate(e.target.value)}
-                  >
-                    <option value="">{t('character.selectTemplate')}</option>
-                    {raceTemplates.map((template) => (
-                      <option key={template.id} value={template.id}>{template.name}</option>
-                    ))}
-                  </select>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => onChange({ ...character, info: { ...character.info, sourceRaceTemplateId: null, raceSourceOrigin: 'custom', raceTemplateSnapshot: null } })}
-                  >
-                    {t('character.useCustom')}
-                  </Button>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">{t('character.backgroundTemplate')}</label>
-                  <select
-                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                    value={character.info.sourceBackgroundTemplateId ?? ''}
-                    onChange={(e) => applyBackgroundTemplate(e.target.value)}
-                  >
-                    <option value="">{t('character.selectTemplate')}</option>
-                    {backgroundTemplates.map((template) => (
-                      <option key={template.id} value={template.id}>{template.name}</option>
-                    ))}
-                  </select>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => onChange({ ...character, info: { ...character.info, sourceBackgroundTemplateId: null, backgroundSourceOrigin: 'custom', backgroundTemplateSnapshot: null } })}
-                  >
-                    {t('character.useCustom')}
-                  </Button>
-                </div>
-              </div>
-            </div>
           </CardContent>
         </Card>
 
@@ -744,18 +719,13 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 min={1}
                 max={10}
                 value={character.proficiencyBonus}
-                onChange={(e) =>
-                  onChange({
-                    ...character,
-                    proficiencyBonus: parseInt(e.target.value) || 2,
-                  })
-                }
+                readOnly
                 className="h-8 w-14 text-center font-bold"
               />
             </div>
 
             {/* Ability Scores Grid */}
-            <div className="grid grid-cols-3 gap-2 justify-items-center sm:grid-cols-6">
+            <div className="grid grid-cols-2 gap-2 justify-items-center sm:grid-cols-3 lg:grid-cols-6">
               {abilities.map((ability) => {
                 const score = character.abilities[ability].value
                 const mod = calculateModifier(score)
@@ -765,7 +735,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
                 return (
                   <div
                     key={ability}
-                    className="flex w-[104px] md:w-[120px] flex-col items-center rounded border bg-muted/30 p-1.5 text-center md:p-2"
+                    className="flex w-full max-w-[120px] flex-col items-center rounded border bg-muted/30 p-1.5 text-center md:p-2"
                   >
                     <span className="text-xs font-medium text-muted-foreground">{ability}</span>
                     <span className="text-xl font-bold md:text-2xl">{formatModifier(mod)}</span>
@@ -833,7 +803,7 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
         <Card>
           <CardContent className="pt-4">
             {/* AC, Initiative, Speed row */}
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <div className="flex flex-col items-center rounded-lg border border-border bg-background/80 p-3">
                 <Shield className="mb-1 size-5 text-muted-foreground" />
                 <span className="text-xs uppercase text-muted-foreground">{t('character.combat.ac')}</span>

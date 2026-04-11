@@ -9,8 +9,8 @@ import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { ZoomIn, ZoomOut, Maximize2, Minimize2, RotateCcw, Upload, Trash2, Eye, MapIcon, Check, X } from 'lucide-react'
-import { createMap, deleteMap, loadMaps, setActiveMap as setActiveMapRemote } from '@/lib/supabase-data'
+import { ZoomIn, ZoomOut, Maximize2, Minimize2, RotateCcw, Upload, Trash2, Eye, MapIcon, Check, X, Tv } from 'lucide-react'
+import { createMap, deleteMap, loadMaps, setActiveMap as setActiveMapRemote, updateMapGridSettings } from '@/lib/supabase-data'
 import type { StoredMap } from '@/lib/supabase-data'
 import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
@@ -50,6 +50,7 @@ export const DMMapManager = memo(function DMMapManager() {
   const [newMapName, setNewMapName] = useState('')
   const [newMapFile, setNewMapFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const gridSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -280,6 +281,32 @@ export const DMMapManager = memo(function DMMapManager() {
     }
   }, [applyZoomAt, viewSettings.zoom, viewingMap])
 
+  useEffect(() => {
+    if (!viewingMap) return
+    if (gridSaveTimeoutRef.current) clearTimeout(gridSaveTimeoutRef.current)
+    gridSaveTimeoutRef.current = setTimeout(() => {
+      void (async () => {
+        try {
+          const updatedMap = await updateMapGridSettings(viewingMap.id, {
+            gridEnabled: viewSettings.gridEnabled,
+            gridSize: viewSettings.gridSize,
+            gridOpacity: viewSettings.gridOpacity,
+          })
+          setViewingMap(updatedMap)
+          setMaps((prev) => prev.map((map) => (map.id === updatedMap.id ? updatedMap : map)))
+          if (cachedMaps) {
+            cachedMaps = cachedMaps.map((map) => (map.id === updatedMap.id ? updatedMap : map))
+          }
+        } catch (error) {
+          console.error('Failed to persist map grid settings', error)
+        }
+      })()
+    }, 200)
+    return () => {
+      if (gridSaveTimeoutRef.current) clearTimeout(gridSaveTimeoutRef.current)
+    }
+  }, [viewSettings.gridEnabled, viewSettings.gridOpacity, viewSettings.gridSize, viewingMap])
+
   if (viewingMap) {
     return (
       <div
@@ -342,17 +369,24 @@ export const DMMapManager = memo(function DMMapManager() {
     <div className="h-full min-h-0 overflow-y-auto p-3 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">{t('nav.maps')}</h2>
-          <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-            <DialogTrigger asChild><Button size="sm"><Upload className="size-4 mr-1" />{t('map.upload')}</Button></DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>{t('map.uploadNewMap')}</DialogTitle></DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2"><Label>Map Name</Label><Input value={newMapName} onChange={(e) => setNewMapName(e.target.value)} placeholder="Enter map name" /></div>
-                <div className="space-y-2"><Label>Image File (WebP/JPG)</Label><Input ref={fileInputRef} type="file" accept=".webp,.jpg,.jpeg,image/webp,image/jpeg" onChange={handleFileSelect} /></div>
-                <Button onClick={() => void handleUpload()} disabled={!newMapFile || !newMapName.trim() || isUploading} className="w-full">{isUploading ? 'Uploading...' : 'Upload Map'}</Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" asChild>
+              <a href="/tv-map" target="_blank" rel="noreferrer">
+                <Tv className="size-4 mr-1" />TV Mode
+              </a>
+            </Button>
+            <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+              <DialogTrigger asChild><Button size="sm"><Upload className="size-4 mr-1" />{t('map.upload')}</Button></DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>{t('map.uploadNewMap')}</DialogTitle></DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-2"><Label>Map Name</Label><Input value={newMapName} onChange={(e) => setNewMapName(e.target.value)} placeholder="Enter map name" /></div>
+                  <div className="space-y-2"><Label>Image File (WebP/JPG)</Label><Input ref={fileInputRef} type="file" accept=".webp,.jpg,.jpeg,image/webp,image/jpeg" onChange={handleFileSelect} /></div>
+                  <Button onClick={() => void handleUpload()} disabled={!newMapFile || !newMapName.trim() || isUploading} className="w-full">{isUploading ? 'Uploading...' : 'Upload Map'}</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
         {maps.length === 0 ? (
           <Card><CardContent className="py-8 text-center"><MapIcon className="size-12 text-muted-foreground mx-auto mb-3" /><p className="text-muted-foreground">{t('map.noMapsYet')}</p><p className="text-sm text-muted-foreground mt-1">{t('map.uploadToStart')}</p></CardContent></Card>
