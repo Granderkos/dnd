@@ -184,21 +184,66 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
             <DialogDescription>Create a custom bestiary creature entry.</DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-2">
-            <Input placeholder="Name" value={customName} onChange={(e) => setCustomName(e.target.value)} className="col-span-2" />
-            <Input placeholder="Size" value={customSize} onChange={(e) => setCustomSize(e.target.value)} />
-            <Input placeholder="Creature type" value={customType} onChange={(e) => setCustomType(e.target.value)} />
-            <Input placeholder="Subtype" value={customSubtype} onChange={(e) => setCustomSubtype(e.target.value)} />
-            <Input placeholder="Alignment" value={customAlignment} onChange={(e) => setCustomAlignment(e.target.value)} />
-            <Input type="number" placeholder="AC" value={customAc} onChange={(e) => setCustomAc(e.target.value)} />
-            <Input type="number" placeholder="HP" value={customHp} onChange={(e) => setCustomHp(e.target.value)} />
-            <Input placeholder="Speed" value={customSpeed} onChange={(e) => setCustomSpeed(e.target.value)} className="col-span-2" />
-            <Input type="number" placeholder="STR" value={customStr} onChange={(e) => setCustomStr(e.target.value)} />
-            <Input type="number" placeholder="DEX" value={customDex} onChange={(e) => setCustomDex(e.target.value)} />
-            <Input type="number" placeholder="CON" value={customCon} onChange={(e) => setCustomCon(e.target.value)} />
-            <Input type="number" placeholder="INT" value={customInt} onChange={(e) => setCustomInt(e.target.value)} />
-            <Input type="number" placeholder="WIS" value={customWis} onChange={(e) => setCustomWis(e.target.value)} />
-            <Input type="number" placeholder="CHA" value={customCha} onChange={(e) => setCustomCha(e.target.value)} />
-            <Textarea placeholder="Notes / Description" value={customNotes} onChange={(e) => setCustomNotes(e.target.value)} className="col-span-2 min-h-20" />
+            <label className="col-span-2 text-xs font-medium text-muted-foreground">
+              Name
+              <Input value={customName} onChange={(e) => setCustomName(e.target.value)} />
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              Size
+              <Input value={customSize} onChange={(e) => setCustomSize(e.target.value)} />
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              Creature Type
+              <Input value={customType} onChange={(e) => setCustomType(e.target.value)} />
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              Subtype
+              <Input value={customSubtype} onChange={(e) => setCustomSubtype(e.target.value)} />
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              Alignment
+              <Input value={customAlignment} onChange={(e) => setCustomAlignment(e.target.value)} />
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              Armor Class
+              <Input type="number" placeholder="13" value={customAc} onChange={(e) => setCustomAc(e.target.value)} />
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              Hit Points
+              <Input type="number" placeholder="22" value={customHp} onChange={(e) => setCustomHp(e.target.value)} />
+            </label>
+            <label className="col-span-2 text-xs font-medium text-muted-foreground">
+              Speed
+              <Input placeholder="30 ft." value={customSpeed} onChange={(e) => setCustomSpeed(e.target.value)} />
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              STR
+              <Input type="number" value={customStr} onChange={(e) => setCustomStr(e.target.value)} />
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              DEX
+              <Input type="number" value={customDex} onChange={(e) => setCustomDex(e.target.value)} />
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              CON
+              <Input type="number" value={customCon} onChange={(e) => setCustomCon(e.target.value)} />
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              INT
+              <Input type="number" value={customInt} onChange={(e) => setCustomInt(e.target.value)} />
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              WIS
+              <Input type="number" value={customWis} onChange={(e) => setCustomWis(e.target.value)} />
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              CHA
+              <Input type="number" value={customCha} onChange={(e) => setCustomCha(e.target.value)} />
+            </label>
+            <label className="col-span-2 text-xs font-medium text-muted-foreground">
+              Notes / Description
+              <Textarea value={customNotes} onChange={(e) => setCustomNotes(e.target.value)} className="min-h-20" />
+            </label>
           </div>
           <DialogFooter>
             <Button
