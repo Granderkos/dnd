@@ -21,7 +21,7 @@ import { useAuth } from '@/lib/auth-context'
 import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
-import { clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listFightCharacterCombatState, listFightEntities, moveFightTurnToEnd, removeEntity, setCharacterDeathSaves, setFightEntityCurrentHp, startCombatForCampaign, updateFightEntityNotes } from '@/lib/supabase-v3'
+import { clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listFightCharacterCombatState, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, startCombatForCampaign, updateFightEntityNotes } from '@/lib/supabase-v3'
 import type { FightStatus } from '@/lib/v3-types'
 import type { FightEntity } from '@/lib/v3-types'
 import { Character, calculateModifier, formatFeetWithSquares, formatModifier } from '@/lib/dnd-types'
@@ -887,8 +887,20 @@ function DMFightPanel({
     : fightStatus === 'draft'
       ? labels.noEntitiesDraft
       : fightStatus === 'ended'
-        ? labels.noActive
+      ? labels.noActive
         : labels.noEntities
+  const displayEntities = useMemo(() => {
+    const acting: FightEntity[] = []
+    const skipped: FightEntity[] = []
+    entities.forEach((entity) => {
+      if (isAutoSkipEntity(entity)) {
+        skipped.push(entity)
+      } else {
+        acting.push(entity)
+      }
+    })
+    return [...acting, ...skipped]
+  }, [entities])
   const fightStateLabel = fightStatus === 'active'
     ? labels.stateActive
     : fightStatus === 'collecting_initiative'
@@ -989,7 +1001,7 @@ function DMFightPanel({
               {labels.allDowned}
             </div>
           ) : null}
-          {entities.map((entity) => {
+          {displayEntities.map((entity) => {
             const hpSnapshot = getEntityHpSnapshot(entity, characterCombatState)
             const parsedNotes = parseFightEntityNotes(entity.notes)
             const conditions = parsedNotes.conditions
