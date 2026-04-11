@@ -12,6 +12,8 @@ export interface ItemTemplate {
   name: string
   description: string | null
   category: string | null
+  item_kind: string | null
+  item_subtype: string | null
   rarity: string | null
   weight: number | null
   value_text: string | null
@@ -27,8 +29,34 @@ export interface ItemTemplate {
   stealth_disadvantage: boolean | null
   source_url: string | null
   requires_attunement: boolean
+  capacity_text: string | null
+  contents_summary: string | null
+  charges_max: number | null
+  charges_current: number | null
+  usage_type: string | null
   properties: unknown
   tags: unknown
+}
+
+export interface CreateItemTemplateInput {
+  name: string
+  description?: string | null
+  category: string
+  item_kind: string
+  item_subtype?: string | null
+  rarity?: string | null
+  weight?: number | null
+  value_text?: string | null
+  damage_text?: string | null
+  damage_type?: string | null
+  range_text?: string | null
+  armor_kind?: string | null
+  ac_base?: number | null
+  charges_max?: number | null
+  charges_current?: number | null
+  usage_type?: string | null
+  properties?: unknown
+  tags?: unknown
 }
 
 export interface SpellTemplate {
@@ -85,6 +113,7 @@ export interface BackgroundTemplate {
 const characterSaveQueue = new Map<string, Promise<void>>()
 const characterBlobCache = new Map<string, CharacterNotesBlob>()
 const portraitUploadCache = new Map<string, string>()
+const templateQueryCache = new Map<string, { expiresAt: number; data: unknown[] }>()
 const characterSaveSignatures = new Map<string, {
   row: string
   attacks: string
@@ -92,7 +121,8 @@ const characterSaveSignatures = new Map<string, {
   spells: string
   blob: string
 }>()
-const INVENTORY_CATEGORIES = new Set(['Weapons', 'Armor', 'Equipment', 'Consumables', 'Supplies', 'Treasure', 'Other'])
+const INVENTORY_CATEGORIES = new Set(['Weapons', 'Armor', 'Equipment', 'Tools', 'Consumables', 'Supplies', 'Treasure', 'Other'])
+const TEMPLATE_CACHE_TTL_MS = 5 * 60 * 1000
 
 function normalizeInventoryCategory(value: string | null | undefined): string {
   const normalized = (value ?? '').trim().toLowerCase()
@@ -100,6 +130,7 @@ function normalizeInventoryCategory(value: string | null | undefined): string {
   if (['weapon', 'weapons'].includes(normalized)) return 'Weapons'
   if (['armor', 'armour'].includes(normalized)) return 'Armor'
   if (['equipment', 'gear'].includes(normalized)) return 'Equipment'
+  if (['tool', 'tools', 'kit', 'kits'].includes(normalized)) return 'Tools'
   if (['consumable', 'consumables', 'potion', 'potions'].includes(normalized)) return 'Consumables'
   if (['supply', 'supplies'].includes(normalized)) return 'Supplies'
   if (['treasure', 'treasures', 'loot'].includes(normalized)) return 'Treasure'
@@ -168,8 +199,10 @@ interface CharacterNotesBlob {
 const characterSelectColumnsBase = 'id, name, class_name, subclass, race, background, alignment, level, xp, proficiency_bonus, armor_class, initiative, speed, hp_max, hp_current, hp_temp, hit_dice_type, death_successes, death_failures, str_score, dex_score, con_score, int_score, wis_score, cha_score, save_str_prof, save_dex_prof, save_con_prof, save_int_prof, save_wis_prof, save_cha_prof, skill_acrobatics_prof, skill_animal_handling_prof, skill_arcana_prof, skill_athletics_prof, skill_deception_prof, skill_history_prof, skill_insight_prof, skill_intimidation_prof, skill_investigation_prof, skill_medicine_prof, skill_nature_prof, skill_perception_prof, skill_performance_prof, skill_persuasion_prof, skill_religion_prof, skill_sleight_of_hand_prof, skill_stealth_prof, skill_survival_prof, features, languages, portrait_preview_url'
 const characterSelectColumnsWithOriginal = `${characterSelectColumnsBase}, portrait_original_url`
 const characterSelectColumnsWithTemplates = `${characterSelectColumnsWithOriginal}, source_class_template_id, source_race_template_id, source_background_template_id, class_source_origin, race_source_origin, background_source_origin, class_template_snapshot, race_template_snapshot, background_template_snapshot`
-const inventoryColumnsBase = 'id, client_id, title, quantity, description, category'
+const inventoryColumnsBase = 'id, client_id, title, quantity, description, category, parent_client_id'
+const inventoryColumnsLegacyBase = 'id, client_id, title, quantity, description, category'
 const inventoryColumnsWithTemplate = `${inventoryColumnsBase}, source_item_template_id, source_origin, template_snapshot`
+const inventoryColumnsWithTemplateLegacyParent = `${inventoryColumnsLegacyBase}, source_item_template_id, source_origin, template_snapshot`
 
 function isMissingColumnError(error: unknown, columnName: string) {
   const message = typeof error === 'object' && error !== null && 'message' in error
@@ -416,10 +449,19 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
       .select(inventoryColumnsWithTemplate)
       .eq('character_id', characterId)
       .order('sort_order', { ascending: true })
-    if (!withTemplateFields.error || !isMissingColumnError(withTemplateFields.error, 'source_item_template_id')) return withTemplateFields
+    if (!withTemplateFields.error) return withTemplateFields
+    if (isMissingColumnError(withTemplateFields.error, 'parent_client_id')) {
+      const withLegacyParent = await supabase
+        .from('inventory_items')
+        .select(inventoryColumnsWithTemplateLegacyParent)
+        .eq('character_id', characterId)
+        .order('sort_order', { ascending: true })
+      if (!withLegacyParent.error || !isMissingColumnError(withLegacyParent.error, 'source_item_template_id')) return withLegacyParent
+    }
+    if (!isMissingColumnError(withTemplateFields.error, 'source_item_template_id')) return withTemplateFields
     return supabase
       .from('inventory_items')
-      .select(inventoryColumnsBase)
+      .select(inventoryColumnsLegacyBase)
       .eq('character_id', characterId)
       .order('sort_order', { ascending: true })
   }
@@ -590,6 +632,7 @@ export async function loadCurrentPlayerData(userId: string): Promise<{ character
         quantity: item.quantity,
         description: item.description,
         category: normalizeInventoryCategory(typeof item.category === 'string' ? item.category : null),
+        parentItemId: typeof itemRecord.parent_client_id === 'string' ? itemRecord.parent_client_id : null,
         sourceItemTemplateId: 'source_item_template_id' in itemRecord ? itemRecord.source_item_template_id as string | null : null,
         sourceOrigin: (typeof itemRecord.source_origin === 'string' && itemRecord.source_origin === 'template')
           ? 'template'
@@ -865,6 +908,7 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
     description: item.description,
     quantity: item.quantity,
     category: normalizeInventoryCategory(item.category),
+    parent_client_id: item.parentItemId ?? null,
     source_item_template_id: item.sourceItemTemplateId ?? null,
     source_origin: item.sourceOrigin === 'template' ? 'template' : 'custom',
     template_snapshot: item.templateSnapshot ?? null,
@@ -872,8 +916,14 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
   let { error: upsertError } = await supabase
     .from('inventory_items')
     .upsert(rows, { onConflict: 'character_id,client_id' })
+  if (upsertError && isMissingColumnError(upsertError, 'parent_client_id')) {
+    const legacyRows = rows.map(({ parent_client_id, ...legacyRow }) => legacyRow)
+    ;({ error: upsertError } = await supabase
+      .from('inventory_items')
+      .upsert(legacyRows, { onConflict: 'character_id,client_id' }))
+  }
   if (upsertError && isMissingColumnError(upsertError, 'source_item_template_id')) {
-    const legacyRows = rows.map(({ source_item_template_id, source_origin, template_snapshot, ...legacyRow }) => legacyRow)
+    const legacyRows = rows.map(({ parent_client_id, source_item_template_id, source_origin, template_snapshot, ...legacyRow }) => legacyRow)
     ;({ error: upsertError } = await supabase
       .from('inventory_items')
       .upsert(legacyRows, { onConflict: 'character_id,client_id' }))
@@ -895,49 +945,287 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
 }
 
 export async function listItemTemplates() {
-  const { data, error } = await supabase
+  const cached = templateQueryCache.get('item_templates')
+  if (cached && cached.expiresAt > Date.now()) return cached.data as ItemTemplate[]
+  const fullSelect = 'id, name, description, category, item_kind, item_subtype, rarity, weight, value_text, damage_text, damage_type, range_text, weapon_kind, armor_kind, ac_base, ac_bonus, dex_cap, strength_requirement, stealth_disadvantage, source_url, requires_attunement, capacity_text, contents_summary, charges_max, charges_current, usage_type, properties, tags'
+  const legacySelect = 'id, name, description, category, item_kind, item_subtype, rarity, weight, value_text, damage_text, damage_type, range_text, weapon_kind, armor_kind, ac_base, ac_bonus, dex_cap, strength_requirement, stealth_disadvantage, source_url, requires_attunement, capacity_text, contents_summary, properties, tags'
+
+  const fullResult = await supabase
     .from('item_templates')
-    .select('id, name, description, category, rarity, weight, value_text, damage_text, damage_type, range_text, weapon_kind, armor_kind, ac_base, ac_bonus, dex_cap, strength_requirement, stealth_disadvantage, source_url, requires_attunement, properties, tags')
+    .select(fullSelect)
     .order('name', { ascending: true })
+  let rows = fullResult.data as Record<string, unknown>[] | null
+  let error = fullResult.error
+  if (error && (isMissingColumnError(error, 'charges_max') || isMissingColumnError(error, 'charges_current') || isMissingColumnError(error, 'usage_type'))) {
+    const legacyResult = await supabase
+      .from('item_templates')
+      .select(legacySelect)
+      .order('name', { ascending: true })
+    rows = legacyResult.data as Record<string, unknown>[] | null
+    error = legacyResult.error
+    if (!error) {
+      rows = (rows ?? []).map((row) => ({
+        ...row,
+        charges_max: null,
+        charges_current: null,
+        usage_type: null,
+      }))
+    }
+  }
   if (error) throw error
-  return (data ?? []) as ItemTemplate[]
+  const normalizedRows = (rows ?? []) as unknown as ItemTemplate[]
+  templateQueryCache.set('item_templates', { expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS, data: normalizedRows as unknown[] })
+  return normalizedRows
+}
+
+function slugifyTemplateName(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+export async function createItemTemplate(userId: string, input: CreateItemTemplateInput) {
+  const baseSlug = slugifyTemplateName(input.name) || 'custom-item'
+  const slug = `${baseSlug}-${Date.now().toString(36)}`
+  const rpcResult = await supabase.rpc('create_item_template_for_dm', {
+    p_slug: slug,
+    p_name: input.name.trim(),
+    p_description: input.description?.trim() || null,
+    p_category: normalizeInventoryCategory(input.category),
+    p_item_kind: input.item_kind,
+    p_item_subtype: input.item_subtype ?? null,
+    p_rarity: input.rarity ?? null,
+    p_weight: input.weight ?? null,
+    p_value_text: input.value_text?.trim() || null,
+    p_damage_text: input.damage_text?.trim() || null,
+    p_damage_type: input.damage_type?.trim() || null,
+    p_range_text: input.range_text?.trim() || null,
+    p_armor_kind: input.armor_kind ?? null,
+    p_ac_base: input.ac_base ?? null,
+    p_charges_max: input.charges_max ?? null,
+    p_charges_current: input.charges_current ?? null,
+    p_usage_type: input.usage_type ?? null,
+    p_properties: input.properties ?? [],
+    p_tags: input.tags ?? ['custom'],
+  })
+
+  let data = rpcResult.data as ItemTemplate | null
+  let error = rpcResult.error
+  if (error && error.message?.toLowerCase().includes('create_item_template_for_dm')) {
+    const fallback = await supabase
+      .from('item_templates')
+      .insert({
+        slug,
+        name: input.name.trim(),
+        description: input.description?.trim() || null,
+        category: normalizeInventoryCategory(input.category),
+        item_kind: input.item_kind,
+        item_subtype: input.item_subtype ?? null,
+        rarity: input.rarity ?? null,
+        weight: input.weight ?? null,
+        value_text: input.value_text?.trim() || null,
+        damage_text: input.damage_text?.trim() || null,
+        damage_type: input.damage_type?.trim() || null,
+        range_text: input.range_text?.trim() || null,
+        armor_kind: input.armor_kind ?? null,
+        ac_base: input.ac_base ?? null,
+        charges_max: input.charges_max ?? null,
+        charges_current: input.charges_current ?? null,
+        usage_type: input.usage_type ?? null,
+        properties: input.properties ?? [],
+        tags: input.tags ?? ['custom'],
+        is_official: false,
+        created_by: userId,
+      })
+      .select('id, name, description, category, item_kind, item_subtype, rarity, weight, value_text, damage_text, damage_type, range_text, weapon_kind, armor_kind, ac_base, ac_bonus, dex_cap, strength_requirement, stealth_disadvantage, source_url, requires_attunement, capacity_text, contents_summary, charges_max, charges_current, usage_type, properties, tags')
+      .single()
+    data = fallback.data as ItemTemplate | null
+    error = fallback.error
+  }
+  if (error) throw error
+  templateQueryCache.delete('item_templates')
+  return data as ItemTemplate
+}
+
+async function appendInventoryRow(
+  characterId: string,
+  payload: {
+    title: string
+    description: string
+    quantity: number
+    category: string
+    sourceItemTemplateId?: string | null
+    sourceOrigin?: 'template' | 'custom'
+    templateSnapshot?: Record<string, unknown> | null
+  }
+) {
+  const formatGrantRpcError = (error: {
+    message?: string | null
+    details?: string | null
+    hint?: string | null
+    code?: string | null
+  }) => {
+    const message = error.message ?? 'Unknown grant error'
+    const details = error.details ? ` (${error.details})` : ''
+    const hint = error.hint ? ` Hint: ${error.hint}` : ''
+    if (/invalid input syntax for type uuid/i.test(message)) {
+      return new Error(`Failed to grant item: invalid character or template id.${details}${hint}`)
+    }
+    if (/Invalid target character/i.test(message)) {
+      return new Error(`Failed to grant item: target character is not eligible for DM rewards.${details}${hint}`)
+    }
+    if (/Only DM can grant inventory items/i.test(message)) {
+      return new Error(`Failed to grant item: your account is missing DM permissions.${details}${hint}`)
+    }
+    if (/Not authenticated/i.test(message)) {
+      return new Error(`Failed to grant item: please sign in again.${details}${hint}`)
+    }
+    return new Error(`Failed to grant item: ${message}${details}${hint}`)
+  }
+
+  const rpc = await supabase.rpc('grant_inventory_item_for_dm', {
+    p_character_id: characterId,
+    p_title: payload.title,
+    p_description: payload.description,
+    p_quantity: payload.quantity,
+    p_category: payload.category,
+    p_source_item_template_id: payload.sourceItemTemplateId ?? null,
+    p_source_origin: payload.sourceOrigin ?? 'custom',
+    p_template_snapshot: payload.templateSnapshot ?? null,
+  })
+  if (!rpc.error) return
+  if (!rpc.error.message?.toLowerCase().includes('grant_inventory_item_for_dm')) {
+    throw formatGrantRpcError(rpc.error)
+  }
+
+  const { data: lastRow, error: sortError } = await supabase
+    .from('inventory_items')
+    .select('sort_order')
+    .eq('character_id', characterId)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (sortError) throw sortError
+
+  const row = {
+    character_id: characterId,
+    client_id: generateClientId(),
+    sort_order: (lastRow?.sort_order ?? -1) + 1,
+    title: payload.title,
+    description: payload.description,
+    quantity: Math.max(1, Math.floor(payload.quantity)),
+    category: normalizeInventoryCategory(payload.category),
+    parent_client_id: null as string | null,
+    source_item_template_id: payload.sourceItemTemplateId ?? null,
+    source_origin: payload.sourceOrigin ?? 'custom',
+    template_snapshot: payload.templateSnapshot ?? null,
+  }
+
+  let { error } = await supabase.from('inventory_items').insert(row)
+  if (error && isMissingColumnError(error, 'parent_client_id')) {
+    const { parent_client_id, ...legacyRow } = row
+    ;({ error } = await supabase.from('inventory_items').insert(legacyRow))
+  }
+  if (error && isMissingColumnError(error, 'source_item_template_id')) {
+    const { parent_client_id, source_item_template_id, source_origin, template_snapshot, ...legacyRow } = row
+    ;({ error } = await supabase.from('inventory_items').insert(legacyRow))
+  }
+  if (error) throw formatGrantRpcError(error)
+}
+
+export async function grantItemTemplateToCharacter(characterId: string, template: ItemTemplate, quantity = 1) {
+  const normalizedQuantity = Math.max(1, Math.floor(quantity))
+  await appendInventoryRow(characterId, {
+    title: template.name,
+    description: template.description ?? '',
+    quantity: normalizedQuantity,
+    category: template.category ?? 'Other',
+    sourceItemTemplateId: template.id,
+    sourceOrigin: 'template',
+    templateSnapshot: template as unknown as Record<string, unknown>,
+  })
+}
+
+export async function grantCustomInventoryItemToCharacter(
+  characterId: string,
+  input: { name: string; description?: string; category?: string; quantity?: number }
+) {
+  await appendInventoryRow(characterId, {
+    title: input.name,
+    description: input.description ?? '',
+    quantity: input.quantity ?? 1,
+    category: input.category ?? 'Treasure',
+    sourceOrigin: 'custom',
+    templateSnapshot: null,
+  })
+}
+
+export async function grantGoldToCharacter(characterId: string, goldAmount: number) {
+  const normalizedGold = Math.max(0, Math.floor(goldAmount))
+  if (normalizedGold <= 0) return
+  const { error } = await supabase.rpc('grant_currency_to_character_for_dm', {
+    p_character_id: characterId,
+    p_gold: normalizedGold,
+  })
+  if (!error) return
+  const details = error.details ? ` (${error.details})` : ''
+  const hint = error.hint ? ` Hint: ${error.hint}` : ''
+  throw new Error(`Failed to grant gold: ${error.message ?? 'Unknown error'}${details}${hint}`)
 }
 
 export async function listSpellTemplates() {
+  const cached = templateQueryCache.get('spell_templates')
+  if (cached && cached.expiresAt > Date.now()) return cached.data as SpellTemplate[]
   const { data, error } = await supabase
     .from('spell_templates')
     .select('id, name, level, school, casting_time, range_text, duration_text, concentration, ritual, description, higher_level_text, save_type, attack_type')
     .order('level', { ascending: true })
     .order('name', { ascending: true })
   if (error) throw error
-  return (data ?? []) as SpellTemplate[]
+  const rows = (data ?? []) as SpellTemplate[]
+  templateQueryCache.set('spell_templates', { expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS, data: rows as unknown[] })
+  return rows
 }
 
 export async function listClassTemplates() {
+  const cached = templateQueryCache.get('class_templates')
+  if (cached && cached.expiresAt > Date.now()) return cached.data as ClassTemplate[]
   const { data, error } = await supabase
     .from('class_templates')
     .select('id, name, hit_die, primary_ability, saving_throw_proficiencies, armor_proficiencies, weapon_proficiencies, tool_proficiencies, short_description, feature_summary')
     .order('name', { ascending: true })
   if (error) throw error
-  return (data ?? []) as ClassTemplate[]
+  const rows = (data ?? []) as ClassTemplate[]
+  templateQueryCache.set('class_templates', { expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS, data: rows as unknown[] })
+  return rows
 }
 
 export async function listRaceTemplates() {
+  const cached = templateQueryCache.get('race_templates')
+  if (cached && cached.expiresAt > Date.now()) return cached.data as RaceTemplate[]
   const { data, error } = await supabase
     .from('race_templates')
     .select('id, name, size, speed, ability_bonuses, traits, languages, short_description')
     .order('name', { ascending: true })
   if (error) throw error
-  return (data ?? []) as RaceTemplate[]
+  const rows = (data ?? []) as RaceTemplate[]
+  templateQueryCache.set('race_templates', { expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS, data: rows as unknown[] })
+  return rows
 }
 
 export async function listBackgroundTemplates() {
+  const cached = templateQueryCache.get('background_templates')
+  if (cached && cached.expiresAt > Date.now()) return cached.data as BackgroundTemplate[]
   const { data, error } = await supabase
     .from('background_templates')
     .select('id, name, skill_proficiencies, tool_proficiencies, language_proficiencies, equipment_summary, feature_summary, short_description')
     .order('name', { ascending: true })
   if (error) throw error
-  return (data ?? []) as BackgroundTemplate[]
+  const rows = (data ?? []) as BackgroundTemplate[]
+  templateQueryCache.set('background_templates', { expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS, data: rows as unknown[] })
+  return rows
 }
 
 async function syncSpellRows(characterId: string, spells: Spellbook['spells'][number][]) {
@@ -1063,7 +1351,7 @@ export async function listPlayerCharacters() {
   const results = (players ?? []).map((player) => {
     const row = characterByUserId.get(player.id)
     if (!row) {
-      return { id: player.id, username: player.username, character: emptyCharacter, activity: activityByUserId.get(player.id) ?? null }
+      return { id: player.id, characterId: null, username: player.username, character: emptyCharacter, activity: activityByUserId.get(player.id) ?? null }
     }
 
     const character: Character = {
@@ -1113,6 +1401,7 @@ export async function listPlayerCharacters() {
 
     return {
       id: player.id,
+      characterId: row.id,
       username: player.username,
       character,
       activity: activityByUserId.get(player.id) ?? null,
@@ -1219,6 +1508,32 @@ export async function setActiveMap(mapId: string | null) {
     const { error } = await supabase.from('maps').update({ is_active: true }).eq('id', mapId)
     if (error) throw error
   }
+}
+
+export async function updateMapGridSettings(mapId: string, patch: Pick<StoredMap, 'gridEnabled' | 'gridSize' | 'gridOpacity'>) {
+  const { data, error } = await supabase
+    .from('maps')
+    .update({
+      grid_enabled: patch.gridEnabled ?? false,
+      grid_size: patch.gridSize ?? 50,
+      grid_opacity: patch.gridOpacity ?? 0.3,
+    })
+    .eq('id', mapId)
+    .select('id, name, storage_path, created_at, grid_enabled, grid_size, grid_opacity, uploaded_by, is_active')
+    .single()
+
+  if (error) throw error
+  return {
+    id: data.id,
+    name: data.name,
+    imageData: data.storage_path,
+    createdAt: new Date(data.created_at).getTime(),
+    gridEnabled: data.grid_enabled,
+    gridSize: data.grid_size,
+    gridOpacity: Number(data.grid_opacity),
+    uploadedBy: data.uploaded_by,
+    isActive: data.is_active,
+  } as StoredMap
 }
 
 export async function getActiveMap() {

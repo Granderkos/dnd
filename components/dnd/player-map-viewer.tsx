@@ -20,7 +20,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   const [isLoadingMap, setIsLoadingMap] = useState(true)
   const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [isMapFocused, setIsMapFocused] = useState(false)
+  const [isViewportEngaged, setIsViewportEngaged] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const isDragging = useRef(false)
@@ -153,7 +153,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   }, [])
 
   useEffect(() => {
-    const shouldLock = isPseudoFullscreen || isFullscreen || isMapFocused
+    const shouldLock = isPseudoFullscreen || isFullscreen
     if (!shouldLock) return
     const originalOverflow = document.body.style.overflow
     const originalTouchAction = document.body.style.touchAction
@@ -163,7 +163,19 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
       document.body.style.overflow = originalOverflow
       document.body.style.touchAction = originalTouchAction
     }
-  }, [isPseudoFullscreen, isFullscreen, isMapFocused])
+  }, [isPseudoFullscreen, isFullscreen])
+
+  useEffect(() => {
+    if (!isViewportEngaged) return
+    const originalOverflow = document.body.style.overflow
+    const originalOverscroll = document.body.style.overscrollBehavior
+    document.body.style.overflow = 'hidden'
+    document.body.style.overscrollBehavior = 'contain'
+    return () => {
+      document.body.style.overflow = originalOverflow
+      document.body.style.overscrollBehavior = originalOverscroll
+    }
+  }, [isViewportEngaged])
 
   useEffect(() => {
     const container = containerRef.current
@@ -234,11 +246,9 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   return (
     <div
       ref={containerRef}
-      className={`${isPseudoFullscreen ? 'fixed inset-0 z-50 h-dvh' : 'h-full'} flex flex-col bg-background`}
-      onMouseEnter={() => setIsMapFocused(true)}
+      className={`${isPseudoFullscreen ? 'fixed inset-0 z-50 h-dvh' : 'h-full min-h-0'} flex flex-col overflow-hidden bg-background`}
       onMouseLeave={() => {
         handleMouseUp()
-        setIsMapFocused(false)
       }}
     >
       <div className="flex items-center justify-between p-2 border-b bg-card">
@@ -255,15 +265,21 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
       </div>
       <div
         ref={viewportRef}
-        className="flex-1 overflow-hidden cursor-grab active:cursor-grabbing select-none"
+        className="flex-1 overflow-hidden overscroll-contain cursor-grab active:cursor-grabbing select-none"
         style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
+        onMouseEnter={() => setIsViewportEngaged(true)}
+        onMouseLeave={() => {
+          setIsViewportEngaged(false)
+          handleMouseUp()
+        }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onTouchStart={handleTouchStart}
+        onWheel={(e) => { e.preventDefault(); e.stopPropagation() }}
+        onTouchStart={(e) => { setIsViewportEngaged(true); handleTouchStart(e) }}
         onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+        onTouchEnd={() => { setIsViewportEngaged(false); handleTouchEnd() }}
+        onTouchCancel={() => { setIsViewportEngaged(false); handleTouchEnd() }}
       >
         <div className="w-full h-full flex items-center justify-center" style={{ transform: `translate(${settings.panX}px, ${settings.panY}px) scale(${settings.zoom})`, transformOrigin: 'center' }}>
           <img src={activeMap.imageData} alt={activeMap.name} className="max-w-none" draggable={false} />
