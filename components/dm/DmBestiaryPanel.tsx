@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth-context'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 
 function numberFromData(data: Record<string, unknown>, key: string, fallback = 0) {
@@ -36,6 +37,9 @@ function formatError(error: unknown, fallback: string) {
 }
 
 let cachedMonsters: CompendiumEntry[] | null = null
+const SIZE_OPTIONS = ['Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'] as const
+const CREATURE_TYPE_OPTIONS = ['Humanoid', 'Beast', 'Undead', 'Dragon', 'Fiend', 'Construct', 'Monstrosity', 'Aberration', 'Elemental'] as const
+const ALIGNMENT_OPTIONS = ['Lawful Good', 'Neutral Good', 'Chaotic Good', 'Lawful Neutral', 'Neutral', 'Chaotic Neutral', 'Lawful Evil', 'Neutral Evil', 'Chaotic Evil', 'Unaligned'] as const
 
 export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => void }) {
   const { t } = useI18n()
@@ -190,11 +194,33 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
             </label>
             <label className="text-xs font-medium text-muted-foreground">
               Size
-              <Input value={customSize} onChange={(e) => setCustomSize(e.target.value)} />
+              <Select value={customSize} onValueChange={setCustomSize}>
+                <SelectTrigger className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SIZE_OPTIONS.map((size) => (
+                    <SelectItem key={size} value={size}>
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             <label className="text-xs font-medium text-muted-foreground">
               Creature Type
-              <Input value={customType} onChange={(e) => setCustomType(e.target.value)} />
+              <Select value={customType} onValueChange={setCustomType}>
+                <SelectTrigger className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CREATURE_TYPE_OPTIONS.map((creatureType) => (
+                    <SelectItem key={creatureType} value={creatureType}>
+                      {creatureType}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             <label className="text-xs font-medium text-muted-foreground">
               Subtype
@@ -202,7 +228,18 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
             </label>
             <label className="text-xs font-medium text-muted-foreground">
               Alignment
-              <Input value={customAlignment} onChange={(e) => setCustomAlignment(e.target.value)} />
+              <Select value={customAlignment} onValueChange={setCustomAlignment}>
+                <SelectTrigger className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ALIGNMENT_OPTIONS.map((alignment) => (
+                    <SelectItem key={alignment} value={alignment}>
+                      {alignment}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             <label className="text-xs font-medium text-muted-foreground">
               Armor Class
