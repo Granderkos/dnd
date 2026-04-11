@@ -7,6 +7,8 @@ import { getActiveFight, listFightEntities } from '@/lib/supabase-v3'
 import { supabase } from '@/lib/supabase'
 import { APP_VERSION } from '@/lib/app-config'
 import type { FightEntity } from '@/lib/v3-types'
+import { Button } from '@/components/ui/button'
+import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
 
 type TvSceneMode = 'exploration' | 'combat'
 
@@ -32,6 +34,7 @@ export function TvMapMode() {
   const [roundNumber, setRoundNumber] = useState(1)
   const [currentTurn, setCurrentTurn] = useState<FightEntity | null>(null)
   const [nextTurn, setNextTurn] = useState<FightEntity | null>(null)
+  const [zoom, setZoom] = useState(1)
   const [loadingMap, setLoadingMap] = useState(true)
   const activeFightIdRef = useRef<string | null>(null)
   const refreshInFlightRef = useRef(false)
@@ -123,13 +126,25 @@ export function TvMapMode() {
         <span className="rounded bg-black/70 px-2 py-1 text-xs">{activeMap?.name ?? 'No active map'}</span>
       </div>
       <div className="pointer-events-none absolute right-4 top-4 z-10 rounded bg-black/60 px-2 py-1 text-[10px] text-white/80">{APP_VERSION}</div>
+      <div className="absolute right-4 top-12 z-10 flex items-center gap-1 rounded bg-black/60 p-1">
+        <Button size="icon" variant="ghost" className="size-8 text-white hover:bg-white/15 hover:text-white" onClick={() => setZoom((prev) => Math.max(0.5, prev - 0.1))}>
+          <ZoomOut className="size-4" />
+        </Button>
+        <span className="min-w-12 text-center text-xs text-white/90">{Math.round(zoom * 100)}%</span>
+        <Button size="icon" variant="ghost" className="size-8 text-white hover:bg-white/15 hover:text-white" onClick={() => setZoom((prev) => Math.min(2.5, prev + 0.1))}>
+          <ZoomIn className="size-4" />
+        </Button>
+        <Button size="icon" variant="ghost" className="size-8 text-white hover:bg-white/15 hover:text-white" onClick={() => setZoom(1)}>
+          <RotateCcw className="size-4" />
+        </Button>
+      </div>
       {!activeMap ? (
         <div className="flex h-full items-center justify-center text-center text-sm text-white/70">
           Waiting for DM to select an active map.
         </div>
       ) : (
         <div className="relative flex h-full w-full items-center justify-center">
-          <img src={activeMap.imageData} alt={activeMap.name} className="max-h-full max-w-full object-contain" draggable={false} />
+          <img src={activeMap.imageData} alt={activeMap.name} className="max-h-full max-w-full object-contain transition-transform duration-150" style={{ transform: `scale(${zoom})`, transformOrigin: 'center' }} draggable={false} />
           {activeMap.gridEnabled ? (
             <div
               className="pointer-events-none absolute inset-0"
