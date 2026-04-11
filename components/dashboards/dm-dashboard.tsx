@@ -614,6 +614,38 @@ export const DMDashboard = memo(function DMDashboard() {
     }
   }, [fightId, isEndingCombat, t])
 
+  const handleUpdateDeathSaves = useCallback(async (entityId: string, action: 'success' | 'failure' | 'reset') => {
+    const playerEntity = fightEntities.find((entity) => entity.id === entityId && entity.entity_type === 'player' && entity.character_id)
+    const characterId = playerEntity?.character_id
+    if (!characterId || !characterCombatState[characterId]) return
+    const previous = characterCombatState[characterId]
+    const next = {
+      deathSuccesses: action === 'reset' ? 0 : Math.min(3, previous.deathSuccesses + (action === 'success' ? 1 : 0)),
+      deathFailures: action === 'reset' ? 0 : Math.min(3, previous.deathFailures + (action === 'failure' ? 1 : 0)),
+    }
+    setCharacterCombatState((prev) => ({
+      ...prev,
+      [characterId]: {
+        ...prev[characterId],
+        deathSuccesses: next.deathSuccesses,
+        deathFailures: next.deathFailures,
+      },
+    }))
+    try {
+      await setCharacterDeathSaves(characterId, next.deathSuccesses, next.deathFailures)
+    } catch (error) {
+      setCharacterCombatState((prev) => ({
+        ...prev,
+        [characterId]: {
+          ...prev[characterId],
+          deathSuccesses: previous.deathSuccesses,
+          deathFailures: previous.deathFailures,
+        },
+      }))
+      setFightError(formatErrorMessage(error, t('common.unknownError')))
+    }
+  }, [characterCombatState, fightEntities, t])
+
   if (!isLoaded) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-background">
@@ -1069,6 +1101,32 @@ function DMFightPanel({
                       {entity.entity_type === 'player' && entity.character_id && characterCombatState[entity.character_id] && isDownedEntity(entity) ? (
                         <div className="mt-1.5 text-[11px] text-muted-foreground">
                           {labels.deathSaves}: {labels.deathSuccess} {characterCombatState[entity.character_id].deathSuccesses}/3 • {labels.deathFailure} {characterCombatState[entity.character_id].deathFailures}/3
+                          <div className="mt-1 flex justify-end gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-1.5 text-[10px]"
+                              onClick={() => void onUpdateDeathSaves(entity.id, 'success')}
+                            >
+                              +{labels.deathSuccess}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-1.5 text-[10px]"
+                              onClick={() => void onUpdateDeathSaves(entity.id, 'failure')}
+                            >
+                              +{labels.deathFailure}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-1.5 text-[10px]"
+                              onClick={() => void onUpdateDeathSaves(entity.id, 'reset')}
+                            >
+                              Reset
+                            </Button>
+                          </div>
                         </div>
                       ) : null}
                     </div>
