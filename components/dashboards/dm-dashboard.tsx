@@ -1124,37 +1124,6 @@ function DMFightPanel({
                           }}
                         />
                       </div>
-                      {entity.entity_type === 'player' && entity.character_id && characterCombatState[entity.character_id] && isDownedEntity(entity) ? (
-                        <div className="mt-1.5 text-[11px] text-muted-foreground">
-                          {labels.deathSaves}: {labels.deathSuccess} {characterCombatState[entity.character_id].deathSuccesses}/3 • {labels.deathFailure} {characterCombatState[entity.character_id].deathFailures}/3
-                          <div className="mt-1 flex justify-end gap-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-6 px-1.5 text-[10px]"
-                              onClick={() => void onUpdateDeathSaves(entity.id, 'success')}
-                            >
-                              +{labels.deathSuccess}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-6 px-1.5 text-[10px]"
-                              onClick={() => void onUpdateDeathSaves(entity.id, 'failure')}
-                            >
-                              +{labels.deathFailure}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 px-1.5 text-[10px]"
-                              onClick={() => void onUpdateDeathSaves(entity.id, 'reset')}
-                            >
-                              Reset
-                            </Button>
-                          </div>
-                        </div>
-                      ) : null}
                     </div>
                     <div className="mt-1.5 flex items-center justify-end gap-2">
                       <div className="flex items-center rounded-md border border-border bg-background/70 p-0.5">
