@@ -41,6 +41,8 @@ import {
   Spellbook as SpellbookType,
   Inventory as InventoryType,
   MapSettings,
+  calculateSpellAttackBonus,
+  calculateSpellSaveDC,
 } from '@/lib/dnd-types'
 import type { CharacterCompanion, CompanionKind, CompendiumEntry } from '@/lib/v3-types'
 import { User, BookOpen, Package, FileText, Map, LogOut, Sparkles, Plus, Trash2 } from 'lucide-react'
@@ -163,6 +165,19 @@ function safeSessionParse<T>(value: string | null): T | null {
   } catch {
     return null
   }
+}
+
+function deriveSpellcastingAbility(character: Character): 'INT' | 'WIS' | 'CHA' | null {
+  const classSnapshot = (character.info.classTemplateSnapshot ?? null) as { primary_ability?: string | null } | null
+  const primary = (classSnapshot?.primary_ability ?? '').toUpperCase()
+  if (primary.includes('INT')) return 'INT'
+  if (primary.includes('WIS')) return 'WIS'
+  if (primary.includes('CHA')) return 'CHA'
+  const normalizedClass = character.info.class.trim().toLowerCase()
+  if (['wizard', 'artificer'].includes(normalizedClass)) return 'INT'
+  if (['cleric', 'druid', 'ranger'].includes(normalizedClass)) return 'WIS'
+  if (['bard', 'paladin', 'sorcerer', 'warlock'].includes(normalizedClass)) return 'CHA'
+  return null
 }
 
 export const PlayerDashboard = memo(function PlayerDashboard() {
@@ -499,6 +514,29 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     }
   }, [user?.id])
 
+  useEffect(() => {
+    const controlledAbility = character.info.classSourceOrigin === 'template'
+      ? deriveSpellcastingAbility(character)
+      : null
+    const effectiveAbility = controlledAbility ?? spellbook.spellcastingAbility
+    const abilityScore = character.abilities[effectiveAbility].value
+    const derivedDc = calculateSpellSaveDC(character.proficiencyBonus, abilityScore)
+    const derivedAttack = calculateSpellAttackBonus(character.proficiencyBonus, abilityScore)
+    const nextSpellcastingClass = character.info.class.trim()
+    const shouldUpdate = spellbook.spellcastingAbility !== effectiveAbility
+      || spellbook.spellSaveDC !== derivedDc
+      || spellbook.spellAttackBonus !== derivedAttack
+      || spellbook.spellcastingClass !== nextSpellcastingClass
+    if (!shouldUpdate) return
+    setSpellbook((prev) => ({
+      ...prev,
+      spellcastingAbility: effectiveAbility,
+      spellSaveDC: derivedDc,
+      spellAttackBonus: derivedAttack,
+      spellcastingClass: nextSpellcastingClass,
+    }))
+  }, [character, spellbook.spellAttackBonus, spellbook.spellSaveDC, spellbook.spellcastingAbility, spellbook.spellcastingClass])
+
   const flushSave = useDebouncedRemoteSave(
     { character, spellbook, inventory, notes },
     3000,
@@ -531,6 +569,9 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     if (!row.is_unlocked) return false
     return row.entry.name.toLowerCase().includes(query) || (row.entry.description ?? '').toLowerCase().includes(query)
   })
+  const controlledSpellcastingAbility = character.info.classSourceOrigin === 'template'
+    ? deriveSpellcastingAbility(character)
+    : null
 
   if (!isLoaded) {
     return (
@@ -605,7 +646,17 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
           {activeTab === 'inventory' && <Inventory inventory={inventory} onChange={setInventory} />}
         </TabsContent>
         <TabsContent value="spellbook" className="mt-0 flex-1 overflow-hidden">
-          {activeTab === 'spellbook' && <Spellbook spellbook={spellbook} proficiencyBonus={character.proficiencyBonus} abilityScores={character.abilities} onChange={setSpellbook} />}
+          {activeTab === 'spellbook' && (
+            <Spellbook
+              spellbook={spellbook}
+              proficiencyBonus={character.proficiencyBonus}
+              abilityScores={character.abilities}
+              characterClass={character.info.class}
+              characterLevel={character.info.level}
+              controlledSpellcastingAbility={controlledSpellcastingAbility}
+              onChange={setSpellbook}
+            />
+          )}
         </TabsContent>
         <TabsContent value="notes" className="mt-0 flex-1 overflow-hidden">
           {activeTab === 'notes' && <Notes notes={notes} onChange={setNotes} />}

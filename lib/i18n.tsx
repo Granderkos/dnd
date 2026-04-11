@@ -112,6 +112,12 @@ const translations: Record<Language, TranslationMap> = {
     'character.backgroundTemplate': 'Background template',
     'character.selectTemplate': 'Select template',
     'character.useCustom': 'Use custom',
+    'character.creationModeTitle': 'Character creation mode',
+    'character.creationModeDescription': 'Choose how to start this character.',
+    'character.creationCustom': 'Custom',
+    'character.creationTemplate': 'Template-based',
+    'character.templateSetupTitle': 'Template setup',
+    'character.templateConfirmCreate': 'Confirm and create',
 
     'inventory.addItem': 'Add Item',
     'inventory.editItem': 'Edit Item',
@@ -280,6 +286,7 @@ const translations: Record<Language, TranslationMap> = {
     'spellbook.searchTemplates': 'Search templates...',
     'spellbook.noTemplates': 'No spell templates available.',
     'spellbook.templateLoadFailed': 'Failed to load spell templates.',
+    'spellbook.classControlledAbility': 'Class-derived ability (locked)',
 
     'map.noMapSelected': 'No map selected by DM',
     'map.waitForDm': 'Wait for the DM to select a map',
@@ -405,6 +412,12 @@ const translations: Record<Language, TranslationMap> = {
     'character.backgroundTemplate': 'Šablona pozadí',
     'character.selectTemplate': 'Vyber šablonu',
     'character.useCustom': 'Použít vlastní',
+    'character.creationModeTitle': 'Režim tvorby postavy',
+    'character.creationModeDescription': 'Zvol, jak chceš postavu vytvořit.',
+    'character.creationCustom': 'Vlastní',
+    'character.creationTemplate': 'Ze šablon',
+    'character.templateSetupTitle': 'Průvodce šablonami',
+    'character.templateConfirmCreate': 'Potvrdit a vytvořit',
 
     'inventory.addItem': 'Přidat předmět',
     'inventory.editItem': 'Upravit předmět',
@@ -573,6 +586,7 @@ const translations: Record<Language, TranslationMap> = {
     'spellbook.searchTemplates': 'Hledat šablony...',
     'spellbook.noTemplates': 'Nejsou dostupné žádné šablony kouzel.',
     'spellbook.templateLoadFailed': 'Nepodařilo se načíst šablony kouzel.',
+    'spellbook.classControlledAbility': 'Atribut odvozený z povolání (uzamčeno)',
 
     'map.noMapSelected': 'DM nevybral žádnou mapu',
     'map.waitForDm': 'Počkej, až DM vybere mapu',
