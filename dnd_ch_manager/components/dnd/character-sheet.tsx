@@ -304,6 +304,9 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
     && !character.info.sourceClassTemplateId
     && !character.info.sourceRaceTemplateId
     && !character.info.sourceBackgroundTemplateId
+    && !character.info.classSourceOrigin
+    && !character.info.raceSourceOrigin
+    && !character.info.backgroundSourceOrigin
 
   const updateInfo = useCallback((field: keyof Character['info'], value: string | number) => {
     onChange({
@@ -624,7 +627,18 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
             <CardContent className="space-y-3">
               <p className="text-sm text-muted-foreground">{t('character.creationModeDescription')}</p>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <Button onClick={() => setCreationMode('custom')}>{t('character.creationCustom')}</Button>
+                <Button onClick={() => {
+                  setCreationMode('custom')
+                  onChange({
+                    ...character,
+                    info: {
+                      ...character.info,
+                      classSourceOrigin: 'custom',
+                      raceSourceOrigin: 'custom',
+                      backgroundSourceOrigin: 'custom',
+                    },
+                  })
+                }}>{t('character.creationCustom')}</Button>
                 <Button variant="outline" onClick={() => setCreationMode('template')}>{t('character.creationTemplate')}</Button>
               </div>
             </CardContent>
@@ -792,77 +806,6 @@ export function CharacterSheet({ character, onChange }: CharacterSheetProps) {
               </div>
             </div>
 
-            <div className="mt-3 space-y-2 rounded-md border border-border bg-muted/20 p-2">
-              <p className="text-xs uppercase text-muted-foreground">{t('character.templateSources')}</p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">{t('character.classTemplate')}</label>
-                  <select
-                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                    value={character.info.sourceClassTemplateId ?? ''}
-                    onChange={(e) => applyClassTemplate(e.target.value)}
-                  >
-                    <option value="">{t('character.selectTemplate')}</option>
-                    {classTemplates.map((template) => (
-                      <option key={template.id} value={template.id}>{template.name}</option>
-                    ))}
-                  </select>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => onChange({ ...character, info: { ...character.info, sourceClassTemplateId: null, classSourceOrigin: 'custom', classTemplateSnapshot: null } })}
-                  >
-                    {t('character.useCustom')}
-                  </Button>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">{t('character.raceTemplate')}</label>
-                  <select
-                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                    value={character.info.sourceRaceTemplateId ?? ''}
-                    onChange={(e) => applyRaceTemplate(e.target.value)}
-                  >
-                    <option value="">{t('character.selectTemplate')}</option>
-                    {raceTemplates.map((template) => (
-                      <option key={template.id} value={template.id}>{template.name}</option>
-                    ))}
-                  </select>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => onChange({ ...character, info: { ...character.info, sourceRaceTemplateId: null, raceSourceOrigin: 'custom', raceTemplateSnapshot: null } })}
-                  >
-                    {t('character.useCustom')}
-                  </Button>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">{t('character.backgroundTemplate')}</label>
-                  <select
-                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                    value={character.info.sourceBackgroundTemplateId ?? ''}
-                    onChange={(e) => applyBackgroundTemplate(e.target.value)}
-                  >
-                    <option value="">{t('character.selectTemplate')}</option>
-                    {backgroundTemplates.map((template) => (
-                      <option key={template.id} value={template.id}>{template.name}</option>
-                    ))}
-                  </select>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => onChange({ ...character, info: { ...character.info, sourceBackgroundTemplateId: null, backgroundSourceOrigin: 'custom', backgroundTemplateSnapshot: null } })}
-                  >
-                    {t('character.useCustom')}
-                  </Button>
-                </div>
-              </div>
-            </div>
           </CardContent>
         </Card>
 
