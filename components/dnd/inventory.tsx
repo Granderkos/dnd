@@ -359,12 +359,16 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
         {/* Currency */}
         <Card>
           <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              {coins.map(({ key, label, color }) => (
-                <div key={key} className="flex flex-1 flex-col items-center">
-                  <div
-                    className={`mb-1 flex size-10 items-center justify-center rounded-full ${color} text-xs font-bold text-white shadow-sm`}
-                  >
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Wallet</p>
+              <p className="text-sm font-semibold">
+                {totalGP} <span className="text-xs text-muted-foreground">GP</span>
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {coins.map(({ key, label }) => (
+                <div key={key} className="rounded-md border border-border/70 bg-muted/20 p-2">
+                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     {label}
                   </div>
                   <Input
@@ -372,13 +376,13 @@ export function Inventory({ inventory, onChange }: InventoryProps) {
                     min={0}
                     value={inventory.currency[key]}
                     onChange={(e) => updateCurrency(key, parseInt(e.target.value) || 0)}
-                    className="h-9 w-full text-center text-sm"
+                    className="h-8 text-center text-sm"
                   />
                 </div>
               ))}
             </div>
-            <p className="mt-2 text-center text-xs text-muted-foreground">
-              {t('inventory.treasureTotal')}: {totalGP} GP
+            <p className="mt-2 text-right text-[11px] text-muted-foreground">
+              {t('inventory.treasureTotal')}
             </p>
           </CardContent>
         </Card>
