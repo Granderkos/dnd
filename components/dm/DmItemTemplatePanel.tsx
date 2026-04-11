@@ -1,11 +1,11 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { createItemTemplate, type CreateItemTemplateInput } from '@/lib/supabase-data'
+import { createItemTemplate, grantItemTemplateToCharacter, listItemTemplates, type CreateItemTemplateInput, type ItemTemplate } from '@/lib/supabase-data'
 import { useAuth } from '@/lib/auth-context'
 
 type ItemTypeOption = 'Weapons' | 'Armor' | 'Equipment' | 'Consumables' | 'Tools' | 'Treasure' | 'Other'
@@ -22,8 +22,9 @@ function mapTypeToKind(type: ItemTypeOption) {
   return { category: 'Other', item_kind: 'other' }
 }
 
-export function DmItemTemplatePanel() {
+export function DmItemTemplatePanel({ players }: { players: Array<{ characterId: string; characterName: string; username: string }> }) {
   const { user } = useAuth()
+  const [templates, setTemplates] = useState<ItemTemplate[]>([])
   const [name, setName] = useState('')
   const [itemType, setItemType] = useState<ItemTypeOption>('Equipment')
   const [description, setDescription] = useState('')
@@ -35,7 +36,23 @@ export function DmItemTemplatePanel() {
   const [chargesMax, setChargesMax] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [selectedCharacterId, setSelectedCharacterId] = useState('')
+  const [grantQuantity, setGrantQuantity] = useState('1')
+  const [grantMessage, setGrantMessage] = useState<string | null>(null)
+  const [isGranting, setIsGranting] = useState(false)
   const selectedType = useMemo(() => mapTypeToKind(itemType), [itemType])
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const rows = await listItemTemplates()
+        setTemplates(rows)
+      } catch (error) {
+        console.error('Failed to load item templates', error)
+      }
+    })()
+  }, [])
 
   const handleCreate = async () => {
     if (!user?.id || !name.trim() || isSaving) return
@@ -61,6 +78,7 @@ export function DmItemTemplatePanel() {
     try {
       const created = await createItemTemplate(user.id, payload)
       setSaveMessage(`Created template: ${created.name}`)
+      setTemplates((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
       setName('')
       setDescription('')
       setRarity('')
@@ -74,6 +92,24 @@ export function DmItemTemplatePanel() {
       setSaveMessage(message)
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleGrant = async () => {
+    if (!selectedTemplateId || !selectedCharacterId || isGranting) return
+    const template = templates.find((row) => row.id === selectedTemplateId)
+    if (!template) return
+    setIsGranting(true)
+    setGrantMessage(null)
+    try {
+      await grantItemTemplateToCharacter(selectedCharacterId, template, Number.parseInt(grantQuantity, 10) || 1)
+      const target = players.find((player) => player.characterId === selectedCharacterId)
+      setGrantMessage(`Granted ${template.name}${target ? ` to ${target.characterName}` : ''}.`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to grant item.'
+      setGrantMessage(message)
+    } finally {
+      setIsGranting(false)
     }
   }
 
@@ -99,6 +135,29 @@ export function DmItemTemplatePanel() {
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">{saveMessage ?? 'Saved templates become reusable in item import flows.'}</p>
           <Button onClick={() => void handleCreate()} disabled={!name.trim() || isSaving}>{isSaving ? 'Saving…' : 'Create Template'}</Button>
+        </div>
+        <div className="h-px bg-border" />
+        <div className="space-y-2">
+          <div className="text-sm font-semibold uppercase tracking-wide text-primary">Give Item to Player</div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <select className="h-9 rounded-md border border-border bg-background px-2 text-sm" value={selectedTemplateId} onChange={(e) => setSelectedTemplateId(e.target.value)}>
+              <option value="">Select template</option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>{template.name} ({template.category ?? 'Other'})</option>
+              ))}
+            </select>
+            <select className="h-9 rounded-md border border-border bg-background px-2 text-sm" value={selectedCharacterId} onChange={(e) => setSelectedCharacterId(e.target.value)}>
+              <option value="">Select player</option>
+              {players.map((player) => (
+                <option key={player.characterId} value={player.characterId}>{player.characterName} ({player.username})</option>
+              ))}
+            </select>
+            <Input value={grantQuantity} onChange={(e) => setGrantQuantity(e.target.value)} inputMode="numeric" placeholder="Quantity" />
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">{grantMessage ?? 'Delivered items appear as normal inventory entries for the target character.'}</p>
+            <Button onClick={() => void handleGrant()} disabled={!selectedTemplateId || !selectedCharacterId || isGranting}>{isGranting ? 'Giving…' : 'Give Item'}</Button>
+          </div>
         </div>
       </CardContent>
     </Card>

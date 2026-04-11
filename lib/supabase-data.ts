@@ -1022,6 +1022,43 @@ export async function createItemTemplate(userId: string, input: CreateItemTempla
   return data as ItemTemplate
 }
 
+export async function grantItemTemplateToCharacter(characterId: string, template: ItemTemplate, quantity = 1) {
+  const normalizedQuantity = Math.max(1, Math.floor(quantity))
+  const { data: lastRow, error: sortError } = await supabase
+    .from('inventory_items')
+    .select('sort_order')
+    .eq('character_id', characterId)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (sortError) throw sortError
+
+  const row = {
+    character_id: characterId,
+    client_id: generateClientId(),
+    sort_order: (lastRow?.sort_order ?? -1) + 1,
+    title: template.name,
+    description: template.description ?? '',
+    quantity: normalizedQuantity,
+    category: normalizeInventoryCategory(template.category),
+    parent_client_id: null as string | null,
+    source_item_template_id: template.id,
+    source_origin: 'template' as const,
+    template_snapshot: template as unknown as Record<string, unknown>,
+  }
+
+  let { error } = await supabase.from('inventory_items').insert(row)
+  if (error && isMissingColumnError(error, 'parent_client_id')) {
+    const { parent_client_id, ...legacyRow } = row
+    ;({ error } = await supabase.from('inventory_items').insert(legacyRow))
+  }
+  if (error && isMissingColumnError(error, 'source_item_template_id')) {
+    const { parent_client_id, source_item_template_id, source_origin, template_snapshot, ...legacyRow } = row
+    ;({ error } = await supabase.from('inventory_items').insert(legacyRow))
+  }
+  if (error) throw error
+}
+
 export async function listSpellTemplates() {
   const cached = templateQueryCache.get('spell_templates')
   if (cached && cached.expiresAt > Date.now()) return cached.data as SpellTemplate[]
@@ -1198,7 +1235,7 @@ export async function listPlayerCharacters() {
   const results = (players ?? []).map((player) => {
     const row = characterByUserId.get(player.id)
     if (!row) {
-      return { id: player.id, username: player.username, character: emptyCharacter, activity: activityByUserId.get(player.id) ?? null }
+      return { id: player.id, characterId: null, username: player.username, character: emptyCharacter, activity: activityByUserId.get(player.id) ?? null }
     }
 
     const character: Character = {
@@ -1248,6 +1285,7 @@ export async function listPlayerCharacters() {
 
     return {
       id: player.id,
+      characterId: row.id,
       username: player.username,
       character,
       activity: activityByUserId.get(player.id) ?? null,

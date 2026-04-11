@@ -33,6 +33,7 @@ import { supabase } from '@/lib/supabase'
 
 interface PlayerCharacterData {
   id: string
+  characterId?: string | null
   username: string
   character: Character
   activity?: { last_seen?: string; current_page?: string; is_online?: boolean } | null
@@ -714,7 +715,15 @@ export const DMDashboard = memo(function DMDashboard() {
         <TabsContent value="bestiary" className="mt-0 flex-1 overflow-hidden">
           <div className="h-full min-h-0 overflow-y-auto p-3 space-y-3">
             <DmBestiaryPanel onMonsterAdded={() => void loadFightState()} />
-            <DmItemTemplatePanel />
+            <DmItemTemplatePanel
+              players={players
+                .filter((player) => Boolean(player.characterId))
+                .map((player) => ({
+                  characterId: player.characterId as string,
+                  characterName: player.character.info.name || player.username,
+                  username: player.username,
+                }))}
+            />
           </div>
         </TabsContent>
         <TabsContent value="fight" className="mt-0 flex-1 overflow-hidden">
