@@ -16,7 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { BookOpen, Crosshair, Eye, FileText, Heart, LogOut, Map, Shield, Users } from 'lucide-react'
+import { BookOpen, Crosshair, Eye, FileText, Gift, Heart, LogOut, Map, Shield, Users } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
@@ -61,7 +61,7 @@ function isRecentlyActive(activity?: PlayerCharacterData['activity']) {
   return Boolean(activity.is_online) && age < 180000
 }
 
-const DM_DASHBOARD_TABS = ['players', 'maps', 'notes', 'bestiary', 'fight'] as const
+const DM_DASHBOARD_TABS = ['players', 'maps', 'notes', 'bestiary', 'loot', 'fight'] as const
 
 function getInitialDmTab() {
   if (typeof window === 'undefined') return 'players'
@@ -681,6 +681,7 @@ export const DMDashboard = memo(function DMDashboard() {
             <TabsTrigger value="maps" className="flex-1 gap-1 px-2"><Map className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.maps')}</span></TabsTrigger>
             <TabsTrigger value="notes" className="flex-1 gap-1 px-2"><FileText className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.notes')}</span></TabsTrigger>
             <TabsTrigger value="bestiary" className="flex-1 gap-1 px-2"><BookOpen className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.bestiary')}</span></TabsTrigger>
+            <TabsTrigger value="loot" className="flex-1 gap-1 px-2"><Gift className="size-4" /><span className="hidden sm:inline text-xs">Loot</span></TabsTrigger>
             <TabsTrigger value="fight" className="flex-1 gap-1 px-2"><Crosshair className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.fight')}</span></TabsTrigger>
           </TabsList>
         </header>
@@ -715,6 +716,10 @@ export const DMDashboard = memo(function DMDashboard() {
         <TabsContent value="bestiary" className="mt-0 flex-1 overflow-hidden">
           <div className="h-full min-h-0 overflow-y-auto p-3 space-y-3">
             <DmBestiaryPanel onMonsterAdded={() => void loadFightState()} />
+          </div>
+        </TabsContent>
+        <TabsContent value="loot" className="mt-0 flex-1 overflow-hidden">
+          <div className="h-full min-h-0 overflow-y-auto p-3 space-y-3">
             <DmItemTemplatePanel
               players={players
                 .filter((player) => Boolean(player.characterId))
