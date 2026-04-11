@@ -1291,6 +1291,32 @@ export async function setActiveMap(mapId: string | null) {
   }
 }
 
+export async function updateMapGridSettings(mapId: string, patch: Pick<StoredMap, 'gridEnabled' | 'gridSize' | 'gridOpacity'>) {
+  const { data, error } = await supabase
+    .from('maps')
+    .update({
+      grid_enabled: patch.gridEnabled ?? false,
+      grid_size: patch.gridSize ?? 50,
+      grid_opacity: patch.gridOpacity ?? 0.3,
+    })
+    .eq('id', mapId)
+    .select('id, name, storage_path, created_at, grid_enabled, grid_size, grid_opacity, uploaded_by, is_active')
+    .single()
+
+  if (error) throw error
+  return {
+    id: data.id,
+    name: data.name,
+    imageData: data.storage_path,
+    createdAt: new Date(data.created_at).getTime(),
+    gridEnabled: data.grid_enabled,
+    gridSize: data.grid_size,
+    gridOpacity: Number(data.grid_opacity),
+    uploadedBy: data.uploaded_by,
+    isActive: data.is_active,
+  } as StoredMap
+}
+
 export async function getActiveMap() {
   const { data, error } = await withRetryQuery(async () =>
     await supabase
