@@ -202,8 +202,8 @@ export async function updateCreature(id: string, patch: Partial<CompendiumEntry>
 export async function createFight(campaignId: string) {
   const { data, error } = await supabase
     .from('fights')
-    .insert({ campaign_id: campaignId, is_active: true, status: 'draft' })
-    .select('id, campaign_id, is_active, status, created_at')
+    .insert({ campaign_id: campaignId, is_active: true, status: 'draft', round_number: 1 })
+    .select('id, campaign_id, is_active, status, round_number, created_at')
     .single()
 
   if (error) throw error
@@ -211,9 +211,9 @@ export async function createFight(campaignId: string) {
 }
 
 export async function getActiveFight(campaignId: string) {
-  const { data, error } = await supabase
+  const query = async (withRound: boolean) => await supabase
     .from('fights')
-    .select('id, campaign_id, is_active, status, created_at')
+    .select(withRound ? 'id, campaign_id, is_active, status, round_number, created_at' : 'id, campaign_id, is_active, status, created_at')
     .eq('campaign_id', campaignId)
     .eq('is_active', true)
     .neq('status', 'ended')
@@ -221,8 +221,17 @@ export async function getActiveFight(campaignId: string) {
     .limit(1)
     .maybeSingle()
 
-  if (error) throw error
-  return (data ?? null) as Fight | null
+  const withRound = await query(true)
+  if (withRound.error) {
+    const isMissingColumn = withRound.error.message?.includes('round_number')
+    if (!isMissingColumn) throw withRound.error
+    const fallback = await query(false)
+    if (fallback.error) throw fallback.error
+    if (!fallback.data) return null
+    const fallbackFight = fallback.data as unknown as Fight
+    return { ...fallbackFight, round_number: 1 } as Fight
+  }
+  return (withRound.data ?? null) as Fight | null
 }
 
 export async function getOrCreateActiveFight(campaignId: string) {
@@ -622,11 +631,24 @@ export async function setFightStatus(fightId: string, status: FightStatus) {
     .from('fights')
     .update({ status, is_active: isActive })
     .eq('id', fightId)
-    .select('id, campaign_id, is_active, status, created_at')
+    .select('id, campaign_id, is_active, status, round_number, created_at')
     .single()
 
   if (error) throw error
   return data as Fight
+}
+
+export async function setFightRoundNumber(fightId: string, roundNumber: number) {
+  const normalized = Math.max(1, Math.floor(roundNumber))
+  const { error } = await supabase
+    .from('fights')
+    .update({ round_number: normalized })
+    .eq('id', fightId)
+  if (error) {
+    const isMissingColumn = error.message?.includes('round_number')
+    if (isMissingColumn) return
+    throw error
+  }
 }
 
 export async function createOrGetDraftFight(campaignId: string) {

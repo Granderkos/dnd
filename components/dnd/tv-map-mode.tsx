@@ -33,11 +33,17 @@ export function TvMapMode() {
   const [currentTurn, setCurrentTurn] = useState<FightEntity | null>(null)
   const [nextTurn, setNextTurn] = useState<FightEntity | null>(null)
   const [loadingMap, setLoadingMap] = useState(true)
-  const roundAnchorRef = useRef<string | null>(null)
-  const previousTurnRef = useRef<string | null>(null)
+  const activeFightIdRef = useRef<string | null>(null)
+  const refreshInFlightRef = useRef(false)
+  const refreshQueuedRef = useRef(false)
 
   const refreshTvState = useCallback(async () => {
     if (!user?.id) return
+    if (refreshInFlightRef.current) {
+      refreshQueuedRef.current = true
+      return
+    }
+    refreshInFlightRef.current = true
     try {
       const [map, activeFight] = await Promise.all([
         getActiveMap(),
@@ -47,13 +53,14 @@ export function TvMapMode() {
       const isCombatActive = Boolean(activeFight && activeFight.status === 'active')
       setSceneMode(isCombatActive ? 'combat' : 'exploration')
       if (!isCombatActive || !activeFight) {
+        activeFightIdRef.current = null
         setCurrentTurn(null)
         setNextTurn(null)
-        roundAnchorRef.current = null
-        previousTurnRef.current = null
         setRoundNumber(1)
         return
       }
+      activeFightIdRef.current = activeFight.id
+      setRoundNumber(Math.max(1, activeFight.round_number ?? 1))
       const entities = await listFightEntities(activeFight.id)
       const activeEntity = entities.find((entity) => !isSkippedForTvOverlay(entity)) ?? null
       const activeEntityIndex = activeEntity ? entities.findIndex((entity) => entity.id === activeEntity.id) : -1
@@ -62,16 +69,14 @@ export function TvMapMode() {
         : null
       setCurrentTurn(activeEntity)
       setNextTurn(upcoming)
-      const activeEntityId = activeEntity?.id ?? null
-      if (!activeEntityId) return
-      if (!roundAnchorRef.current) roundAnchorRef.current = activeEntityId
-      if (previousTurnRef.current && previousTurnRef.current !== activeEntityId && roundAnchorRef.current === activeEntityId) {
-        setRoundNumber((round) => round + 1)
-      }
-      previousTurnRef.current = activeEntityId
     } catch (error) {
       console.error('Failed to refresh TV map mode state', error)
     } finally {
+      refreshInFlightRef.current = false
+      if (refreshQueuedRef.current) {
+        refreshQueuedRef.current = false
+        void refreshTvState()
+      }
       setLoadingMap(false)
     }
   }, [user?.id])
@@ -79,11 +84,19 @@ export function TvMapMode() {
   useEffect(() => {
     if (!user?.id) return
     void refreshTvState()
-    const poll = setInterval(() => void refreshTvState(), 10000)
+    const poll = setInterval(() => void refreshTvState(), 2500)
     const channel = supabase
       .channel('tv-map-state')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'maps' }, () => { void refreshTvState() })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fights' }, () => { void refreshTvState() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fight_entities' }, (payload) => {
+        const row = payload.new as { fight_id?: string } | null
+        const oldRow = payload.old as { fight_id?: string } | null
+        const incomingFightId = row?.fight_id ?? oldRow?.fight_id ?? null
+        if (!activeFightIdRef.current || !incomingFightId || incomingFightId === activeFightIdRef.current) {
+          void refreshTvState()
+        }
+      })
       .subscribe()
     return () => {
       clearInterval(poll)

@@ -21,7 +21,7 @@ import { useAuth } from '@/lib/auth-context'
 import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
-import { clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listFightCharacterCombatState, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, startCombatForCampaign, updateFightEntityNotes } from '@/lib/supabase-v3'
+import { clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listFightCharacterCombatState, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, setFightRoundNumber, startCombatForCampaign, updateFightEntityNotes } from '@/lib/supabase-v3'
 import type { FightStatus } from '@/lib/v3-types'
 import type { FightEntity } from '@/lib/v3-types'
 import { Character, calculateModifier, formatFeetWithSquares, formatModifier } from '@/lib/dnd-types'
@@ -150,6 +150,7 @@ export const DMDashboard = memo(function DMDashboard() {
   const [fightEntities, setFightEntities] = useState<FightEntity[]>([])
   const [fightId, setFightId] = useState<string | null>(null)
   const [fightStatus, setFightStatus] = useState<FightStatus>('draft')
+  const [fightRoundNumber, setFightRoundNumberState] = useState(1)
   const [fightError, setFightError] = useState<string | null>(null)
   const [isLoadingFight, setIsLoadingFight] = useState(false)
   const [isAdvancingTurn, setIsAdvancingTurn] = useState(false)
@@ -272,6 +273,7 @@ export const DMDashboard = memo(function DMDashboard() {
       if (!activeFight) {
         setFightId(null)
         setFightStatus('draft')
+        setFightRoundNumberState(1)
         setFightEntities([])
         setCharacterCombatState({})
         fightLoadedRef.current = true
@@ -281,6 +283,7 @@ export const DMDashboard = memo(function DMDashboard() {
       const combatRows = await listFightCharacterCombatState(activeFight.id)
       setFightId(activeFight.id)
       setFightStatus(activeFight.status)
+      setFightRoundNumberState(Math.max(1, activeFight.round_number ?? 1))
       const combatStateByCharacter = Object.fromEntries(combatRows.map((row) => [row.character_id, {
         hpCurrent: row.hp_current ?? 0,
         hpMax: row.hp_max ?? 0,
@@ -585,6 +588,7 @@ export const DMDashboard = memo(function DMDashboard() {
       const fight = await startCombatForCampaign(user.id)
       setFightId(fight.id)
       setFightStatus('collecting_initiative')
+      setFightRoundNumberState(Math.max(1, fight.round_number ?? 1))
       void loadFightState(false)
     } catch (error) {
       console.error('Failed to start combat', error)
@@ -601,6 +605,7 @@ export const DMDashboard = memo(function DMDashboard() {
       await endCombatForFight(fightId)
       setFightStatus('draft')
       setFightId(null)
+      setFightRoundNumberState(1)
       setFightEntities([])
     } catch (error) {
       setFightError(formatErrorMessage(error, t('common.unknownError')))
@@ -718,6 +723,7 @@ export const DMDashboard = memo(function DMDashboard() {
             pendingRemoveIds={pendingRemoveIds}
             pendingHpIds={pendingHpIds}
             fightStatus={fightStatus}
+            initialRoundNumber={fightRoundNumber}
             isStartingCombat={isStartingCombat}
             isEndingCombat={isEndingCombat}
             onAdvanceTurn={handleAdvanceTurn}
@@ -727,7 +733,15 @@ export const DMDashboard = memo(function DMDashboard() {
             onSetEntityConditions={handleSetEntityConditions}
             onStartCombat={handleStartCombat}
             onEndCombat={handleEndCombat}
-            onUpdateDeathSaves={handleUpdateDeathSaves}
+            onRoundNumberChange={async (round) => {
+              setFightRoundNumberState(round)
+              if (!fightId) return
+              try {
+                await setFightRoundNumber(fightId, round)
+              } catch (error) {
+                setFightError(formatErrorMessage(error, t('common.unknownError')))
+              }
+            }}
             characterCombatState={characterCombatState}
             labels={{
               title: t('fight.title'),
@@ -805,11 +819,12 @@ function DMFightPanel({
   pendingRemoveIds,
   pendingHpIds,
   fightStatus,
+  initialRoundNumber,
   isStartingCombat,
   isEndingCombat,
   onStartCombat,
   onEndCombat,
-  onUpdateDeathSaves,
+  onRoundNumberChange,
   characterCombatState,
   labels,
 }: {
@@ -828,11 +843,12 @@ function DMFightPanel({
   pendingRemoveIds: string[]
   pendingHpIds: string[]
   fightStatus: FightStatus
+  initialRoundNumber: number
   isStartingCombat: boolean
   isEndingCombat: boolean
   onStartCombat: () => Promise<void>
   onEndCombat: () => Promise<void>
-  onUpdateDeathSaves: (entityId: string, action: 'success' | 'failure' | 'reset') => Promise<void>
+  onRoundNumberChange: (round: number) => Promise<void>
   characterCombatState: Record<string, { hpCurrent: number; hpMax: number; deathSuccesses: number; deathFailures: number }>
   labels: {
     title: string
@@ -870,7 +886,7 @@ function DMFightPanel({
   }
 }) {
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
-  const [roundNumber, setRoundNumber] = useState(1)
+  const [roundNumber, setRoundNumber] = useState(initialRoundNumber)
   const [roundAnchorId, setRoundAnchorId] = useState<string | null>(null)
   const [previousTurnId, setPreviousTurnId] = useState<string | null>(null)
   const [conditionDraftByEntity, setConditionDraftByEntity] = useState<Record<string, string>>({})
@@ -910,13 +926,17 @@ function DMFightPanel({
         : labels.stateDraft
 
   useEffect(() => {
+    setRoundNumber(initialRoundNumber)
+  }, [initialRoundNumber])
+
+  useEffect(() => {
     if (!activeEntityId) return
     rowRefs.current[activeEntityId]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [activeEntityId])
 
   useEffect(() => {
     if (!fightId || fightStatus !== 'active' || !activeEntityId) {
-      setRoundNumber(1)
+      setRoundNumber(initialRoundNumber)
       setRoundAnchorId(null)
       setPreviousTurnId(null)
       return
@@ -926,11 +946,15 @@ function DMFightPanel({
       if (!prevTurn) return activeEntityId
       if (prevTurn === activeEntityId) return prevTurn
       if (roundAnchorId && activeEntityId === roundAnchorId) {
-        setRoundNumber((round) => round + 1)
+        setRoundNumber((round) => {
+          const nextRound = round + 1
+          void onRoundNumberChange(nextRound)
+          return nextRound
+        })
       }
       return activeEntityId
     })
-  }, [activeEntityId, fightId, fightStatus, roundAnchorId])
+  }, [activeEntityId, fightId, fightStatus, initialRoundNumber, onRoundNumberChange, roundAnchorId])
 
   const formatTurnEntity = useCallback((entity: FightEntity | null) => {
     if (!entity) return '—'
