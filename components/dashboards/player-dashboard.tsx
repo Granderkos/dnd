@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -24,6 +25,7 @@ import { emptyCharacter, emptyInventory, emptySpellbook } from '@/lib/auth-types
 import { loadCurrentPlayerData, loadCurrentPlayerNotes, saveCurrentPlayerData } from '@/lib/supabase-data'
 import {
   activateCompanion,
+  deleteCompanionAssignment,
   assignCompanion,
   assignCompanionFromTemplate,
   createCompanionEntry,
@@ -39,9 +41,11 @@ import {
   Spellbook as SpellbookType,
   Inventory as InventoryType,
   MapSettings,
+  calculateSpellAttackBonus,
+  calculateSpellSaveDC,
 } from '@/lib/dnd-types'
 import type { CharacterCompanion, CompanionKind, CompendiumEntry } from '@/lib/v3-types'
-import { User, BookOpen, Package, FileText, Map, LogOut, Sparkles, Plus } from 'lucide-react'
+import { User, BookOpen, Package, FileText, Map, LogOut, Sparkles, Plus, Trash2 } from 'lucide-react'
 import { AppControls } from '@/components/app/app-controls'
 import { APP_VERSION } from '@/lib/app-config'
 import { useI18n } from '@/lib/i18n'
@@ -163,6 +167,19 @@ function safeSessionParse<T>(value: string | null): T | null {
   }
 }
 
+function deriveSpellcastingAbility(character: Character): 'INT' | 'WIS' | 'CHA' | null {
+  const classSnapshot = (character.info.classTemplateSnapshot ?? null) as { primary_ability?: string | null } | null
+  const primary = (classSnapshot?.primary_ability ?? '').toUpperCase()
+  if (primary.includes('INT')) return 'INT'
+  if (primary.includes('WIS')) return 'WIS'
+  if (primary.includes('CHA')) return 'CHA'
+  const normalizedClass = character.info.class.trim().toLowerCase()
+  if (['wizard', 'artificer'].includes(normalizedClass)) return 'INT'
+  if (['cleric', 'druid', 'ranger'].includes(normalizedClass)) return 'WIS'
+  if (['bard', 'paladin', 'sorcerer', 'warlock'].includes(normalizedClass)) return 'CHA'
+  return null
+}
+
 export const PlayerDashboard = memo(function PlayerDashboard() {
   const { user, logout, updateCurrentPage } = useAuth()
   const { t } = useI18n()
@@ -196,6 +213,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [customCompanionHp, setCustomCompanionHp] = useState('')
   const [customCompanionSpeed, setCustomCompanionSpeed] = useState('')
   const [customCompanionNotes, setCustomCompanionNotes] = useState('')
+  const [pendingCompanionDelete, setPendingCompanionDelete] = useState<(CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }) | null>(null)
   const [compendiumError, setCompendiumError] = useState<string | null>(null)
   const [isCompendiumLoading, setIsCompendiumLoading] = useState(false)
   const [selectedCreature, setSelectedCreature] = useState<{ entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'>; isUnlocked: boolean } | null>(null)
@@ -496,6 +514,29 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     }
   }, [user?.id])
 
+  useEffect(() => {
+    const controlledAbility = character.info.classSourceOrigin === 'template'
+      ? deriveSpellcastingAbility(character)
+      : null
+    const effectiveAbility = controlledAbility ?? spellbook.spellcastingAbility
+    const abilityScore = character.abilities[effectiveAbility].value
+    const derivedDc = calculateSpellSaveDC(character.proficiencyBonus, abilityScore)
+    const derivedAttack = calculateSpellAttackBonus(character.proficiencyBonus, abilityScore)
+    const nextSpellcastingClass = character.info.class.trim()
+    const shouldUpdate = spellbook.spellcastingAbility !== effectiveAbility
+      || spellbook.spellSaveDC !== derivedDc
+      || spellbook.spellAttackBonus !== derivedAttack
+      || spellbook.spellcastingClass !== nextSpellcastingClass
+    if (!shouldUpdate) return
+    setSpellbook((prev) => ({
+      ...prev,
+      spellcastingAbility: effectiveAbility,
+      spellSaveDC: derivedDc,
+      spellAttackBonus: derivedAttack,
+      spellcastingClass: nextSpellcastingClass,
+    }))
+  }, [character, spellbook.spellAttackBonus, spellbook.spellSaveDC, spellbook.spellcastingAbility, spellbook.spellcastingClass])
+
   const flushSave = useDebouncedRemoteSave(
     { character, spellbook, inventory, notes },
     3000,
@@ -528,6 +569,9 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
     if (!row.is_unlocked) return false
     return row.entry.name.toLowerCase().includes(query) || (row.entry.description ?? '').toLowerCase().includes(query)
   })
+  const controlledSpellcastingAbility = character.info.classSourceOrigin === 'template'
+    ? deriveSpellcastingAbility(character)
+    : null
 
   if (!isLoaded) {
     return (
@@ -602,7 +646,17 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
           {activeTab === 'inventory' && <Inventory inventory={inventory} onChange={setInventory} />}
         </TabsContent>
         <TabsContent value="spellbook" className="mt-0 flex-1 overflow-hidden">
-          {activeTab === 'spellbook' && <Spellbook spellbook={spellbook} proficiencyBonus={character.proficiencyBonus} abilityScores={character.abilities} onChange={setSpellbook} />}
+          {activeTab === 'spellbook' && (
+            <Spellbook
+              spellbook={spellbook}
+              proficiencyBonus={character.proficiencyBonus}
+              abilityScores={character.abilities}
+              characterClass={character.info.class}
+              characterLevel={character.info.level}
+              controlledSpellcastingAbility={controlledSpellcastingAbility}
+              onChange={setSpellbook}
+            />
+          )}
         </TabsContent>
         <TabsContent value="notes" className="mt-0 flex-1 overflow-hidden">
           {activeTab === 'notes' && <Notes notes={notes} onChange={setNotes} />}
@@ -610,12 +664,12 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         <TabsContent value="map" className="mt-0 flex-1 overflow-hidden">
           {activeTab === 'map' && <PlayerMapViewer settings={mapSettings} onSettingsChange={setMapSettings} />}
         </TabsContent>
-        <TabsContent value="compendium" className="mt-0 flex-1 overflow-y-auto px-4 py-4">
+        <TabsContent value="compendium" className="mt-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4">
           <div className="mx-auto w-full max-w-4xl space-y-6">
             <section className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">{t('compendium.companionsTitle')}</h2>
-                <div className="flex items-center gap-2">
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
                   <Button size="sm" variant="outline" onClick={() => setIsCreateCompanionOpen(true)}>
                     <Plus className="mr-1 size-4" />
                     {t('compendium.addCustom')}
@@ -631,21 +685,31 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
               ) : (
                 <div className="space-y-2">
                   {companions.map((companion) => (
-                    <div key={companion.id} className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
-                      <div>
+                    <div key={companion.id} className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
                         <p className="font-medium">{companion.name_override || companion.entry?.name || t('compendium.unnamedCompanion')}</p>
                         <p className="text-xs text-muted-foreground">{companion.kind} · {companion.source_origin ?? 'custom'}</p>
                       </div>
-                      <Button
-                        variant={companion.is_active ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={async () => {
-                          await activateCompanion(companion.id, !companion.is_active)
-                          await refreshCompendium()
-                        }}
-                      >
-                        {companion.is_active ? t('compendium.active') : t('compendium.inactive')}
-                      </Button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          variant={companion.is_active ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={async () => {
+                            await activateCompanion(companion.id, !companion.is_active)
+                            await refreshCompendium()
+                          }}
+                        >
+                          {companion.is_active ? t('compendium.active') : t('compendium.inactive')}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setPendingCompanionDelete(companion)}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -653,7 +717,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
             </section>
 
             <section className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">{t('compendium.creaturesTitle')}</h2>
                 <Button variant="outline" size="sm" onClick={() => void refreshCompendium()}>{t('fight.refresh')}</Button>
               </div>
@@ -667,7 +731,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
               {creatureRows.length === 0 && !isCompendiumLoading ? (
                 <p className="text-sm text-muted-foreground">{t('compendium.emptyCreatures')}</p>
               ) : null}
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {creatureRows.map((row) => (
                   <button
                     key={row.entry_id}
@@ -825,6 +889,30 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         }}
         importDisabled={!selectedCompanionTemplateId}
       />
+
+      <AlertDialog open={!!pendingCompanionDelete} onOpenChange={(open) => { if (!open) setPendingCompanionDelete(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('inventory.deleteItem')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('inventory.deleteItemDescription', { name: pendingCompanionDelete?.name_override || pendingCompanionDelete?.entry?.name || t('compendium.unnamedCompanion') })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!pendingCompanionDelete) return
+                await deleteCompanionAssignment(pendingCompanionDelete.id)
+                setPendingCompanionDelete(null)
+                await refreshCompendium()
+              }}
+            >
+              {t('common.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!initiativePrompt} onOpenChange={() => {}}>
         <AlertDialogContent>
