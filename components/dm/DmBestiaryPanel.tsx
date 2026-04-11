@@ -2,10 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { MonsterCard } from '@/components/dm/MonsterCard'
-import { addCompendiumMonsterToActiveFight, listCreatures } from '@/lib/supabase-v3'
+import { addCompendiumMonsterToActiveFight, createCreature, listCreatures } from '@/lib/supabase-v3'
 import type { CompendiumEntry } from '@/lib/v3-types'
 import { useI18n } from '@/lib/i18n'
 import { useAuth } from '@/lib/auth-context'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 
 function numberFromData(data: Record<string, unknown>, key: string, fallback = 0) {
   const value = data[key]
@@ -42,6 +46,22 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
   const [pendingEntryIds, setPendingEntryIds] = useState<string[]>([])
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionSuccess, setActionSuccess] = useState<string | null>(null)
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [customName, setCustomName] = useState('')
+  const [customSize, setCustomSize] = useState('Medium')
+  const [customType, setCustomType] = useState('Humanoid')
+  const [customSubtype, setCustomSubtype] = useState('')
+  const [customAlignment, setCustomAlignment] = useState('Unaligned')
+  const [customAc, setCustomAc] = useState('10')
+  const [customHp, setCustomHp] = useState('10')
+  const [customSpeed, setCustomSpeed] = useState('30 ft.')
+  const [customNotes, setCustomNotes] = useState('')
+  const [customStr, setCustomStr] = useState('10')
+  const [customDex, setCustomDex] = useState('10')
+  const [customCon, setCustomCon] = useState('10')
+  const [customInt, setCustomInt] = useState('10')
+  const [customWis, setCustomWis] = useState('10')
+  const [customCha, setCustomCha] = useState('10')
 
   useEffect(() => {
     let active = true
@@ -138,6 +158,9 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
         <div className="rounded-lg border p-4 text-muted-foreground">{t('bestiary.empty')}</div>
       ) : (
         <div className="space-y-3">
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={() => setIsCreateOpen(true)}>Add custom creature</Button>
+          </div>
           {monsterCards.map((monster) => (
             <MonsterCard
               key={monster.id}
@@ -146,12 +169,73 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
               hp={monster.hp}
               ac={monster.ac}
               initiativeBonus={monster.initiativeBonus}
+              isCustom={((monster.entry.data ?? {}) as Record<string, unknown>).source_origin === 'custom'}
               addToFightLabel={t('bestiary.addToFight')}
               onAddToFight={() => void handleAddToFight(monster.entry)}
             />
           ))}
         </div>
       )}
+
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add custom creature</DialogTitle>
+            <DialogDescription>Create a custom bestiary creature entry.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-2">
+            <Input placeholder="Name" value={customName} onChange={(e) => setCustomName(e.target.value)} className="col-span-2" />
+            <Input placeholder="Size" value={customSize} onChange={(e) => setCustomSize(e.target.value)} />
+            <Input placeholder="Creature type" value={customType} onChange={(e) => setCustomType(e.target.value)} />
+            <Input placeholder="Subtype" value={customSubtype} onChange={(e) => setCustomSubtype(e.target.value)} />
+            <Input placeholder="Alignment" value={customAlignment} onChange={(e) => setCustomAlignment(e.target.value)} />
+            <Input type="number" placeholder="AC" value={customAc} onChange={(e) => setCustomAc(e.target.value)} />
+            <Input type="number" placeholder="HP" value={customHp} onChange={(e) => setCustomHp(e.target.value)} />
+            <Input placeholder="Speed" value={customSpeed} onChange={(e) => setCustomSpeed(e.target.value)} className="col-span-2" />
+            <Input type="number" placeholder="STR" value={customStr} onChange={(e) => setCustomStr(e.target.value)} />
+            <Input type="number" placeholder="DEX" value={customDex} onChange={(e) => setCustomDex(e.target.value)} />
+            <Input type="number" placeholder="CON" value={customCon} onChange={(e) => setCustomCon(e.target.value)} />
+            <Input type="number" placeholder="INT" value={customInt} onChange={(e) => setCustomInt(e.target.value)} />
+            <Input type="number" placeholder="WIS" value={customWis} onChange={(e) => setCustomWis(e.target.value)} />
+            <Input type="number" placeholder="CHA" value={customCha} onChange={(e) => setCustomCha(e.target.value)} />
+            <Textarea placeholder="Notes / Description" value={customNotes} onChange={(e) => setCustomNotes(e.target.value)} className="col-span-2 min-h-20" />
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={async () => {
+                if (!customName.trim()) return
+                const creature = await createCreature({
+                  subtype: 'monster',
+                  slug: `custom-${customName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}-${Date.now()}`,
+                  name: customName.trim(),
+                  description: customNotes.trim() || null,
+                  data: {
+                    size: customSize.trim() || 'Medium',
+                    creature_type: customType.trim() || 'Humanoid',
+                    subtype: customSubtype.trim() || null,
+                    alignment: customAlignment.trim() || 'Unaligned',
+                    ac: Number(customAc) || 10,
+                    hp: Number(customHp) || 1,
+                    speed: customSpeed.trim() || '30 ft.',
+                    str: Number(customStr) || 10,
+                    dex: Number(customDex) || 10,
+                    con: Number(customCon) || 10,
+                    int: Number(customInt) || 10,
+                    wis: Number(customWis) || 10,
+                    cha: Number(customCha) || 10,
+                    source_origin: 'custom',
+                  },
+                })
+                cachedMonsters = [...(cachedMonsters ?? monsters), creature]
+                setMonsters((current) => [...current, creature].sort((a, b) => a.name.localeCompare(b.name)))
+                setIsCreateOpen(false)
+              }}
+            >
+              Save creature
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
