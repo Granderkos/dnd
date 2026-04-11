@@ -20,7 +20,6 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   const [isLoadingMap, setIsLoadingMap] = useState(true)
   const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [isMapFocused, setIsMapFocused] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const isDragging = useRef(false)
@@ -153,7 +152,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   }, [])
 
   useEffect(() => {
-    const shouldLock = isPseudoFullscreen || isFullscreen || isMapFocused
+    const shouldLock = isPseudoFullscreen || isFullscreen
     if (!shouldLock) return
     const originalOverflow = document.body.style.overflow
     const originalTouchAction = document.body.style.touchAction
@@ -163,7 +162,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
       document.body.style.overflow = originalOverflow
       document.body.style.touchAction = originalTouchAction
     }
-  }, [isPseudoFullscreen, isFullscreen, isMapFocused])
+  }, [isPseudoFullscreen, isFullscreen])
 
   useEffect(() => {
     const container = containerRef.current
@@ -234,11 +233,9 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   return (
     <div
       ref={containerRef}
-      className={`${isPseudoFullscreen ? 'fixed inset-0 z-50 h-dvh' : 'h-full'} flex flex-col bg-background`}
-      onMouseEnter={() => setIsMapFocused(true)}
+      className={`${isPseudoFullscreen ? 'fixed inset-0 z-50 h-dvh' : 'h-full min-h-0'} flex flex-col overflow-hidden bg-background`}
       onMouseLeave={() => {
         handleMouseUp()
-        setIsMapFocused(false)
       }}
     >
       <div className="flex items-center justify-between p-2 border-b bg-card">
@@ -261,6 +258,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onWheel={(e) => e.preventDefault()}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
