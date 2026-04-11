@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -24,6 +25,7 @@ import { emptyCharacter, emptyInventory, emptySpellbook } from '@/lib/auth-types
 import { loadCurrentPlayerData, loadCurrentPlayerNotes, saveCurrentPlayerData } from '@/lib/supabase-data'
 import {
   activateCompanion,
+  deleteCompanionAssignment,
   assignCompanion,
   assignCompanionFromTemplate,
   createCompanionEntry,
@@ -41,7 +43,7 @@ import {
   MapSettings,
 } from '@/lib/dnd-types'
 import type { CharacterCompanion, CompanionKind, CompendiumEntry } from '@/lib/v3-types'
-import { User, BookOpen, Package, FileText, Map, LogOut, Sparkles, Plus } from 'lucide-react'
+import { User, BookOpen, Package, FileText, Map, LogOut, Sparkles, Plus, Trash2 } from 'lucide-react'
 import { AppControls } from '@/components/app/app-controls'
 import { APP_VERSION } from '@/lib/app-config'
 import { useI18n } from '@/lib/i18n'
@@ -196,6 +198,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [customCompanionHp, setCustomCompanionHp] = useState('')
   const [customCompanionSpeed, setCustomCompanionSpeed] = useState('')
   const [customCompanionNotes, setCustomCompanionNotes] = useState('')
+  const [pendingCompanionDelete, setPendingCompanionDelete] = useState<(CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }) | null>(null)
   const [compendiumError, setCompendiumError] = useState<string | null>(null)
   const [isCompendiumLoading, setIsCompendiumLoading] = useState(false)
   const [selectedCreature, setSelectedCreature] = useState<{ entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'>; isUnlocked: boolean } | null>(null)
@@ -636,16 +639,26 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
                         <p className="font-medium">{companion.name_override || companion.entry?.name || t('compendium.unnamedCompanion')}</p>
                         <p className="text-xs text-muted-foreground">{companion.kind} · {companion.source_origin ?? 'custom'}</p>
                       </div>
-                      <Button
-                        variant={companion.is_active ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={async () => {
-                          await activateCompanion(companion.id, !companion.is_active)
-                          await refreshCompendium()
-                        }}
-                      >
-                        {companion.is_active ? t('compendium.active') : t('compendium.inactive')}
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant={companion.is_active ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={async () => {
+                            await activateCompanion(companion.id, !companion.is_active)
+                            await refreshCompendium()
+                          }}
+                        >
+                          {companion.is_active ? t('compendium.active') : t('compendium.inactive')}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setPendingCompanionDelete(companion)}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -825,6 +838,30 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         }}
         importDisabled={!selectedCompanionTemplateId}
       />
+
+      <AlertDialog open={!!pendingCompanionDelete} onOpenChange={(open) => { if (!open) setPendingCompanionDelete(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('inventory.deleteItem')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('inventory.deleteItemDescription', { name: pendingCompanionDelete?.name_override || pendingCompanionDelete?.entry?.name || t('compendium.unnamedCompanion') })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!pendingCompanionDelete) return
+                await deleteCompanionAssignment(pendingCompanionDelete.id)
+                setPendingCompanionDelete(null)
+                await refreshCompendium()
+              }}
+            >
+              {t('common.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!initiativePrompt} onOpenChange={() => {}}>
         <AlertDialogContent>
