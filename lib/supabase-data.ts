@@ -1022,8 +1022,18 @@ export async function createItemTemplate(userId: string, input: CreateItemTempla
   return data as ItemTemplate
 }
 
-export async function grantItemTemplateToCharacter(characterId: string, template: ItemTemplate, quantity = 1) {
-  const normalizedQuantity = Math.max(1, Math.floor(quantity))
+async function appendInventoryRow(
+  characterId: string,
+  payload: {
+    title: string
+    description: string
+    quantity: number
+    category: string
+    sourceItemTemplateId?: string | null
+    sourceOrigin?: 'template' | 'custom'
+    templateSnapshot?: Record<string, unknown> | null
+  }
+) {
   const { data: lastRow, error: sortError } = await supabase
     .from('inventory_items')
     .select('sort_order')
@@ -1037,14 +1047,14 @@ export async function grantItemTemplateToCharacter(characterId: string, template
     character_id: characterId,
     client_id: generateClientId(),
     sort_order: (lastRow?.sort_order ?? -1) + 1,
-    title: template.name,
-    description: template.description ?? '',
-    quantity: normalizedQuantity,
-    category: normalizeInventoryCategory(template.category),
+    title: payload.title,
+    description: payload.description,
+    quantity: Math.max(1, Math.floor(payload.quantity)),
+    category: normalizeInventoryCategory(payload.category),
     parent_client_id: null as string | null,
-    source_item_template_id: template.id,
-    source_origin: 'template' as const,
-    template_snapshot: template as unknown as Record<string, unknown>,
+    source_item_template_id: payload.sourceItemTemplateId ?? null,
+    source_origin: payload.sourceOrigin ?? 'custom',
+    template_snapshot: payload.templateSnapshot ?? null,
   }
 
   let { error } = await supabase.from('inventory_items').insert(row)
@@ -1057,6 +1067,33 @@ export async function grantItemTemplateToCharacter(characterId: string, template
     ;({ error } = await supabase.from('inventory_items').insert(legacyRow))
   }
   if (error) throw error
+}
+
+export async function grantItemTemplateToCharacter(characterId: string, template: ItemTemplate, quantity = 1) {
+  const normalizedQuantity = Math.max(1, Math.floor(quantity))
+  await appendInventoryRow(characterId, {
+    title: template.name,
+    description: template.description ?? '',
+    quantity: normalizedQuantity,
+    category: template.category ?? 'Other',
+    sourceItemTemplateId: template.id,
+    sourceOrigin: 'template',
+    templateSnapshot: template as unknown as Record<string, unknown>,
+  })
+}
+
+export async function grantCustomInventoryItemToCharacter(
+  characterId: string,
+  input: { name: string; description?: string; category?: string; quantity?: number }
+) {
+  await appendInventoryRow(characterId, {
+    title: input.name,
+    description: input.description ?? '',
+    quantity: input.quantity ?? 1,
+    category: input.category ?? 'Treasure',
+    sourceOrigin: 'custom',
+    templateSnapshot: null,
+  })
 }
 
 export async function listSpellTemplates() {

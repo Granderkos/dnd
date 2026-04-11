@@ -5,10 +5,11 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { createItemTemplate, grantItemTemplateToCharacter, listItemTemplates, type CreateItemTemplateInput, type ItemTemplate } from '@/lib/supabase-data'
+import { createItemTemplate, grantCustomInventoryItemToCharacter, grantItemTemplateToCharacter, listItemTemplates, type CreateItemTemplateInput, type ItemTemplate } from '@/lib/supabase-data'
 import { useAuth } from '@/lib/auth-context'
 
 type ItemTypeOption = 'Weapons' | 'Armor' | 'Equipment' | 'Consumables' | 'Tools' | 'Treasure' | 'Other'
+type LootTier = 'common' | 'uncommon' | 'rare' | 'epic'
 
 const ITEM_TYPES: ItemTypeOption[] = ['Weapons', 'Armor', 'Equipment', 'Consumables', 'Tools', 'Treasure', 'Other']
 
@@ -41,6 +42,13 @@ export function DmItemTemplatePanel({ players }: { players: Array<{ characterId:
   const [grantQuantity, setGrantQuantity] = useState('1')
   const [grantMessage, setGrantMessage] = useState<string | null>(null)
   const [isGranting, setIsGranting] = useState(false)
+  const [lootTier, setLootTier] = useState<LootTier>('common')
+  const [goldMin, setGoldMin] = useState('5')
+  const [goldMax, setGoldMax] = useState('25')
+  const [lootItemCount, setLootItemCount] = useState('2')
+  const [generatedLoot, setGeneratedLoot] = useState<{ gold: number; items: Array<{ template: ItemTemplate; quantity: number }> } | null>(null)
+  const [isGivingGenerated, setIsGivingGenerated] = useState(false)
+  const [generatedMessage, setGeneratedMessage] = useState<string | null>(null)
   const selectedType = useMemo(() => mapTypeToKind(itemType), [itemType])
 
   useEffect(() => {
@@ -113,6 +121,58 @@ export function DmItemTemplatePanel({ players }: { players: Array<{ characterId:
     }
   }
 
+  const pickRandom = <T,>(rows: T[]) => rows[Math.floor(Math.random() * rows.length)]
+
+  const templateMatchesTier = (template: ItemTemplate) => {
+    const rarity = (template.rarity ?? '').toLowerCase().trim()
+    if (lootTier === 'epic') return true
+    if (lootTier === 'rare') return ['rare', 'uncommon', 'common', ''].includes(rarity)
+    if (lootTier === 'uncommon') return ['uncommon', 'common', ''].includes(rarity)
+    return ['common', ''].includes(rarity)
+  }
+
+  const handleGenerateLoot = () => {
+    const candidateTemplates = templates.filter(templateMatchesTier)
+    const count = Math.max(0, Math.min(10, Number.parseInt(lootItemCount, 10) || 0))
+    const minGold = Math.max(0, Number.parseInt(goldMin, 10) || 0)
+    const maxGold = Math.max(minGold, Number.parseInt(goldMax, 10) || minGold)
+    const gold = Math.floor(Math.random() * (maxGold - minGold + 1)) + minGold
+    const items: Array<{ template: ItemTemplate; quantity: number }> = []
+    for (let index = 0; index < count; index += 1) {
+      if (candidateTemplates.length === 0) break
+      const template = pickRandom(candidateTemplates)
+      const quantity = (template.category ?? '').toLowerCase() === 'consumables' ? Math.floor(Math.random() * 3) + 1 : 1
+      items.push({ template, quantity })
+    }
+    setGeneratedLoot({ gold, items })
+    setGeneratedMessage(null)
+  }
+
+  const handleGiveGeneratedLoot = async () => {
+    if (!generatedLoot || !selectedCharacterId || isGivingGenerated) return
+    setIsGivingGenerated(true)
+    setGeneratedMessage(null)
+    try {
+      for (const reward of generatedLoot.items) {
+        await grantItemTemplateToCharacter(selectedCharacterId, reward.template, reward.quantity)
+      }
+      if (generatedLoot.gold > 0) {
+        await grantCustomInventoryItemToCharacter(selectedCharacterId, {
+          name: 'Gold Coins',
+          description: `Generated loot gold payout (${generatedLoot.gold} gp).`,
+          category: 'Treasure',
+          quantity: 1,
+        })
+      }
+      setGeneratedMessage('Generated loot delivered to player inventory.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to deliver generated loot.'
+      setGeneratedMessage(message)
+    } finally {
+      setIsGivingGenerated(false)
+    }
+  }
+
   return (
     <Card>
       <CardContent className="space-y-3 py-4">
@@ -135,6 +195,45 @@ export function DmItemTemplatePanel({ players }: { players: Array<{ characterId:
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">{saveMessage ?? 'Saved templates become reusable in item import flows.'}</p>
           <Button onClick={() => void handleCreate()} disabled={!name.trim() || isSaving}>{isSaving ? 'Saving…' : 'Create Template'}</Button>
+        </div>
+        <div className="h-px bg-border" />
+        <div className="space-y-2">
+          <div className="text-sm font-semibold uppercase tracking-wide text-primary">Loot Generator (MVP)</div>
+          <div className="grid gap-2 sm:grid-cols-4">
+            <select className="h-9 rounded-md border border-border bg-background px-2 text-sm" value={lootTier} onChange={(e) => setLootTier(e.target.value as LootTier)}>
+              <option value="common">Common</option>
+              <option value="uncommon">Uncommon</option>
+              <option value="rare">Rare</option>
+              <option value="epic">Epic / Any</option>
+            </select>
+            <Input value={goldMin} onChange={(e) => setGoldMin(e.target.value)} inputMode="numeric" placeholder="Gold min" />
+            <Input value={goldMax} onChange={(e) => setGoldMax(e.target.value)} inputMode="numeric" placeholder="Gold max" />
+            <Input value={lootItemCount} onChange={(e) => setLootItemCount(e.target.value)} inputMode="numeric" placeholder="Item count" />
+          </div>
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={handleGenerateLoot}>Generate Loot</Button>
+          </div>
+          {generatedLoot ? (
+            <div className="rounded-md border border-border/70 bg-muted/30 p-3 text-sm">
+              <div className="font-semibold">Review Result</div>
+              <div className="text-xs text-muted-foreground">Gold: {generatedLoot.gold} gp</div>
+              {generatedLoot.items.length === 0 ? (
+                <div className="mt-1 text-xs text-muted-foreground">No item templates matched this tier/filter.</div>
+              ) : (
+                <ul className="mt-1 space-y-1 text-xs">
+                  {generatedLoot.items.map((reward, index) => (
+                    <li key={`${reward.template.id}-${index}`}>• {reward.template.name} ×{reward.quantity}</li>
+                  ))}
+                </ul>
+              )}
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">{generatedMessage ?? 'Review before assigning to a player.'}</span>
+                <Button size="sm" onClick={() => void handleGiveGeneratedLoot()} disabled={!selectedCharacterId || isGivingGenerated}>
+                  {isGivingGenerated ? 'Giving…' : 'Give Generated Loot'}
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
         <div className="h-px bg-border" />
         <div className="space-y-2">
