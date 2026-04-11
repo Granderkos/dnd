@@ -21,7 +21,7 @@ import { useAuth } from '@/lib/auth-context'
 import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
-import { clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listFightCharacterCombatState, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, startCombatForCampaign } from '@/lib/supabase-v3'
+import { clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listFightCharacterCombatState, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, startCombatForCampaign, updateFightEntityNotes } from '@/lib/supabase-v3'
 import type { FightStatus } from '@/lib/v3-types'
 import type { FightEntity } from '@/lib/v3-types'
 import { Character, calculateModifier, formatFeetWithSquares, formatModifier } from '@/lib/dnd-types'
@@ -81,8 +81,46 @@ function formatErrorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
+const COMBAT_CONDITIONS = ['Poisoned', 'Prone', 'Restrained', 'Grappled', 'Stunned', 'Blinded', 'Frightened', 'Invisible', 'Unconscious', 'Downed'] as const
+const UNIVERSAL_AUTO_SKIP_CONDITIONS = new Set(['Unconscious', 'Stunned'])
+
+function parseFightEntityNotes(notes: string | null) {
+  const meta: { ac: string | null; conditions: string[] } = { ac: null, conditions: [] }
+  if (!notes?.trim()) return meta
+  notes.split('|').map((part) => part.trim()).filter(Boolean).forEach((segment) => {
+    if (segment.startsWith('ac:')) {
+      meta.ac = segment.replace('ac:', '').trim() || null
+      return
+    }
+    if (segment.startsWith('conditions:')) {
+      meta.conditions = segment.replace('conditions:', '').split(',').map((v) => v.trim()).filter(Boolean)
+    }
+  })
+  return meta
+}
+
+function composeFightEntityNotes(meta: { ac: string | null; conditions: string[] }) {
+  const parts: string[] = []
+  if (meta.ac) parts.push(`ac:${meta.ac}`)
+  if (meta.conditions.length > 0) parts.push(`conditions:${meta.conditions.join(',')}`)
+  return parts.length > 0 ? parts.join('|') : null
+}
+
+function getEntityConditions(entity: FightEntity) {
+  return parseFightEntityNotes(entity.notes).conditions
+}
+
 function isDownedEntity(entity: FightEntity) {
-  return (entity.current_hp ?? 0) <= 0
+  const conditions = getEntityConditions(entity)
+  return (entity.current_hp ?? 0) <= 0 || conditions.includes('Downed')
+}
+
+function isAutoSkipEntity(entity: FightEntity) {
+  const conditions = getEntityConditions(entity)
+  if (conditions.some((condition) => UNIVERSAL_AUTO_SKIP_CONDITIONS.has(condition))) return true
+  if (entity.entity_type === 'player') return false
+  if ((entity.current_hp ?? 0) <= 0) return true
+  return conditions.includes('Downed')
 }
 
 function getEntityHpSnapshot(
@@ -422,7 +460,7 @@ export const DMDashboard = memo(function DMDashboard() {
 
   const handleAdvanceTurn = useCallback(async () => {
     if (!fightId || fightEntities.length === 0 || isAdvancingTurn || fightStatus !== 'active') return
-    const activeIndex = fightEntities.findIndex((entity) => !isDownedEntity(entity))
+    const activeIndex = fightEntities.findIndex((entity) => !isAutoSkipEntity(entity))
     if (activeIndex === -1) {
       setFightError(t('fight.allDowned'))
       return
@@ -445,6 +483,26 @@ export const DMDashboard = memo(function DMDashboard() {
       setIsAdvancingTurn(false)
     }
   }, [fightEntities, fightId, isAdvancingTurn, fightStatus, t])
+
+  const handleSetEntityConditions = useCallback(async (entityId: string, conditions: string[]) => {
+    const previous = fightEntities
+    const next = fightEntities.map((entity) => {
+      if (entity.id !== entityId) return entity
+      const ac = parseFightEntityNotes(entity.notes).ac
+      return {
+        ...entity,
+        notes: composeFightEntityNotes({ ac, conditions }),
+      }
+    })
+    setFightEntities(next)
+    try {
+      const updated = next.find((entity) => entity.id === entityId)
+      await updateFightEntityNotes(entityId, updated?.notes ?? '')
+    } catch (error) {
+      setFightEntities(previous)
+      setFightError(formatErrorMessage(error, t('common.unknownError')))
+    }
+  }, [fightEntities, t])
 
   const handleRemoveEntity = useCallback(async (entityId: string) => {
     if (pendingRemoveIds.includes(entityId)) return
@@ -482,7 +540,22 @@ export const DMDashboard = memo(function DMDashboard() {
 
   const handleSetEntityHp = useCallback((entityId: string, value: number) => {
     const normalized = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
-    setFightEntities((prev) => prev.map((entity) => (entity.id === entityId ? { ...entity, current_hp: normalized } : entity)))
+    const snapshotEntity = fightEntities.find((entity) => entity.id === entityId) ?? null
+    const nextConditions = (() => {
+      if (!snapshotEntity) return null
+      const existingConditions = getEntityConditions(snapshotEntity).filter((condition) => condition !== 'Downed')
+      if (normalized <= 0) return [...existingConditions, 'Downed']
+      return existingConditions
+    })()
+    setFightEntities((prev) => prev.map((entity) => {
+      if (entity.id !== entityId) return entity
+      const ac = parseFightEntityNotes(entity.notes).ac
+      return {
+        ...entity,
+        current_hp: normalized,
+        notes: nextConditions ? composeFightEntityNotes({ ac, conditions: nextConditions }) : entity.notes,
+      }
+    }))
     setCharacterCombatState((prev) => {
       const playerEntity = fightEntities.find((entity) => entity.id === entityId && entity.entity_type === 'player' && entity.character_id)
       if (!playerEntity?.character_id || !prev[playerEntity.character_id]) return prev
@@ -496,7 +569,13 @@ export const DMDashboard = memo(function DMDashboard() {
       }
     })
     persistHp(entityId, normalized)
-  }, [fightEntities, persistHp])
+    if (snapshotEntity && nextConditions) {
+      const ac = parseFightEntityNotes(snapshotEntity.notes).ac
+      void updateFightEntityNotes(entityId, composeFightEntityNotes({ ac, conditions: nextConditions }) ?? '').catch((error) => {
+        setFightError(formatErrorMessage(error, t('common.unknownError')))
+      })
+    }
+  }, [fightEntities, persistHp, t])
 
   const handleStartCombat = useCallback(async () => {
     if (!user?.id || isStartingCombat) return
@@ -558,7 +637,7 @@ export const DMDashboard = memo(function DMDashboard() {
               </Button>
             </div>
           </div>
-          <TabsList className="w-full justify-between">
+          <TabsList className="w-full justify-between overflow-x-auto scrollbar-hidden">
             <TabsTrigger value="players" className="flex-1 gap-1 px-2"><Users className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.players')}</span></TabsTrigger>
             <TabsTrigger value="maps" className="flex-1 gap-1 px-2"><Map className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.maps')}</span></TabsTrigger>
             <TabsTrigger value="notes" className="flex-1 gap-1 px-2"><FileText className="size-4" /><span className="hidden sm:inline text-xs">{t('nav.notes')}</span></TabsTrigger>
@@ -613,6 +692,7 @@ export const DMDashboard = memo(function DMDashboard() {
             onRemoveEntity={handleRemoveEntity}
             onClearFight={() => setClearConfirmOpen(true)}
             onSetEntityHp={handleSetEntityHp}
+            onSetEntityConditions={handleSetEntityConditions}
             onStartCombat={handleStartCombat}
             onEndCombat={handleEndCombat}
             characterCombatState={characterCombatState}
@@ -686,6 +766,7 @@ function DMFightPanel({
   onRemoveEntity,
   onClearFight,
   onSetEntityHp,
+  onSetEntityConditions,
   isAdvancingTurn,
   isClearingFight,
   pendingRemoveIds,
@@ -707,6 +788,7 @@ function DMFightPanel({
   onRemoveEntity: (entityId: string) => Promise<void>
   onClearFight: () => void
   onSetEntityHp: (entityId: string, value: number) => void
+  onSetEntityConditions: (entityId: string, conditions: string[]) => Promise<void>
   isAdvancingTurn: boolean
   isClearingFight: boolean
   pendingRemoveIds: string[]
@@ -753,17 +835,37 @@ function DMFightPanel({
   }
 }) {
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const [roundNumber, setRoundNumber] = useState(1)
+  const [roundAnchorId, setRoundAnchorId] = useState<string | null>(null)
+  const [previousTurnId, setPreviousTurnId] = useState<string | null>(null)
+  const [conditionDraftByEntity, setConditionDraftByEntity] = useState<Record<string, string>>({})
 
-  const activeEntity = entities.find((entity) => !isDownedEntity(entity)) ?? null
+  const activeEntity = entities.find((entity) => !isAutoSkipEntity(entity)) ?? null
   const activeEntityId = activeEntity?.id ?? null
   const hasActiveTurn = Boolean(activeEntity)
+  const activeEntityIndex = activeEntityId ? entities.findIndex((entity) => entity.id === activeEntityId) : -1
+  const nextEntity = activeEntityIndex >= 0
+    ? entities.slice(activeEntityIndex + 1).concat(entities.slice(0, activeEntityIndex)).find((entity) => !isAutoSkipEntity(entity)) ?? null
+    : null
   const emptyStateMessage = fightStatus === 'collecting_initiative'
     ? labels.noEntitiesCollecting
     : fightStatus === 'draft'
       ? labels.noEntitiesDraft
       : fightStatus === 'ended'
-        ? labels.noActive
+      ? labels.noActive
         : labels.noEntities
+  const displayEntities = useMemo(() => {
+    const acting: FightEntity[] = []
+    const skipped: FightEntity[] = []
+    entities.forEach((entity) => {
+      if (isAutoSkipEntity(entity)) {
+        skipped.push(entity)
+      } else {
+        acting.push(entity)
+      }
+    })
+    return [...acting, ...skipped]
+  }, [entities])
   const fightStateLabel = fightStatus === 'active'
     ? labels.stateActive
     : fightStatus === 'collecting_initiative'
@@ -776,6 +878,29 @@ function DMFightPanel({
     if (!activeEntityId) return
     rowRefs.current[activeEntityId]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [activeEntityId])
+
+  useEffect(() => {
+    if (!fightId || fightStatus !== 'active' || !activeEntityId) {
+      setRoundNumber(1)
+      setRoundAnchorId(null)
+      setPreviousTurnId(null)
+      return
+    }
+    setRoundAnchorId((currentAnchor) => currentAnchor ?? activeEntityId)
+    setPreviousTurnId((prevTurn) => {
+      if (!prevTurn) return activeEntityId
+      if (prevTurn === activeEntityId) return prevTurn
+      if (roundAnchorId && activeEntityId === roundAnchorId) {
+        setRoundNumber((round) => round + 1)
+      }
+      return activeEntityId
+    })
+  }, [activeEntityId, fightId, fightStatus, roundAnchorId])
+
+  const formatTurnEntity = useCallback((entity: FightEntity | null) => {
+    if (!entity) return '—'
+    return `${entity.name} (${entity.entity_type})`
+  }, [])
 
   if (isLoading) {
     return <div className="flex h-full items-center justify-center text-muted-foreground">{labels.loading}</div>
@@ -813,6 +938,22 @@ function DMFightPanel({
           <Button size="sm" onClick={() => void onAdvanceTurn()} disabled={!fightId || entities.length === 0 || isAdvancingTurn || !hasActiveTurn || fightStatus !== 'active'}>{labels.nextTurn}</Button>
         </div>
       </div>
+      <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
+        <div className="grid gap-2 text-sm sm:grid-cols-3">
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Round</div>
+            <div className="font-semibold">{fightStatus === 'active' ? roundNumber : '—'}</div>
+          </div>
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Current Turn</div>
+            <div className="font-semibold">{fightStatus === 'active' ? formatTurnEntity(activeEntity) : '—'}</div>
+          </div>
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Next Turn</div>
+            <div className="font-semibold">{fightStatus === 'active' ? formatTurnEntity(nextEntity) : '—'}</div>
+          </div>
+        </div>
+      </div>
       {error ? <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
       {!fightId ? (
         <div className="rounded-lg border p-4 text-sm text-muted-foreground">{labels.noActive}</div>
@@ -825,8 +966,12 @@ function DMFightPanel({
               {labels.allDowned}
             </div>
           ) : null}
-          {entities.map((entity) => {
+          {displayEntities.map((entity) => {
             const hpSnapshot = getEntityHpSnapshot(entity, characterCombatState)
+            const parsedNotes = parseFightEntityNotes(entity.notes)
+            const conditions = parsedNotes.conditions
+            const availableConditions = COMBAT_CONDITIONS.filter((condition) => !conditions.includes(condition))
+            const pendingCondition = conditionDraftByEntity[entity.id] ?? availableConditions[0] ?? ''
             return (
             <Card
               key={entity.id}
@@ -855,11 +1000,26 @@ function DMFightPanel({
                       </span>
                     </div>
                     <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{entity.entity_type}</div>
+                    {conditions.length > 0 ? (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {conditions.map((condition) => (
+                          <button
+                            key={condition}
+                            type="button"
+                            onClick={() => void onSetEntityConditions(entity.id, conditions.filter((value) => value !== condition))}
+                            className="rounded-full border border-border/70 bg-muted px-2 py-0.5 text-[10px] font-medium"
+                            title="Remove condition"
+                          >
+                            {condition} ×
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="text-right">
                     <div className="flex items-center justify-end gap-2 text-[11px] text-muted-foreground">
                       <span>{labels.initiative}: <span className="font-semibold text-foreground">{entity.initiative ?? '—'}</span></span>
-                      <span>{labels.ac}: <span className="font-semibold text-foreground">{entity.notes?.startsWith('ac:') ? entity.notes.replace('ac:', '') : '—'}</span></span>
+                      <span>{labels.ac}: <span className="font-semibold text-foreground">{parsedNotes.ac ?? '—'}</span></span>
                     </div>
                     <div className="mt-2 w-full max-w-[280px] ml-auto">
                       <div className="mb-1.5 flex items-center justify-between text-[11px]">
@@ -879,7 +1039,7 @@ function DMFightPanel({
                           }}
                         />
                       </div>
-                      {entity.entity_type === 'player' && entity.character_id && characterCombatState[entity.character_id] ? (
+                      {entity.entity_type === 'player' && entity.character_id && characterCombatState[entity.character_id] && isDownedEntity(entity) ? (
                         <div className="mt-1.5 text-[11px] text-muted-foreground">
                           {labels.deathSaves}: {labels.deathSuccess} {characterCombatState[entity.character_id].deathSuccesses}/3 • {labels.deathFailure} {characterCombatState[entity.character_id].deathFailures}/3
                         </div>
@@ -904,6 +1064,29 @@ function DMFightPanel({
                       </div>
                     </div>
                     <div className="mt-1 flex justify-end">
+                      {availableConditions.length > 0 ? (
+                        <div className="mr-2 flex items-center gap-1">
+                          <select
+                            className="h-6 rounded-md border border-border bg-background px-1 text-[10px]"
+                            value={pendingCondition}
+                            onChange={(e) => setConditionDraftByEntity((prev) => ({ ...prev, [entity.id]: e.target.value }))}
+                          >
+                            {availableConditions.map((condition) => (
+                              <option key={condition} value={condition}>
+                                {condition}
+                              </option>
+                            ))}
+                          </select>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-1.5 text-[10px]"
+                            onClick={() => void onSetEntityConditions(entity.id, [...conditions, pendingCondition])}
+                          >
+                            +Cond
+                          </Button>
+                        </div>
+                      ) : null}
                       <Button
                         size="sm"
                         variant="ghost"
