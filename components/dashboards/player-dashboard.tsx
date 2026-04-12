@@ -213,6 +213,8 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [customCompanionHp, setCustomCompanionHp] = useState('')
   const [customCompanionSpeed, setCustomCompanionSpeed] = useState('')
   const [customCompanionNotes, setCustomCompanionNotes] = useState('')
+  const [createCompanionError, setCreateCompanionError] = useState<string | null>(null)
+  const [isCreatingCompanion, setIsCreatingCompanion] = useState(false)
   const [pendingCompanionDelete, setPendingCompanionDelete] = useState<(CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }) | null>(null)
   const [compendiumError, setCompendiumError] = useState<string | null>(null)
   const [isCompendiumLoading, setIsCompendiumLoading] = useState(false)
@@ -770,14 +772,14 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       </Tabs>
 
       <Drawer open={!!selectedCreature} onOpenChange={(open) => !open && setSelectedCreature(null)} direction="right">
-        <DrawerContent>
+        <DrawerContent className="flex max-h-[90vh] flex-col overflow-hidden">
           <DrawerHeader>
             <DrawerTitle>{selectedCreature?.isUnlocked ? selectedCreature.entry.name : t('compendium.unknownName')}</DrawerTitle>
             <DrawerDescription>
               {selectedCreature?.isUnlocked ? `${statValue(selectedCreature.entry, 'size', 'Medium')} ${selectedCreature.entry.subtype ?? 'creature'}, ${statValue(selectedCreature.entry, 'alignment', 'Unaligned')}` : '???'}
             </DrawerDescription>
           </DrawerHeader>
-          <div className="space-y-3 px-4 pb-6">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-6">
             <img
               src={selectedCreature?.isUnlocked && typeof selectedCreature.entry.data?.image === 'string' ? selectedCreature.entry.data.image : '/logo.svg'}
               alt={selectedCreature?.isUnlocked ? selectedCreature.entry.name : t('compendium.unknownName')}
@@ -822,8 +824,14 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         </DrawerContent>
       </Drawer>
 
-      <Dialog open={isCreateCompanionOpen} onOpenChange={setIsCreateCompanionOpen}>
-        <DialogContent>
+      <Dialog open={isCreateCompanionOpen} onOpenChange={(open) => {
+        setIsCreateCompanionOpen(open)
+        if (!open) {
+          setCreateCompanionError(null)
+          setIsCreatingCompanion(false)
+        }
+      }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('compendium.createCompanionTitle')}</DialogTitle>
           </DialogHeader>
@@ -840,34 +848,57 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
               <Input value={customCompanionHp} onChange={(e) => setCustomCompanionHp(e.target.value)} placeholder="HP" />
               <Input value={customCompanionSpeed} onChange={(e) => setCustomCompanionSpeed(e.target.value)} placeholder="Speed" />
             </div>
-            <Textarea value={customCompanionNotes} onChange={(e) => setCustomCompanionNotes(e.target.value)} placeholder={t('compendium.customNotes')} />
-            <Button onClick={async () => {
-              if (!companionCharacterId || !customCompanionName.trim()) return
-              const entry = await createCompanionEntry({
-                name: customCompanionName.trim(),
-                kind: customCompanionKind,
-                description: customCompanionNotes.trim() || undefined,
-                data: {
-                  ac: customCompanionAc || null,
-                  hp: customCompanionHp || null,
-                  speed: customCompanionSpeed || null,
-                },
-              })
-              await assignCompanion({
-                characterId: companionCharacterId,
-                entryId: entry.id,
-                kind: customCompanionKind,
-                notes: customCompanionNotes.trim() || undefined,
-                customData: { source: 'custom' },
-              })
-              setIsCreateCompanionOpen(false)
-              setCustomCompanionName('')
-              setCustomCompanionAc('')
-              setCustomCompanionHp('')
-              setCustomCompanionSpeed('')
-              setCustomCompanionNotes('')
-              await refreshCompendium()
-            }}>{t('compendium.createCompanionAction')}</Button>
+            <Textarea
+              value={customCompanionNotes}
+              onChange={(e) => setCustomCompanionNotes(e.target.value)}
+              placeholder={t('compendium.customNotes')}
+              className="min-h-28 break-words"
+            />
+            {createCompanionError ? (
+              <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {createCompanionError}
+              </p>
+            ) : null}
+            <Button
+              disabled={isCreatingCompanion}
+              onClick={async () => {
+                if (!companionCharacterId || !customCompanionName.trim()) return
+                setIsCreatingCompanion(true)
+                setCreateCompanionError(null)
+                try {
+                  const entry = await createCompanionEntry({
+                    name: customCompanionName.trim(),
+                    kind: customCompanionKind,
+                    description: customCompanionNotes.trim() || undefined,
+                    data: {
+                      ac: customCompanionAc || null,
+                      hp: customCompanionHp || null,
+                      speed: customCompanionSpeed || null,
+                    },
+                  })
+                  await assignCompanion({
+                    characterId: companionCharacterId,
+                    entryId: entry.id,
+                    kind: customCompanionKind,
+                    notes: customCompanionNotes.trim() || undefined,
+                    customData: { source: 'custom' },
+                  })
+                  setIsCreateCompanionOpen(false)
+                  setCustomCompanionName('')
+                  setCustomCompanionAc('')
+                  setCustomCompanionHp('')
+                  setCustomCompanionSpeed('')
+                  setCustomCompanionNotes('')
+                  await refreshCompendium()
+                } catch (error) {
+                  setCreateCompanionError(formatErrorMessage(error, 'Failed to create companion.'))
+                } finally {
+                  setIsCreatingCompanion(false)
+                }
+              }}
+            >
+              {isCreatingCompanion ? t('common.loading') : t('compendium.createCompanionAction')}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
