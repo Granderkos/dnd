@@ -74,15 +74,29 @@ export async function createCreature(input: {
   description?: string | null
   data?: Record<string, unknown>
 }) {
-  const { data, error } = await supabase
-    .from('compendium_entries')
-    .insert({
-      type: 'creature',
-      is_system: false,
-      ...input,
-    })
-    .select('id, type, subtype, slug, name, description, is_system, data, created_by, created_at')
-    .single()
+  const rpcResult = await supabase.rpc('create_creature_entry_for_dm', {
+    p_subtype: input.subtype,
+    p_slug: input.slug,
+    p_name: input.name,
+    p_description: input.description ?? null,
+    p_data: input.data ?? {},
+  })
+
+  let data = rpcResult.data as CompendiumEntry | null
+  let error = rpcResult.error
+  if (error && error.message?.toLowerCase().includes('create_creature_entry_for_dm')) {
+    const fallback = await supabase
+      .from('compendium_entries')
+      .insert({
+        type: 'creature',
+        is_system: false,
+        ...input,
+      })
+      .select('id, type, subtype, slug, name, description, is_system, data, created_by, created_at')
+      .single()
+    data = fallback.data as CompendiumEntry | null
+    error = fallback.error
+  }
 
   if (error) throw error
   return data as CompendiumEntry
