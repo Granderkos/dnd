@@ -372,7 +372,7 @@ export const DMDashboard = memo(function DMDashboard() {
     const interval = setInterval(() => {
       if (document.visibilityState !== 'visible') return
       void loadFightState(false)
-    }, 10000)
+    }, 4000)
     return () => clearInterval(interval)
   }, [activeTab, fightId, loadFightState])
 

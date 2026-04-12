@@ -56,8 +56,18 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
       }
     }
     void loadActiveMap()
-    const interval = setInterval(() => void loadActiveMap(), 45000)
-    return () => clearInterval(interval)
+    const interval = setInterval(() => void loadActiveMap(), 20000)
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState !== 'visible') return
+      void loadActiveMap()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus)
+    window.addEventListener('focus', handleVisibilityOrFocus)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus)
+      window.removeEventListener('focus', handleVisibilityOrFocus)
+    }
   }, [])
 
   const applyZoomAt = useCallback((requestedZoom: number, clientX: number, clientY: number) => {

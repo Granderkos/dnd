@@ -90,7 +90,7 @@ export function TvMapMode() {
     const poll = setInterval(() => {
       if (document.visibilityState !== 'visible') return
       void refreshTvState()
-    }, 6000)
+    }, 3500)
     const channel = supabase
       .channel('tv-map-state')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'maps' }, () => { void refreshTvState() })
