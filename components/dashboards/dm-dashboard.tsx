@@ -370,8 +370,9 @@ export const DMDashboard = memo(function DMDashboard() {
   useEffect(() => {
     if (activeTab !== 'fight' || !fightId) return
     const interval = setInterval(() => {
+      if (document.visibilityState !== 'visible') return
       void loadFightState(false)
-    }, 3000)
+    }, 10000)
     return () => clearInterval(interval)
   }, [activeTab, fightId, loadFightState])
 
