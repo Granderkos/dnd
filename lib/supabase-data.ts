@@ -114,6 +114,7 @@ const characterSaveQueue = new Map<string, Promise<void>>()
 const characterBlobCache = new Map<string, CharacterNotesBlob>()
 const portraitUploadCache = new Map<string, string>()
 const templateQueryCache = new Map<string, { expiresAt: number; data: unknown[] }>()
+const templateQueryInFlight = new Map<string, Promise<unknown[]>>()
 const characterSaveSignatures = new Map<string, {
   row: string
   attacks: string
@@ -122,7 +123,25 @@ const characterSaveSignatures = new Map<string, {
   blob: string
 }>()
 const INVENTORY_CATEGORIES = new Set(['Weapons', 'Armor', 'Equipment', 'Tools', 'Consumables', 'Supplies', 'Treasure', 'Other'])
-const TEMPLATE_CACHE_TTL_MS = 5 * 60 * 1000
+const TEMPLATE_CACHE_TTL_MS = 30 * 60 * 1000
+
+async function withTemplateCache<T>(key: string, loader: () => Promise<T[]>): Promise<T[]> {
+  const cached = templateQueryCache.get(key)
+  if (cached && cached.expiresAt > Date.now()) return cached.data as T[]
+  const inFlight = templateQueryInFlight.get(key)
+  if (inFlight) return inFlight as Promise<T[]>
+  const promise = (async () => {
+    const rows = await loader()
+    templateQueryCache.set(key, { expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS, data: rows as unknown[] })
+    return rows
+  })()
+  templateQueryInFlight.set(key, promise as Promise<unknown[]>)
+  try {
+    return await promise
+  } finally {
+    templateQueryInFlight.delete(key)
+  }
+}
 
 function normalizeInventoryCategory(value: string | null | undefined): string {
   const normalized = (value ?? '').trim().toLowerCase()
@@ -945,37 +964,35 @@ async function syncInventoryRows(characterId: string, items: Inventory['items'])
 }
 
 export async function listItemTemplates() {
-  const cached = templateQueryCache.get('item_templates')
-  if (cached && cached.expiresAt > Date.now()) return cached.data as ItemTemplate[]
-  const fullSelect = 'id, name, description, category, item_kind, item_subtype, rarity, weight, value_text, damage_text, damage_type, range_text, weapon_kind, armor_kind, ac_base, ac_bonus, dex_cap, strength_requirement, stealth_disadvantage, source_url, requires_attunement, capacity_text, contents_summary, charges_max, charges_current, usage_type, properties, tags'
-  const legacySelect = 'id, name, description, category, item_kind, item_subtype, rarity, weight, value_text, damage_text, damage_type, range_text, weapon_kind, armor_kind, ac_base, ac_bonus, dex_cap, strength_requirement, stealth_disadvantage, source_url, requires_attunement, capacity_text, contents_summary, properties, tags'
+  return withTemplateCache<ItemTemplate>('item_templates', async () => {
+    const fullSelect = 'id, name, description, category, item_kind, item_subtype, rarity, weight, value_text, damage_text, damage_type, range_text, weapon_kind, armor_kind, ac_base, ac_bonus, dex_cap, strength_requirement, stealth_disadvantage, source_url, requires_attunement, capacity_text, contents_summary, charges_max, charges_current, usage_type, properties, tags'
+    const legacySelect = 'id, name, description, category, item_kind, item_subtype, rarity, weight, value_text, damage_text, damage_type, range_text, weapon_kind, armor_kind, ac_base, ac_bonus, dex_cap, strength_requirement, stealth_disadvantage, source_url, requires_attunement, capacity_text, contents_summary, properties, tags'
 
-  const fullResult = await supabase
-    .from('item_templates')
-    .select(fullSelect)
-    .order('name', { ascending: true })
-  let rows = fullResult.data as Record<string, unknown>[] | null
-  let error = fullResult.error
-  if (error && (isMissingColumnError(error, 'charges_max') || isMissingColumnError(error, 'charges_current') || isMissingColumnError(error, 'usage_type'))) {
-    const legacyResult = await supabase
+    const fullResult = await supabase
       .from('item_templates')
-      .select(legacySelect)
+      .select(fullSelect)
       .order('name', { ascending: true })
-    rows = legacyResult.data as Record<string, unknown>[] | null
-    error = legacyResult.error
-    if (!error) {
-      rows = (rows ?? []).map((row) => ({
-        ...row,
-        charges_max: null,
-        charges_current: null,
-        usage_type: null,
-      }))
+    let rows = fullResult.data as Record<string, unknown>[] | null
+    let error = fullResult.error
+    if (error && (isMissingColumnError(error, 'charges_max') || isMissingColumnError(error, 'charges_current') || isMissingColumnError(error, 'usage_type'))) {
+      const legacyResult = await supabase
+        .from('item_templates')
+        .select(legacySelect)
+        .order('name', { ascending: true })
+      rows = legacyResult.data as Record<string, unknown>[] | null
+      error = legacyResult.error
+      if (!error) {
+        rows = (rows ?? []).map((row) => ({
+          ...row,
+          charges_max: null,
+          charges_current: null,
+          usage_type: null,
+        }))
+      }
     }
-  }
-  if (error) throw error
-  const normalizedRows = (rows ?? []) as unknown as ItemTemplate[]
-  templateQueryCache.set('item_templates', { expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS, data: normalizedRows as unknown[] })
-  return normalizedRows
+    if (error) throw error
+    return (rows ?? []) as unknown as ItemTemplate[]
+  })
 }
 
 function slugifyTemplateName(value: string) {
@@ -1176,56 +1193,48 @@ export async function grantGoldToCharacter(characterId: string, goldAmount: numb
 }
 
 export async function listSpellTemplates() {
-  const cached = templateQueryCache.get('spell_templates')
-  if (cached && cached.expiresAt > Date.now()) return cached.data as SpellTemplate[]
-  const { data, error } = await supabase
-    .from('spell_templates')
-    .select('id, name, level, school, casting_time, range_text, duration_text, concentration, ritual, description, higher_level_text, save_type, attack_type')
-    .order('level', { ascending: true })
-    .order('name', { ascending: true })
-  if (error) throw error
-  const rows = (data ?? []) as SpellTemplate[]
-  templateQueryCache.set('spell_templates', { expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS, data: rows as unknown[] })
-  return rows
+  return withTemplateCache<SpellTemplate>('spell_templates', async () => {
+    const { data, error } = await supabase
+      .from('spell_templates')
+      .select('id, name, level, school, casting_time, range_text, duration_text, concentration, ritual, description, higher_level_text, save_type, attack_type')
+      .order('level', { ascending: true })
+      .order('name', { ascending: true })
+    if (error) throw error
+    return (data ?? []) as SpellTemplate[]
+  })
 }
 
 export async function listClassTemplates() {
-  const cached = templateQueryCache.get('class_templates')
-  if (cached && cached.expiresAt > Date.now()) return cached.data as ClassTemplate[]
-  const { data, error } = await supabase
-    .from('class_templates')
-    .select('id, name, hit_die, primary_ability, saving_throw_proficiencies, armor_proficiencies, weapon_proficiencies, tool_proficiencies, short_description, feature_summary')
-    .order('name', { ascending: true })
-  if (error) throw error
-  const rows = (data ?? []) as ClassTemplate[]
-  templateQueryCache.set('class_templates', { expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS, data: rows as unknown[] })
-  return rows
+  return withTemplateCache<ClassTemplate>('class_templates', async () => {
+    const { data, error } = await supabase
+      .from('class_templates')
+      .select('id, name, hit_die, primary_ability, saving_throw_proficiencies, armor_proficiencies, weapon_proficiencies, tool_proficiencies, short_description, feature_summary')
+      .order('name', { ascending: true })
+    if (error) throw error
+    return (data ?? []) as ClassTemplate[]
+  })
 }
 
 export async function listRaceTemplates() {
-  const cached = templateQueryCache.get('race_templates')
-  if (cached && cached.expiresAt > Date.now()) return cached.data as RaceTemplate[]
-  const { data, error } = await supabase
-    .from('race_templates')
-    .select('id, name, size, speed, ability_bonuses, traits, languages, short_description')
-    .order('name', { ascending: true })
-  if (error) throw error
-  const rows = (data ?? []) as RaceTemplate[]
-  templateQueryCache.set('race_templates', { expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS, data: rows as unknown[] })
-  return rows
+  return withTemplateCache<RaceTemplate>('race_templates', async () => {
+    const { data, error } = await supabase
+      .from('race_templates')
+      .select('id, name, size, speed, ability_bonuses, traits, languages, short_description')
+      .order('name', { ascending: true })
+    if (error) throw error
+    return (data ?? []) as RaceTemplate[]
+  })
 }
 
 export async function listBackgroundTemplates() {
-  const cached = templateQueryCache.get('background_templates')
-  if (cached && cached.expiresAt > Date.now()) return cached.data as BackgroundTemplate[]
-  const { data, error } = await supabase
-    .from('background_templates')
-    .select('id, name, skill_proficiencies, tool_proficiencies, language_proficiencies, equipment_summary, feature_summary, short_description')
-    .order('name', { ascending: true })
-  if (error) throw error
-  const rows = (data ?? []) as BackgroundTemplate[]
-  templateQueryCache.set('background_templates', { expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS, data: rows as unknown[] })
-  return rows
+  return withTemplateCache<BackgroundTemplate>('background_templates', async () => {
+    const { data, error } = await supabase
+      .from('background_templates')
+      .select('id, name, skill_proficiencies, tool_proficiencies, language_proficiencies, equipment_summary, feature_summary, short_description')
+      .order('name', { ascending: true })
+    if (error) throw error
+    return (data ?? []) as BackgroundTemplate[]
+  })
 }
 
 async function syncSpellRows(characterId: string, spells: Spellbook['spells'][number][]) {

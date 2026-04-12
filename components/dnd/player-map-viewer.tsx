@@ -37,6 +37,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
   useEffect(() => {
     const loadActiveMap = async () => {
       if (document.visibilityState === 'hidden') return
+      if (!document.hasFocus()) return
       if (isFetchingMap.current) return
       isFetchingMap.current = true
       try {
@@ -55,7 +56,7 @@ export const PlayerMapViewer = memo(function PlayerMapViewer({ settings, onSetti
       }
     }
     void loadActiveMap()
-    const interval = setInterval(() => void loadActiveMap(), 12000)
+    const interval = setInterval(() => void loadActiveMap(), 45000)
     return () => clearInterval(interval)
   }, [])
 

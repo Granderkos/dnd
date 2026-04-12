@@ -33,6 +33,28 @@ function activeSinceIso(minutes = 2) {
   return new Date(Date.now() - minutes * 60_000).toISOString()
 }
 
+const v3ListCache = new Map<string, { expiresAt: number; data: unknown[] }>()
+const v3ListInFlight = new Map<string, Promise<unknown[]>>()
+const V3_LIST_CACHE_TTL_MS = 15 * 60 * 1000
+
+async function withV3ListCache<T>(key: string, loader: () => Promise<T[]>): Promise<T[]> {
+  const cached = v3ListCache.get(key)
+  if (cached && cached.expiresAt > Date.now()) return cached.data as T[]
+  const inFlight = v3ListInFlight.get(key)
+  if (inFlight) return inFlight as Promise<T[]>
+  const promise = (async () => {
+    const rows = await loader()
+    v3ListCache.set(key, { expiresAt: Date.now() + V3_LIST_CACHE_TTL_MS, data: rows as unknown[] })
+    return rows
+  })()
+  v3ListInFlight.set(key, promise as Promise<unknown[]>)
+  try {
+    return await promise
+  } finally {
+    v3ListInFlight.delete(key)
+  }
+}
+
 export async function listCreatures() {
   const { data, error } = await supabase
     .from('compendium_entries')
@@ -135,21 +157,25 @@ export interface CreatureTemplate {
 }
 
 export async function listCompanionTemplates() {
-  const { data, error } = await supabase
-    .from('companion_templates')
-    .select('id, slug, name, kind, armor_class, hit_points, speed_text, notes, custom_data')
-    .order('name', { ascending: true })
-  if (error) throw error
-  return (data ?? []) as CompanionTemplate[]
+  return withV3ListCache<CompanionTemplate>('companion_templates', async () => {
+    const { data, error } = await supabase
+      .from('companion_templates')
+      .select('id, slug, name, kind, armor_class, hit_points, speed_text, notes, custom_data')
+      .order('name', { ascending: true })
+    if (error) throw error
+    return (data ?? []) as CompanionTemplate[]
+  })
 }
 
 export async function listCreatureTemplates() {
-  const { data, error } = await supabase
-    .from('creature_templates')
-    .select('id, slug, name, subtype, alignment, armor_class, hit_points, speed_text, str_score, dex_score, con_score, int_score, wis_score, cha_score, skills, senses, notes, traits, actions')
-    .order('name', { ascending: true })
-  if (error) throw error
-  return (data ?? []) as CreatureTemplate[]
+  return withV3ListCache<CreatureTemplate>('creature_templates', async () => {
+    const { data, error } = await supabase
+      .from('creature_templates')
+      .select('id, slug, name, subtype, alignment, armor_class, hit_points, speed_text, str_score, dex_score, con_score, int_score, wis_score, cha_score, skills, senses, notes, traits, actions')
+      .order('name', { ascending: true })
+    if (error) throw error
+    return (data ?? []) as CreatureTemplate[]
+  })
 }
 
 export async function createCreatureEntryFromTemplate(template: CreatureTemplate) {
