@@ -616,6 +616,38 @@ export const DMDashboard = memo(function DMDashboard() {
     }
   }, [fightId, isEndingCombat, t])
 
+  const handleUpdateDeathSaves = useCallback(async (entityId: string, action: 'success' | 'failure' | 'reset') => {
+    const playerEntity = fightEntities.find((entity) => entity.id === entityId && entity.entity_type === 'player' && entity.character_id)
+    const characterId = playerEntity?.character_id
+    if (!characterId || !characterCombatState[characterId]) return
+    const previous = characterCombatState[characterId]
+    const next = {
+      deathSuccesses: action === 'reset' ? 0 : Math.min(3, previous.deathSuccesses + (action === 'success' ? 1 : 0)),
+      deathFailures: action === 'reset' ? 0 : Math.min(3, previous.deathFailures + (action === 'failure' ? 1 : 0)),
+    }
+    setCharacterCombatState((prev) => ({
+      ...prev,
+      [characterId]: {
+        ...prev[characterId],
+        deathSuccesses: next.deathSuccesses,
+        deathFailures: next.deathFailures,
+      },
+    }))
+    try {
+      await setCharacterDeathSaves(characterId, next.deathSuccesses, next.deathFailures)
+    } catch (error) {
+      setCharacterCombatState((prev) => ({
+        ...prev,
+        [characterId]: {
+          ...prev[characterId],
+          deathSuccesses: previous.deathSuccesses,
+          deathFailures: previous.deathFailures,
+        },
+      }))
+      setFightError(formatErrorMessage(error, t('common.unknownError')))
+    }
+  }, [characterCombatState, fightEntities, t])
+
   if (!isLoaded) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-background">
