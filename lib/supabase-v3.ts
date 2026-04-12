@@ -118,19 +118,33 @@ export async function createCompanionEntry(input: {
   data?: Record<string, unknown>
 }) {
   const slug = `${createSlug(input.name)}-${Date.now()}`
-  const { data, error } = await supabase
-    .from('compendium_entries')
-    .insert({
-      type: 'companion',
-      subtype: input.kind,
-      slug,
-      name: input.name,
-      description: input.description ?? null,
-      data: input.data ?? {},
-      is_system: false,
-    })
-    .select('id, type, subtype, slug, name, description, data')
-    .single()
+  const rpcResult = await supabase.rpc('create_companion_entry_for_user', {
+    p_kind: input.kind,
+    p_slug: slug,
+    p_name: input.name,
+    p_description: input.description ?? null,
+    p_data: input.data ?? {},
+  })
+
+  let data = rpcResult.data as Pick<CompendiumEntry, 'id' | 'type' | 'subtype' | 'slug' | 'name' | 'description' | 'data'> | null
+  let error = rpcResult.error
+  if (error && error.message?.toLowerCase().includes('create_companion_entry_for_user')) {
+    const fallback = await supabase
+      .from('compendium_entries')
+      .insert({
+        type: 'companion',
+        subtype: input.kind,
+        slug,
+        name: input.name,
+        description: input.description ?? null,
+        data: input.data ?? {},
+        is_system: false,
+      })
+      .select('id, type, subtype, slug, name, description, data')
+      .single()
+    data = fallback.data as Pick<CompendiumEntry, 'id' | 'type' | 'subtype' | 'slug' | 'name' | 'description' | 'data'> | null
+    error = fallback.error
+  }
 
   if (error) throw error
   return data as Pick<CompendiumEntry, 'id' | 'type' | 'subtype' | 'slug' | 'name' | 'description' | 'data'>
