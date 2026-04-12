@@ -66,6 +66,8 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
   const [customInt, setCustomInt] = useState('10')
   const [customWis, setCustomWis] = useState('10')
   const [customCha, setCustomCha] = useState('10')
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [isCreating, setIsCreating] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -97,6 +99,12 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    if (isCreateOpen) {
+      setCreateError(null)
+    }
+  }, [isCreateOpen])
 
   const monsterCards = useMemo(() => {
     return monsters.map((monster) => {
@@ -182,11 +190,16 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
       )}
 
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add custom creature</DialogTitle>
             <DialogDescription>Create a custom bestiary creature entry.</DialogDescription>
           </DialogHeader>
+          {createError ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+              {createError}
+            </div>
+          ) : null}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label className="sm:col-span-2 text-xs font-medium text-muted-foreground">
               Name
@@ -279,41 +292,51 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
             </label>
             <label className="sm:col-span-2 text-xs font-medium text-muted-foreground">
               Notes / Description
-              <Textarea value={customNotes} onChange={(e) => setCustomNotes(e.target.value)} className="min-h-20" />
+              <Textarea value={customNotes} onChange={(e) => setCustomNotes(e.target.value)} className="min-h-20 break-all" />
             </label>
           </div>
           <DialogFooter>
             <Button
+              disabled={isCreating}
               onClick={async () => {
-                if (!customName.trim()) return
-                const creature = await createCreature({
-                  subtype: 'monster',
-                  slug: `custom-${customName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}-${Date.now()}`,
-                  name: customName.trim(),
-                  description: customNotes.trim() || null,
-                  data: {
-                    size: customSize.trim() || 'Medium',
-                    creature_type: customType.trim() || 'Humanoid',
-                    subtype: customSubtype.trim() || null,
-                    alignment: customAlignment.trim() || 'Unaligned',
-                    ac: Number(customAc) || 10,
-                    hp: Number(customHp) || 1,
-                    speed: customSpeed.trim() || '30 ft.',
-                    str: Number(customStr) || 10,
-                    dex: Number(customDex) || 10,
-                    con: Number(customCon) || 10,
-                    int: Number(customInt) || 10,
-                    wis: Number(customWis) || 10,
-                    cha: Number(customCha) || 10,
-                    source_origin: 'custom',
-                  },
-                })
-                cachedMonsters = [...(cachedMonsters ?? monsters), creature]
-                setMonsters((current) => [...current, creature].sort((a, b) => a.name.localeCompare(b.name)))
-                setIsCreateOpen(false)
+                if (!customName.trim() || isCreating) return
+                setCreateError(null)
+                setIsCreating(true)
+                try {
+                  const creature = await createCreature({
+                    subtype: 'monster',
+                    slug: `custom-${customName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}-${Date.now()}`,
+                    name: customName.trim(),
+                    description: customNotes.trim() || null,
+                    data: {
+                      size: customSize.trim() || 'Medium',
+                      creature_type: customType.trim() || 'Humanoid',
+                      subtype: customSubtype.trim() || null,
+                      alignment: customAlignment.trim() || 'Unaligned',
+                      ac: Number(customAc) || 10,
+                      hp: Number(customHp) || 1,
+                      speed: customSpeed.trim() || '30 ft.',
+                      str: Number(customStr) || 10,
+                      dex: Number(customDex) || 10,
+                      con: Number(customCon) || 10,
+                      int: Number(customInt) || 10,
+                      wis: Number(customWis) || 10,
+                      cha: Number(customCha) || 10,
+                      source_origin: 'custom',
+                    },
+                  })
+                  cachedMonsters = [...(cachedMonsters ?? monsters), creature]
+                  setMonsters((current) => [...current, creature].sort((a, b) => a.name.localeCompare(b.name)))
+                  setIsCreateOpen(false)
+                } catch (error) {
+                  console.error('Failed to create custom creature', error)
+                  setCreateError(formatError(error, 'Failed to save creature.'))
+                } finally {
+                  setIsCreating(false)
+                }
               }}
             >
-              Save creature
+              {isCreating ? 'Saving…' : 'Save creature'}
             </Button>
           </DialogFooter>
         </DialogContent>
