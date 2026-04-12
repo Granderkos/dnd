@@ -33,6 +33,28 @@ function activeSinceIso(minutes = 2) {
   return new Date(Date.now() - minutes * 60_000).toISOString()
 }
 
+const v3ListCache = new Map<string, { expiresAt: number; data: unknown[] }>()
+const v3ListInFlight = new Map<string, Promise<unknown[]>>()
+const V3_LIST_CACHE_TTL_MS = 15 * 60 * 1000
+
+async function withV3ListCache<T>(key: string, loader: () => Promise<T[]>): Promise<T[]> {
+  const cached = v3ListCache.get(key)
+  if (cached && cached.expiresAt > Date.now()) return cached.data as T[]
+  const inFlight = v3ListInFlight.get(key)
+  if (inFlight) return inFlight as Promise<T[]>
+  const promise = (async () => {
+    const rows = await loader()
+    v3ListCache.set(key, { expiresAt: Date.now() + V3_LIST_CACHE_TTL_MS, data: rows as unknown[] })
+    return rows
+  })()
+  v3ListInFlight.set(key, promise as Promise<unknown[]>)
+  try {
+    return await promise
+  } finally {
+    v3ListInFlight.delete(key)
+  }
+}
+
 export async function listCreatures() {
   const { data, error } = await supabase
     .from('compendium_entries')
@@ -45,16 +67,36 @@ export async function listCreatures() {
   return (data ?? []) as CompendiumEntry[]
 }
 
-export async function createCreature(input: Omit<CompendiumEntry, 'id' | 'created_at' | 'is_system' | 'type'>) {
-  const { data, error } = await supabase
-    .from('compendium_entries')
-    .insert({
-      type: 'creature',
-      is_system: false,
-      ...input,
-    })
-    .select('id, type, subtype, slug, name, description, is_system, data, created_by, created_at')
-    .single()
+export async function createCreature(input: {
+  subtype: CompendiumEntry['subtype']
+  slug: string
+  name: string
+  description?: string | null
+  data?: Record<string, unknown>
+}) {
+  const rpcResult = await supabase.rpc('create_creature_entry_for_dm', {
+    p_subtype: input.subtype,
+    p_slug: input.slug,
+    p_name: input.name,
+    p_description: input.description ?? null,
+    p_data: input.data ?? {},
+  })
+
+  let data = rpcResult.data as CompendiumEntry | null
+  let error = rpcResult.error
+  if (error && error.message?.toLowerCase().includes('create_creature_entry_for_dm')) {
+    const fallback = await supabase
+      .from('compendium_entries')
+      .insert({
+        type: 'creature',
+        is_system: false,
+        ...input,
+      })
+      .select('id, type, subtype, slug, name, description, is_system, data, created_by, created_at')
+      .single()
+    data = fallback.data as CompendiumEntry | null
+    error = fallback.error
+  }
 
   if (error) throw error
   return data as CompendiumEntry
@@ -129,21 +171,25 @@ export interface CreatureTemplate {
 }
 
 export async function listCompanionTemplates() {
-  const { data, error } = await supabase
-    .from('companion_templates')
-    .select('id, slug, name, kind, armor_class, hit_points, speed_text, notes, custom_data')
-    .order('name', { ascending: true })
-  if (error) throw error
-  return (data ?? []) as CompanionTemplate[]
+  return withV3ListCache<CompanionTemplate>('companion_templates', async () => {
+    const { data, error } = await supabase
+      .from('companion_templates')
+      .select('id, slug, name, kind, armor_class, hit_points, speed_text, notes, custom_data')
+      .order('name', { ascending: true })
+    if (error) throw error
+    return (data ?? []) as CompanionTemplate[]
+  })
 }
 
 export async function listCreatureTemplates() {
-  const { data, error } = await supabase
-    .from('creature_templates')
-    .select('id, slug, name, subtype, alignment, armor_class, hit_points, speed_text, str_score, dex_score, con_score, int_score, wis_score, cha_score, skills, senses, notes, traits, actions')
-    .order('name', { ascending: true })
-  if (error) throw error
-  return (data ?? []) as CreatureTemplate[]
+  return withV3ListCache<CreatureTemplate>('creature_templates', async () => {
+    const { data, error } = await supabase
+      .from('creature_templates')
+      .select('id, slug, name, subtype, alignment, armor_class, hit_points, speed_text, str_score, dex_score, con_score, int_score, wis_score, cha_score, skills, senses, notes, traits, actions')
+      .order('name', { ascending: true })
+    if (error) throw error
+    return (data ?? []) as CreatureTemplate[]
+  })
 }
 
 export async function createCreatureEntryFromTemplate(template: CreatureTemplate) {
@@ -196,8 +242,8 @@ export async function updateCreature(id: string, patch: Partial<CompendiumEntry>
 export async function createFight(campaignId: string) {
   const { data, error } = await supabase
     .from('fights')
-    .insert({ campaign_id: campaignId, is_active: true, status: 'draft' })
-    .select('id, campaign_id, is_active, status, created_at')
+    .insert({ campaign_id: campaignId, is_active: true, status: 'draft', round_number: 1 })
+    .select('id, campaign_id, is_active, status, round_number, created_at')
     .single()
 
   if (error) throw error
@@ -205,9 +251,9 @@ export async function createFight(campaignId: string) {
 }
 
 export async function getActiveFight(campaignId: string) {
-  const { data, error } = await supabase
+  const query = async (withRound: boolean) => await supabase
     .from('fights')
-    .select('id, campaign_id, is_active, status, created_at')
+    .select(withRound ? 'id, campaign_id, is_active, status, round_number, created_at' : 'id, campaign_id, is_active, status, created_at')
     .eq('campaign_id', campaignId)
     .eq('is_active', true)
     .neq('status', 'ended')
@@ -215,8 +261,17 @@ export async function getActiveFight(campaignId: string) {
     .limit(1)
     .maybeSingle()
 
-  if (error) throw error
-  return (data ?? null) as Fight | null
+  const withRound = await query(true)
+  if (withRound.error) {
+    const isMissingColumn = withRound.error.message?.includes('round_number')
+    if (!isMissingColumn) throw withRound.error
+    const fallback = await query(false)
+    if (fallback.error) throw fallback.error
+    if (!fallback.data) return null
+    const fallbackFight = fallback.data as unknown as Fight
+    return { ...fallbackFight, round_number: 1 } as Fight
+  }
+  return (withRound.data ?? null) as Fight | null
 }
 
 export async function getOrCreateActiveFight(campaignId: string) {
@@ -429,6 +484,20 @@ export async function listFightCharacterCombatState(fightId: string) {
   }>
 }
 
+export async function setCharacterDeathSaves(characterId: string, deathSuccesses: number, deathFailures: number) {
+  const nextSuccesses = Math.max(0, Math.min(3, Math.floor(deathSuccesses)))
+  const nextFailures = Math.max(0, Math.min(3, Math.floor(deathFailures)))
+  const { error } = await supabase
+    .from('characters')
+    .update({
+      death_successes: nextSuccesses,
+      death_failures: nextFailures,
+    })
+    .eq('id', characterId)
+
+  if (error) throw error
+}
+
 export async function clearFightEntities(fightId: string) {
   const { error } = await supabase
     .from('fight_entities')
@@ -542,6 +611,14 @@ export async function activateCompanion(companionId: string, isActive: boolean) 
   return data as CharacterCompanion
 }
 
+export async function deleteCompanionAssignment(companionId: string) {
+  const { error } = await supabase
+    .from('character_companions')
+    .delete()
+    .eq('id', companionId)
+  if (error) throw error
+}
+
 export async function startCombat(fightId: string, submissions: InitiativeSubmission[]) {
   await Promise.all(
     submissions.map((submission) =>
@@ -594,11 +671,24 @@ export async function setFightStatus(fightId: string, status: FightStatus) {
     .from('fights')
     .update({ status, is_active: isActive })
     .eq('id', fightId)
-    .select('id, campaign_id, is_active, status, created_at')
+    .select('id, campaign_id, is_active, status, round_number, created_at')
     .single()
 
   if (error) throw error
   return data as Fight
+}
+
+export async function setFightRoundNumber(fightId: string, roundNumber: number) {
+  const normalized = Math.max(1, Math.floor(roundNumber))
+  const { error } = await supabase
+    .from('fights')
+    .update({ round_number: normalized })
+    .eq('id', fightId)
+  if (error) {
+    const isMissingColumn = error.message?.includes('round_number')
+    if (isMissingColumn) return
+    throw error
+  }
 }
 
 export async function createOrGetDraftFight(campaignId: string) {
