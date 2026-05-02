@@ -818,6 +818,52 @@ export async function startCombatForCampaign(campaignId: string) {
   return fight
 }
 
+export async function listInitiativeCandidatesForCampaign(campaignId: string) {
+  const [{ data: players, error: playersError }, { data: activity, error: activityError }, { data: characters, error: charError }] = await Promise.all([
+    supabase.from('profiles').select('id, username').eq('role', 'player'),
+    supabase.from('activity_status').select('user_id, is_online, last_seen'),
+    supabase.from('characters').select('id, user_id, name, hp_current, hp_max, dex_score'),
+  ])
+  if (playersError) throw playersError
+  if (activityError) throw activityError
+  if (charError) throw charError
+  const activityByUser = new Map((activity ?? []).map((row) => [row.user_id, row]))
+  return (players ?? []).map((player) => {
+    const userChars = (characters ?? []).filter((c) => c.user_id === player.id)
+    const primary = userChars[0] ?? null
+    const status = activityByUser.get(player.id)
+    return {
+      userId: player.id as string,
+      username: (player as { username?: string | null }).username ?? 'player',
+      isOnline: Boolean(status?.is_online),
+      lastSeen: (status as { last_seen?: string | null } | undefined)?.last_seen ?? null,
+      characterId: primary?.id ?? null,
+      characterName: primary?.name ?? null,
+    }
+  })
+}
+
+export async function requestInitiativeForSelected(campaignId: string, selectedUserIds: string[]) {
+  const fight = await createOrGetDraftFight(campaignId)
+  const uniqueUserIds = [...new Set(selectedUserIds)].filter(Boolean)
+  await supabase.from('fight_initiative_requests').delete().eq('fight_id', fight.id)
+  if (uniqueUserIds.length === 0) {
+    await setFightStatus(fight.id, 'draft')
+    return fight
+  }
+  const rows = uniqueUserIds.map((userId) => ({
+    fight_id: fight.id,
+    user_id: userId,
+    status: 'pending' as const,
+    initiative_roll: null as number | null,
+    submitted_at: null as string | null,
+  }))
+  const { error } = await supabase.from('fight_initiative_requests').insert(rows)
+  if (error) throw error
+  await setFightStatus(fight.id, 'collecting_initiative')
+  return fight
+}
+
 export async function unlockFightCreaturesForCampaign(campaignId: string, fightId: string) {
   const { data: rpcCount, error: rpcError } = await supabase.rpc('unlock_fight_creatures_for_campaign', {
     p_campaign_id: campaignId,

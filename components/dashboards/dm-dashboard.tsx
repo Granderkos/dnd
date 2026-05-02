@@ -22,7 +22,7 @@ import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
 import { DmItemTemplatePanel } from '@/components/dm/DmItemTemplatePanel'
-import { addFightEntity, clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listFightCharacterCombatState, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, setFightRoundNumber, startCombatForCampaign, updateFightEntity, updateFightEntityNotes } from '@/lib/supabase-v3'
+import { addFightEntity, clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listFightCharacterCombatState, listFightEntities, listInitiativeCandidatesForCampaign, moveFightTurnToEnd, removeEntity, requestInitiativeForSelected, setFightEntityCurrentHp, setFightRoundNumber, startCombatForCampaign, updateFightEntity, updateFightEntityNotes } from '@/lib/supabase-v3'
 import type { FightStatus } from '@/lib/v3-types'
 import type { FightEntity } from '@/lib/v3-types'
 import { Character, calculateModifier, formatFeetWithSquares, formatModifier } from '@/lib/dnd-types'
@@ -163,6 +163,9 @@ export const DMDashboard = memo(function DMDashboard() {
   const [pendingRemoveIds, setPendingRemoveIds] = useState<string[]>([])
   const [pendingHpIds, setPendingHpIds] = useState<string[]>([])
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
+  const [initiativePickerOpen, setInitiativePickerOpen] = useState(false)
+  const [initiativeCandidates, setInitiativeCandidates] = useState<Array<{ userId: string; username: string; isOnline: boolean; lastSeen: string | null; characterId: string | null; characterName: string | null }>>([])
+  const [selectedInitiativeUsers, setSelectedInitiativeUsers] = useState<string[]>([])
   const fightLoadedRef = useRef(false)
   const hpPersistTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const confirmedHpRef = useRef<Record<string, number>>({})
@@ -585,21 +588,34 @@ export const DMDashboard = memo(function DMDashboard() {
 
   const handleStartCombat = useCallback(async () => {
     if (!user?.id || isStartingCombat) return
-    setFightError(null)
     setIsStartingCombat(true)
     try {
-      const fight = await startCombatForCampaign(user.id)
-      setFightId(fight.id)
-      setFightStatus('collecting_initiative')
-      setFightRoundNumberState(Math.max(1, fight.round_number ?? 1))
-      void loadFightState(false)
+      const candidates = await listInitiativeCandidatesForCampaign(user.id)
+      setInitiativeCandidates(candidates)
+      setSelectedInitiativeUsers([])
+      setInitiativePickerOpen(true)
     } catch (error) {
-      console.error('Failed to start combat', error)
-      setFightError(formatErrorMessage(error, 'Failed to start combat'))
+      setFightError(formatErrorMessage(error, 'Failed to load initiative candidates'))
     } finally {
       setIsStartingCombat(false)
     }
   }, [isStartingCombat, user?.id])
+
+  const handleRequestInitiativeForSelected = useCallback(async () => {
+    if (!user?.id) return
+    setIsStartingCombat(true)
+    try {
+      const fight = await requestInitiativeForSelected(user.id, selectedInitiativeUsers)
+      setFightId(fight.id)
+      setFightStatus(selectedInitiativeUsers.length > 0 ? 'collecting_initiative' : 'draft')
+      setInitiativePickerOpen(false)
+      void loadFightState(false)
+    } catch (error) {
+      setFightError(formatErrorMessage(error, 'Failed to request initiative'))
+    } finally {
+      setIsStartingCombat(false)
+    }
+  }, [loadFightState, selectedInitiativeUsers, user?.id])
 
   const handleEndCombat = useCallback(async () => {
     if (!fightId || isEndingCombat) return
@@ -843,6 +859,30 @@ export const DMDashboard = memo(function DMDashboard() {
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={() => void handleClearFight()}>{t('common.confirm')}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={initiativePickerOpen} onOpenChange={setInitiativePickerOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Select initiative participants</AlertDialogTitle>
+            <AlertDialogDescription>Choose exactly which players should receive initiative prompt.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="max-h-72 overflow-y-auto space-y-2">
+            {initiativeCandidates.map((candidate) => (
+              <label key={candidate.userId} className="flex items-center justify-between gap-2 rounded border p-2 text-sm">
+                <span>{candidate.characterName || candidate.username} <span className="text-xs text-muted-foreground">({candidate.isOnline ? 'online' : 'offline'})</span></span>
+                <input
+                  type="checkbox"
+                  checked={selectedInitiativeUsers.includes(candidate.userId)}
+                  onChange={(e) => setSelectedInitiativeUsers((prev) => e.target.checked ? [...prev, candidate.userId] : prev.filter((id) => id !== candidate.userId))}
+                />
+              </label>
+            ))}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleRequestInitiativeForSelected()}>{isStartingCombat ? 'Requesting...' : 'Request initiative from selected'}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
