@@ -10,9 +10,12 @@ interface MonsterCardProps {
   addToFightLabel: string
   onAddToFight: () => void
   isAdding?: boolean
+  hpFormula?: string | null
+  creatureType?: string | null
+  descriptionPreview?: string | null
 }
 
-export function MonsterCard({ name, hp, ac, initiativeBonus, isCustom = false, addToFightLabel, onAddToFight, isAdding = false }: MonsterCardProps) {
+export function MonsterCard({ name, hp, ac, initiativeBonus, isCustom = false, addToFightLabel, onAddToFight, isAdding = false, hpFormula = null, creatureType = null, descriptionPreview = null }: MonsterCardProps) {
   return (
     <Card>
       <CardContent className="p-4">
@@ -23,11 +26,12 @@ export function MonsterCard({ name, hp, ac, initiativeBonus, isCustom = false, a
           </div>
           <div className="flex items-center gap-2">
             <span className="rounded-md border px-2 py-1 text-xs font-medium">AC {ac}</span>
-            <span className="rounded-md border px-2 py-1 text-xs font-medium">HP {hp}</span>
+            <span className="rounded-md border px-2 py-1 text-xs font-medium">HP {hp}{hpFormula ? ` (${hpFormula})` : ''}</span>
           </div>
         </div>
-
+        {creatureType ? <p className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">{creatureType}</p> : null}
         <p className="mt-2 text-sm text-muted-foreground">Initiative bonus: {initiativeBonus >= 0 ? `+${initiativeBonus}` : initiativeBonus}</p>
+        {descriptionPreview ? <p className="mt-2 line-clamp-3 text-xs text-muted-foreground whitespace-pre-wrap">{descriptionPreview}</p> : null}
 
         <div className="mt-3">
           <Button type="button" size="sm" onClick={onAddToFight} disabled={isAdding}>

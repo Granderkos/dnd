@@ -188,26 +188,26 @@ export const DMDashboard = memo(function DMDashboard() {
   useEffect(() => {
     let mounted = true
     const loadPlayers = async () => {
-      const t0 = Date.now()
       try {
         const playersData = await getAllPlayerCharacters()
         if (!mounted) return
         setPlayers(playersData as PlayerCharacterData[])
       } catch (e) {
         console.error('Failed to load DM players', e)
-      } finally {
-        console.log('[perf]', 'dm.loadPlayers', Date.now() - t0)
       }
     }
     const load = async () => {
+      const startedAt = Date.now()
       try {
-        const notesData = await loadDmNotes()
+        const [notesData] = await Promise.all([loadDmNotes(), loadPlayers()])
         if (!mounted) return
         setDmNotes(notesData)
-        void loadPlayers()
       } catch (e) {
         console.error('Failed to load DM data', e)
       } finally {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[perf] dm.initialLoad', Date.now() - startedAt)
+        }
         if (mounted) setIsLoaded(true)
       }
     }
