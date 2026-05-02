@@ -22,7 +22,7 @@ import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
 import { DmItemTemplatePanel } from '@/components/dm/DmItemTemplatePanel'
-import { clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listFightCharacterCombatState, listFightEntities, moveFightTurnToEnd, removeEntity, setFightEntityCurrentHp, setFightRoundNumber, startCombatForCampaign, updateFightEntityNotes } from '@/lib/supabase-v3'
+import { addFightEntity, clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listCampaignActiveCompanions, listFightCharacterCombatState, listFightEntities, listInitiativeCandidatesForCampaign, moveFightTurnToEnd, removeEntity, requestInitiativeForSelected, setFightEntityCurrentHp, setFightRoundNumber, startCombatForCampaign, updateFightEntity, updateFightEntityNotes } from '@/lib/supabase-v3'
 import type { FightStatus } from '@/lib/v3-types'
 import type { FightEntity } from '@/lib/v3-types'
 import { Character, calculateModifier, formatFeetWithSquares, formatModifier } from '@/lib/dnd-types'
@@ -163,6 +163,10 @@ export const DMDashboard = memo(function DMDashboard() {
   const [pendingRemoveIds, setPendingRemoveIds] = useState<string[]>([])
   const [pendingHpIds, setPendingHpIds] = useState<string[]>([])
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
+  const [initiativePickerOpen, setInitiativePickerOpen] = useState(false)
+  const [initiativeCandidates, setInitiativeCandidates] = useState<Array<{ userId: string; username: string; isOnline: boolean; lastSeen: string | null; characterId: string | null; characterName: string | null }>>([])
+  const [selectedInitiativeUsers, setSelectedInitiativeUsers] = useState<string[]>([])
+  const [dmCompanions, setDmCompanions] = useState<Array<{ characterId: string; ownerName: string; companionId: string; companionName: string; kind: 'pet' | 'mount' | 'summon' | 'familiar'; notes: string | null; customData: Record<string, unknown>; templateSnapshot: Record<string, unknown> | null }>>([])
   const fightLoadedRef = useRef(false)
   const hpPersistTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const confirmedHpRef = useRef<Record<string, number>>({})
@@ -188,26 +192,26 @@ export const DMDashboard = memo(function DMDashboard() {
   useEffect(() => {
     let mounted = true
     const loadPlayers = async () => {
-      const t0 = Date.now()
       try {
         const playersData = await getAllPlayerCharacters()
         if (!mounted) return
         setPlayers(playersData as PlayerCharacterData[])
       } catch (e) {
         console.error('Failed to load DM players', e)
-      } finally {
-        console.log('[perf]', 'dm.loadPlayers', Date.now() - t0)
       }
     }
     const load = async () => {
+      const startedAt = Date.now()
       try {
-        const notesData = await loadDmNotes()
+        const [notesData] = await Promise.all([loadDmNotes(), loadPlayers()])
         if (!mounted) return
         setDmNotes(notesData)
-        void loadPlayers()
       } catch (e) {
         console.error('Failed to load DM data', e)
       } finally {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[perf] dm.initialLoad', Date.now() - startedAt)
+        }
         if (mounted) setIsLoaded(true)
       }
     }
@@ -216,6 +220,11 @@ export const DMDashboard = memo(function DMDashboard() {
       mounted = false
     }
   }, [getAllPlayerCharacters])
+
+  useEffect(() => {
+    if (!user?.id) return
+    void listCampaignActiveCompanions(user.id).then(setDmCompanions).catch(() => setDmCompanions([]))
+  }, [user?.id, players.length])
 
   useEffect(() => {
     const channel = supabase
@@ -585,21 +594,34 @@ export const DMDashboard = memo(function DMDashboard() {
 
   const handleStartCombat = useCallback(async () => {
     if (!user?.id || isStartingCombat) return
-    setFightError(null)
     setIsStartingCombat(true)
     try {
-      const fight = await startCombatForCampaign(user.id)
-      setFightId(fight.id)
-      setFightStatus('collecting_initiative')
-      setFightRoundNumberState(Math.max(1, fight.round_number ?? 1))
-      void loadFightState(false)
+      const candidates = await listInitiativeCandidatesForCampaign(user.id)
+      setInitiativeCandidates(candidates)
+      setSelectedInitiativeUsers([])
+      setInitiativePickerOpen(true)
     } catch (error) {
-      console.error('Failed to start combat', error)
-      setFightError(formatErrorMessage(error, 'Failed to start combat'))
+      setFightError(formatErrorMessage(error, 'Failed to load initiative candidates'))
     } finally {
       setIsStartingCombat(false)
     }
   }, [isStartingCombat, user?.id])
+
+  const handleRequestInitiativeForSelected = useCallback(async () => {
+    if (!user?.id) return
+    setIsStartingCombat(true)
+    try {
+      const fight = await requestInitiativeForSelected(user.id, selectedInitiativeUsers)
+      setFightId(fight.id)
+      setFightStatus(selectedInitiativeUsers.length > 0 ? 'collecting_initiative' : 'draft')
+      setInitiativePickerOpen(false)
+      void loadFightState(false)
+    } catch (error) {
+      setFightError(formatErrorMessage(error, 'Failed to request initiative'))
+    } finally {
+      setIsStartingCombat(false)
+    }
+  }, [loadFightState, selectedInitiativeUsers, user?.id])
 
   const handleEndCombat = useCallback(async () => {
     if (!fightId || isEndingCombat) return
@@ -648,6 +670,36 @@ export const DMDashboard = memo(function DMDashboard() {
       setFightError(formatErrorMessage(error, t('common.unknownError')))
     }
   }, [characterCombatState, fightEntities, t])
+
+  const handleAddCustomEntity = useCallback(async (payload: { name: string; entityType: 'summon' | 'npc' | 'monster'; ac?: string; currentHp: number; maxHp: number; initiative?: number | null; notes?: string }) => {
+    if (!user?.id) return
+    const fight = await getActiveFight(user.id) ?? await startCombatForCampaign(user.id)
+    const notes = composeFightEntityNotes({
+      ac: payload.ac?.trim() || null,
+      conditions: [],
+    }) ?? payload.notes ?? null
+    await addFightEntity({
+      fightId: fight.id,
+      entityType: payload.entityType,
+      name: payload.name,
+      initiative: payload.initiative ?? null,
+      currentHp: payload.currentHp,
+      maxHp: payload.maxHp,
+      notes,
+    })
+    await loadFightState(false)
+  }, [loadFightState, user?.id])
+
+  const handleEditEntity = useCallback(async (entityId: string, payload: { name: string; ac?: string; initiative?: number | null; currentHp: number; maxHp: number; notes?: string }) => {
+    await updateFightEntity(entityId, {
+      name: payload.name,
+      initiative: payload.initiative ?? null,
+      current_hp: payload.currentHp,
+      max_hp: payload.maxHp,
+      notes: composeFightEntityNotes({ ac: payload.ac?.trim() || null, conditions: parseFightEntityNotes(payload.notes ?? '').conditions }) ?? payload.notes ?? null,
+    })
+    await loadFightState(false)
+  }, [loadFightState])
 
   if (!isLoaded) {
     return (
@@ -754,6 +806,8 @@ export const DMDashboard = memo(function DMDashboard() {
             onSetEntityConditions={handleSetEntityConditions}
             onStartCombat={handleStartCombat}
             onEndCombat={handleEndCombat}
+            onAddCustomEntity={handleAddCustomEntity}
+            onEditEntity={handleEditEntity}
             onRoundNumberChange={async (round) => {
               setFightRoundNumberState(round)
               if (!fightId) return
@@ -798,6 +852,18 @@ export const DMDashboard = memo(function DMDashboard() {
               clearConfirmTitle: t('fight.clearConfirmTitle'),
               clearConfirmDescription: t('fight.clearConfirmDescription'),
             }}
+            companions={dmCompanions}
+            onAddCompanionToFight={async (companion) => {
+              await handleAddCustomEntity({
+                name: `${companion.companionName}`,
+                entityType: 'summon',
+                ac: String(companion.customData.ac ?? companion.templateSnapshot?.armor_class ?? ''),
+                currentHp: Number(companion.customData.hp ?? companion.templateSnapshot?.hit_points ?? 1),
+                maxHp: Number(companion.customData.hp ?? companion.templateSnapshot?.hit_points ?? 1),
+                initiative: null,
+                notes: `owner:${companion.ownerName}|${companion.notes ?? ''}`,
+              })
+            }}
           />
         </TabsContent>
       </Tabs>
@@ -811,6 +877,30 @@ export const DMDashboard = memo(function DMDashboard() {
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={() => void handleClearFight()}>{t('common.confirm')}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={initiativePickerOpen} onOpenChange={setInitiativePickerOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Select initiative participants</AlertDialogTitle>
+            <AlertDialogDescription>Choose exactly which players should receive initiative prompt.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="max-h-72 overflow-y-auto space-y-2">
+            {initiativeCandidates.map((candidate) => (
+              <label key={candidate.userId} className="flex items-center justify-between gap-2 rounded border p-2 text-sm">
+                <span>{candidate.characterName || candidate.username} <span className="text-xs text-muted-foreground">({candidate.isOnline ? 'online' : 'offline'})</span></span>
+                <input
+                  type="checkbox"
+                  checked={selectedInitiativeUsers.includes(candidate.userId)}
+                  onChange={(e) => setSelectedInitiativeUsers((prev) => e.target.checked ? [...prev, candidate.userId] : prev.filter((id) => id !== candidate.userId))}
+                />
+              </label>
+            ))}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleRequestInitiativeForSelected()}>{isStartingCombat ? 'Requesting...' : 'Request initiative from selected'}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -845,9 +935,13 @@ function DMFightPanel({
   isEndingCombat,
   onStartCombat,
   onEndCombat,
+  onAddCustomEntity,
+  onEditEntity,
   onRoundNumberChange,
   characterCombatState,
   labels,
+  companions,
+  onAddCompanionToFight,
 }: {
   fightId: string | null
   entities: FightEntity[]
@@ -869,6 +963,8 @@ function DMFightPanel({
   isEndingCombat: boolean
   onStartCombat: () => Promise<void>
   onEndCombat: () => Promise<void>
+  onAddCustomEntity: (payload: { name: string; entityType: 'summon' | 'npc' | 'monster'; ac?: string; currentHp: number; maxHp: number; initiative?: number | null; notes?: string }) => Promise<void>
+  onEditEntity: (entityId: string, payload: { name: string; ac?: string; initiative?: number | null; currentHp: number; maxHp: number; notes?: string }) => Promise<void>
   onRoundNumberChange: (round: number) => Promise<void>
   characterCombatState: Record<string, { hpCurrent: number; hpMax: number; deathSuccesses: number; deathFailures: number }>
   labels: {
@@ -905,12 +1001,18 @@ function DMFightPanel({
     clearConfirmTitle: string
     clearConfirmDescription: string
   }
+  companions: Array<{ characterId: string; ownerName: string; companionId: string; companionName: string; kind: 'pet' | 'mount' | 'summon' | 'familiar'; notes: string | null; customData: Record<string, unknown>; templateSnapshot: Record<string, unknown> | null }>
+  onAddCompanionToFight: (companion: { characterId: string; ownerName: string; companionId: string; companionName: string; kind: 'pet' | 'mount' | 'summon' | 'familiar'; notes: string | null; customData: Record<string, unknown>; templateSnapshot: Record<string, unknown> | null }) => Promise<void>
 }) {
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [roundNumber, setRoundNumber] = useState(initialRoundNumber)
   const roundAnchorIdRef = useRef<string | null>(null)
   const previousTurnIdRef = useRef<string | null>(null)
   const [conditionDraftByEntity, setConditionDraftByEntity] = useState<Record<string, string>>({})
+  const [hpAmountByEntity, setHpAmountByEntity] = useState<Record<string, number>>({})
+  const [customDialogOpen, setCustomDialogOpen] = useState(false)
+  const [editingEntityId, setEditingEntityId] = useState<string | null>(null)
+  const [customDraft, setCustomDraft] = useState({ name: '', entityType: 'summon' as 'summon' | 'npc' | 'monster', ac: '', currentHp: 1, maxHp: 1, initiative: '', notes: '' })
 
   const activeEntity = entities.find((entity) => !isAutoSkipEntity(entity)) ?? null
   const activeEntityId = activeEntity?.id ?? null
@@ -1008,6 +1110,7 @@ function DMFightPanel({
           </span>
         </div>
         <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => { setEditingEntityId(null); setCustomDraft({ name: '', entityType: 'summon', ac: '', currentHp: 1, maxHp: 1, initiative: '', notes: '' }); setCustomDialogOpen(true) }}>Add custom entity</Button>
           {fightStatus === 'active' || fightStatus === 'collecting_initiative' ? (
             <Button size="sm" variant="outline" onClick={() => void onEndCombat()} disabled={isEndingCombat}>
               {isEndingCombat ? labels.ending : labels.endCombat}
@@ -1024,6 +1127,22 @@ function DMFightPanel({
           <Button size="sm" onClick={() => void onAdvanceTurn()} disabled={!fightId || entities.length === 0 || isAdvancingTurn || !hasActiveTurn || fightStatus !== 'active'}>{labels.nextTurn}</Button>
         </div>
       </div>
+      {companions.length > 0 ? (
+        <div className="rounded-lg border border-border/70 bg-muted/20 p-2">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Active companions / familiars</div>
+          <div className="space-y-1">
+            {companions.map((companion) => (
+              <div key={companion.companionId} className="flex items-center justify-between gap-2 rounded border bg-background/70 px-2 py-1 text-xs">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{companion.companionName} <span className="text-muted-foreground">({companion.kind})</span></div>
+                  <div className="truncate text-muted-foreground">Owner: {companion.ownerName}{typeof companion.customData.ac === 'number' ? ` · AC ${companion.customData.ac}` : ''}{typeof companion.customData.hp === 'number' ? ` · HP ${companion.customData.hp}` : ''}</div>
+                </div>
+                <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => void onAddCompanionToFight(companion)}>Add to fight</Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
         <div className="grid gap-2 text-sm sm:grid-cols-3">
           <div>
@@ -1132,22 +1251,9 @@ function DMFightPanel({
                       ) : null}
                     </div>
                     <div className="mt-1.5 flex items-center justify-end gap-2">
-                      <div className="flex items-center rounded-md border border-border bg-background/70 p-0.5">
-                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => onSetEntityHp(entity.id, Math.max(0, hpSnapshot.currentHp - 5))} disabled={pendingHpIds.includes(entity.id)}>-5</Button>
-                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => onSetEntityHp(entity.id, Math.max(0, hpSnapshot.currentHp - 1))} disabled={pendingHpIds.includes(entity.id)}>-1</Button>
-                      </div>
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        value={hpSnapshot.currentHp}
-                        onChange={(e) => onSetEntityHp(entity.id, Number.parseInt(e.target.value, 10) || 0)}
-                        className="h-6 w-16 rounded-md border border-border bg-background px-1 text-center text-xs font-semibold"
-                        aria-label={labels.hpCurrent}
-                      />
-                      <div className="flex items-center rounded-md border border-border bg-background/70 p-0.5">
-                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-primary hover:text-primary" onClick={() => onSetEntityHp(entity.id, hpSnapshot.currentHp + 1)} disabled={pendingHpIds.includes(entity.id)}>+1</Button>
-                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-primary hover:text-primary" onClick={() => onSetEntityHp(entity.id, hpSnapshot.currentHp + 5)} disabled={pendingHpIds.includes(entity.id)}>+5</Button>
-                      </div>
+                      <input type="number" min={1} value={hpAmountByEntity[entity.id] ?? 1} onChange={(e) => setHpAmountByEntity((p) => ({ ...p, [entity.id]: Math.max(1, Number.parseInt(e.target.value, 10) || 1) }))} className="h-7 w-16 rounded-md border border-border bg-background px-1 text-center text-xs" />
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onSetEntityHp(entity.id, Math.max(0, hpSnapshot.currentHp - (hpAmountByEntity[entity.id] ?? 1)))} disabled={pendingHpIds.includes(entity.id)}>Apply damage</Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onSetEntityHp(entity.id, Math.min(hpSnapshot.maxHp, hpSnapshot.currentHp + (hpAmountByEntity[entity.id] ?? 1)))} disabled={pendingHpIds.includes(entity.id)}>Heal</Button>
                     </div>
                     <div className="mt-1 flex justify-end">
                       {availableConditions.length > 0 ? (
@@ -1182,6 +1288,7 @@ function DMFightPanel({
                       >
                         {pendingRemoveIds.includes(entity.id) ? labels.removing : labels.remove}
                       </Button>
+                      {entity.entity_type !== 'player' ? <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" onClick={() => { const parsed = parseFightEntityNotes(entity.notes); setEditingEntityId(entity.id); setCustomDraft({ name: entity.name, entityType: entity.entity_type as 'summon' | 'npc' | 'monster', ac: parsed.ac ?? '', currentHp: hpSnapshot.currentHp, maxHp: hpSnapshot.maxHp, initiative: entity.initiative == null ? '' : String(entity.initiative), notes: entity.notes ?? '' }); setCustomDialogOpen(true) }}>Edit</Button> : null}
                     </div>
                   </div>
                 </div>
@@ -1190,6 +1297,26 @@ function DMFightPanel({
           )})}
         </div>
       )}
+      <AlertDialog open={customDialogOpen} onOpenChange={setCustomDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>{editingEntityId ? 'Edit custom entity' : 'Add custom entity'}</AlertDialogTitle></AlertDialogHeader>
+          <div className="space-y-2">
+            <input className="h-9 w-full rounded border bg-background px-2 text-sm" placeholder="Name" value={customDraft.name} onChange={(e) => setCustomDraft((d) => ({ ...d, name: e.target.value }))} />
+            <select className="h-9 w-full rounded border bg-background px-2 text-sm" value={customDraft.entityType} onChange={(e) => setCustomDraft((d) => ({ ...d, entityType: e.target.value as 'summon' | 'npc' | 'monster' }))}><option value="summon">summon</option><option value="npc">npc</option><option value="monster">monster</option></select>
+            <div className="grid grid-cols-3 gap-2">
+              <input className="h-9 rounded border bg-background px-2 text-sm" placeholder="AC" value={customDraft.ac} onChange={(e) => setCustomDraft((d) => ({ ...d, ac: e.target.value }))} />
+              <input className="h-9 rounded border bg-background px-2 text-sm" type="number" value={customDraft.currentHp} onChange={(e) => setCustomDraft((d) => ({ ...d, currentHp: Number.parseInt(e.target.value, 10) || 0 }))} />
+              <input className="h-9 rounded border bg-background px-2 text-sm" type="number" value={customDraft.maxHp} onChange={(e) => setCustomDraft((d) => ({ ...d, maxHp: Number.parseInt(e.target.value, 10) || 1 }))} />
+            </div>
+            <input className="h-9 w-full rounded border bg-background px-2 text-sm" placeholder="Initiative" value={customDraft.initiative} onChange={(e) => setCustomDraft((d) => ({ ...d, initiative: e.target.value }))} />
+            <textarea className="min-h-20 w-full rounded border bg-background px-2 py-1 text-sm" placeholder="Notes" value={customDraft.notes} onChange={(e) => setCustomDraft((d) => ({ ...d, notes: e.target.value }))} />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { void (async () => { if (!customDraft.name.trim()) return; if (editingEntityId) await onEditEntity(editingEntityId, { name: customDraft.name.trim(), ac: customDraft.ac, currentHp: Math.max(0, customDraft.currentHp), maxHp: Math.max(1, customDraft.maxHp), initiative: customDraft.initiative ? Number.parseInt(customDraft.initiative, 10) : null, notes: customDraft.notes }); else await onAddCustomEntity({ name: customDraft.name.trim(), entityType: customDraft.entityType, ac: customDraft.ac, currentHp: Math.max(0, customDraft.currentHp), maxHp: Math.max(1, customDraft.maxHp), initiative: customDraft.initiative ? Number.parseInt(customDraft.initiative, 10) : null, notes: customDraft.notes }); setCustomDialogOpen(false) })() }}>Save</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

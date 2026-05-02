@@ -704,6 +704,19 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
                       <div className="min-w-0">
                         <p className="font-medium">{companion.name_override || companion.entry?.name || t('compendium.unnamedCompanion')}</p>
                         <p className="text-xs text-muted-foreground">{companion.kind} · {companion.source_origin ?? 'custom'}</p>
+                        {(() => {
+                          const custom = companion.custom_data ?? {}
+                          const snapshot = (companion.template_snapshot ?? null) as Record<string, unknown> | null
+                          const ac = typeof custom.ac === 'number' ? custom.ac : (typeof snapshot?.armor_class === 'number' ? snapshot.armor_class : null)
+                          const hp = typeof custom.hp === 'number' ? custom.hp : (typeof snapshot?.hit_points === 'number' ? snapshot.hit_points : null)
+                          const speed = typeof custom.speed === 'string' ? custom.speed : (typeof snapshot?.speed_text === 'string' ? snapshot.speed_text : null)
+                          return (
+                            <p className="text-[11px] text-muted-foreground">
+                              {ac !== null ? `AC ${ac}` : 'AC —'} · {hp !== null ? `HP ${hp}` : 'HP —'} · {speed ?? 'Speed —'}
+                            </p>
+                          )
+                        })()}
+                        {companion.notes ? <p className="mt-1 text-[11px] text-muted-foreground whitespace-pre-wrap break-words line-clamp-2">{companion.notes}</p> : null}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Button
