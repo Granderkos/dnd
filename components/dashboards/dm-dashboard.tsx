@@ -22,7 +22,7 @@ import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
 import { DmItemTemplatePanel } from '@/components/dm/DmItemTemplatePanel'
-import { addFightEntity, clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listFightCharacterCombatState, listFightEntities, listInitiativeCandidatesForCampaign, moveFightTurnToEnd, removeEntity, requestInitiativeForSelected, setFightEntityCurrentHp, setFightRoundNumber, startCombatForCampaign, updateFightEntity, updateFightEntityNotes } from '@/lib/supabase-v3'
+import { addFightEntity, clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listCampaignActiveCompanions, listFightCharacterCombatState, listFightEntities, listInitiativeCandidatesForCampaign, moveFightTurnToEnd, removeEntity, requestInitiativeForSelected, setFightEntityCurrentHp, setFightRoundNumber, startCombatForCampaign, updateFightEntity, updateFightEntityNotes } from '@/lib/supabase-v3'
 import type { FightStatus } from '@/lib/v3-types'
 import type { FightEntity } from '@/lib/v3-types'
 import { Character, calculateModifier, formatFeetWithSquares, formatModifier } from '@/lib/dnd-types'
@@ -166,6 +166,7 @@ export const DMDashboard = memo(function DMDashboard() {
   const [initiativePickerOpen, setInitiativePickerOpen] = useState(false)
   const [initiativeCandidates, setInitiativeCandidates] = useState<Array<{ userId: string; username: string; isOnline: boolean; lastSeen: string | null; characterId: string | null; characterName: string | null }>>([])
   const [selectedInitiativeUsers, setSelectedInitiativeUsers] = useState<string[]>([])
+  const [dmCompanions, setDmCompanions] = useState<Array<{ characterId: string; ownerName: string; companionId: string; companionName: string; kind: 'pet' | 'mount' | 'summon' | 'familiar'; notes: string | null; customData: Record<string, unknown>; templateSnapshot: Record<string, unknown> | null }>>([])
   const fightLoadedRef = useRef(false)
   const hpPersistTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const confirmedHpRef = useRef<Record<string, number>>({})
@@ -219,6 +220,11 @@ export const DMDashboard = memo(function DMDashboard() {
       mounted = false
     }
   }, [getAllPlayerCharacters])
+
+  useEffect(() => {
+    if (!user?.id) return
+    void listCampaignActiveCompanions(user.id).then(setDmCompanions).catch(() => setDmCompanions([]))
+  }, [user?.id, players.length])
 
   useEffect(() => {
     const channel = supabase
@@ -846,6 +852,18 @@ export const DMDashboard = memo(function DMDashboard() {
               clearConfirmTitle: t('fight.clearConfirmTitle'),
               clearConfirmDescription: t('fight.clearConfirmDescription'),
             }}
+            companions={dmCompanions}
+            onAddCompanionToFight={async (companion) => {
+              await handleAddCustomEntity({
+                name: `${companion.companionName}`,
+                entityType: 'summon',
+                ac: String(companion.customData.ac ?? companion.templateSnapshot?.armor_class ?? ''),
+                currentHp: Number(companion.customData.hp ?? companion.templateSnapshot?.hit_points ?? 1),
+                maxHp: Number(companion.customData.hp ?? companion.templateSnapshot?.hit_points ?? 1),
+                initiative: null,
+                notes: `owner:${companion.ownerName}|${companion.notes ?? ''}`,
+              })
+            }}
           />
         </TabsContent>
       </Tabs>
@@ -922,6 +940,8 @@ function DMFightPanel({
   onRoundNumberChange,
   characterCombatState,
   labels,
+  companions,
+  onAddCompanionToFight,
 }: {
   fightId: string | null
   entities: FightEntity[]
@@ -981,6 +1001,8 @@ function DMFightPanel({
     clearConfirmTitle: string
     clearConfirmDescription: string
   }
+  companions: Array<{ characterId: string; ownerName: string; companionId: string; companionName: string; kind: 'pet' | 'mount' | 'summon' | 'familiar'; notes: string | null; customData: Record<string, unknown>; templateSnapshot: Record<string, unknown> | null }>
+  onAddCompanionToFight: (companion: { characterId: string; ownerName: string; companionId: string; companionName: string; kind: 'pet' | 'mount' | 'summon' | 'familiar'; notes: string | null; customData: Record<string, unknown>; templateSnapshot: Record<string, unknown> | null }) => Promise<void>
 }) {
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [roundNumber, setRoundNumber] = useState(initialRoundNumber)
@@ -1105,6 +1127,22 @@ function DMFightPanel({
           <Button size="sm" onClick={() => void onAdvanceTurn()} disabled={!fightId || entities.length === 0 || isAdvancingTurn || !hasActiveTurn || fightStatus !== 'active'}>{labels.nextTurn}</Button>
         </div>
       </div>
+      {companions.length > 0 ? (
+        <div className="rounded-lg border border-border/70 bg-muted/20 p-2">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Active companions / familiars</div>
+          <div className="space-y-1">
+            {companions.map((companion) => (
+              <div key={companion.companionId} className="flex items-center justify-between gap-2 rounded border bg-background/70 px-2 py-1 text-xs">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{companion.companionName} <span className="text-muted-foreground">({companion.kind})</span></div>
+                  <div className="truncate text-muted-foreground">Owner: {companion.ownerName}{typeof companion.customData.ac === 'number' ? ` · AC ${companion.customData.ac}` : ''}{typeof companion.customData.hp === 'number' ? ` · HP ${companion.customData.hp}` : ''}</div>
+                </div>
+                <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => void onAddCompanionToFight(companion)}>Add to fight</Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
         <div className="grid gap-2 text-sm sm:grid-cols-3">
           <div>

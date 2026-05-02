@@ -1207,6 +1207,43 @@ export async function listCompanionsForUser(userId: string) {
   return result
 }
 
+export async function listCampaignActiveCompanions(campaignId: string) {
+  const { data, error } = await supabase
+    .from('characters')
+    .select('id, user_id, name, character_companions(id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, template_snapshot, compendium_entries(id, name, subtype, description, data))')
+    .eq('user_id', campaignId)
+  if (error) throw error
+  const rows: Array<{
+    characterId: string
+    ownerName: string
+    companionId: string
+    companionName: string
+    kind: CompanionKind
+    notes: string | null
+    customData: Record<string, unknown>
+    templateSnapshot: Record<string, unknown> | null
+  }> = []
+  for (const character of (data ?? [])) {
+    const companions = (character as { character_companions?: unknown[] }).character_companions ?? []
+    companions.forEach((companionRaw) => {
+      const companion = companionRaw as Record<string, unknown>
+      if (!companion.is_active) return
+      const entry = Array.isArray(companion.compendium_entries) ? companion.compendium_entries[0] as Record<string, unknown> : companion.compendium_entries as Record<string, unknown> | null
+      rows.push({
+        characterId: character.id as string,
+        ownerName: (character.name as string) || 'Character',
+        companionId: companion.id as string,
+        companionName: (companion.name_override as string | null) || (entry?.name as string) || 'Companion',
+        kind: companion.kind as CompanionKind,
+        notes: (companion.notes as string | null) ?? (entry?.description as string | null) ?? null,
+        customData: (companion.custom_data as Record<string, unknown>) ?? {},
+        templateSnapshot: (companion.template_snapshot as Record<string, unknown> | null) ?? null,
+      })
+    })
+  }
+  return rows
+}
+
 export async function getPlayerCombatState(userId: string): Promise<'none' | 'collecting_initiative' | 'active'> {
   const { data: pending, error: pendingError } = await supabase
     .from('fight_initiative_requests')
