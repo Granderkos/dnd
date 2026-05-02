@@ -773,6 +773,7 @@ interface ItemFormState {
   rangeText: string
   propertiesText: string
   tagsText: string
+  sourceText: string
 }
 
 interface TemplateImportDialogProps {
@@ -900,6 +901,7 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
       rangeText: typeof snapshot?.range_text === 'string' ? snapshot.range_text : '',
       propertiesText: listToText(snapshot?.properties),
       tagsText: listToText(snapshot?.tags),
+      sourceText: typeof snapshot?.source_url === 'string' ? snapshot.source_url : '',
     }
   }, [])
 
@@ -932,6 +934,7 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
         range_text: formData.rangeText.trim() || null,
         properties: parseCommaSeparated(formData.propertiesText),
         tags: parseCommaSeparated(formData.tagsText),
+        source_url: formData.sourceText.trim() || null,
       }
 
       onSave({
@@ -1010,87 +1013,100 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
             />
           </div>
           <Button type="button" variant="outline" size="sm" onClick={() => setShowAdvanced((prev) => !prev)} className="w-full">
-            {showAdvanced ? 'Hide advanced fields' : 'Show advanced fields'}
+            {showAdvanced ? 'Hide advanced details' : 'Show advanced details'}
           </Button>
-          {showAdvanced ? <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">{t('inventory.rarity')}</label>
-              <Input
-                value={formData.rarity}
-                onChange={(e) => setFormData({ ...formData, rarity: e.target.value })}
-                placeholder={t('inventory.rarity')}
-                className="h-10"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">{t('inventory.weight')}</label>
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                value={formData.weight}
-                onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
-                placeholder={t('inventory.weight')}
-                className="h-10"
-              />
-            </div>
-          </div> : null}
-          {showAdvanced ? <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">{t('inventory.value')}</label>
-            <Input
-              value={formData.valueText}
-              onChange={(e) => setFormData({ ...formData, valueText: e.target.value })}
-              placeholder={t('inventory.value')}
-              className="h-10"
-            />
-          </div> : null}
-          {showAdvanced ? <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">{t('inventory.damage')}</label>
-              <Input
-                value={formData.damageText}
-                onChange={(e) => setFormData({ ...formData, damageText: e.target.value })}
-                placeholder={t('inventory.damage')}
-                className="h-10"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">{t('inventory.damageType')}</label>
-              <Input
-                value={formData.damageType}
-                onChange={(e) => setFormData({ ...formData, damageType: e.target.value })}
-                placeholder={t('inventory.damageType')}
-                className="h-10"
-              />
-            </div>
-          </div> : null}
-          {showAdvanced ? <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">{t('inventory.range')}</label>
-            <Input
-              value={formData.rangeText}
-              onChange={(e) => setFormData({ ...formData, rangeText: e.target.value })}
-              placeholder={t('inventory.range')}
-              className="h-10"
-            />
-          </div> : null}
-          {showAdvanced ? <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">{t('inventory.properties')}</label>
-            <Input
-              value={formData.propertiesText}
-              onChange={(e) => setFormData({ ...formData, propertiesText: e.target.value })}
-              placeholder="finesse, light, thrown"
-              className="h-10"
-            />
-          </div> : null}
-          {showAdvanced ? <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">{t('inventory.tags')}</label>
-            <Input
-              value={formData.tagsText}
-              onChange={(e) => setFormData({ ...formData, tagsText: e.target.value })}
-              placeholder="weapon, martial, melee"
-              className="h-10"
-            />
-          </div> : null}
+          {showAdvanced ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-sm text-muted-foreground">{t('inventory.rarity')}</label>
+                  <Input
+                    value={formData.rarity}
+                    onChange={(e) => setFormData({ ...formData, rarity: e.target.value })}
+                    placeholder={t('inventory.rarity')}
+                    className="h-10"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm text-muted-foreground">{t('inventory.weight')}</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={formData.weight}
+                    onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                    placeholder={t('inventory.weight')}
+                    className="h-10"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm text-muted-foreground">{t('inventory.value')}</label>
+                <Input
+                  value={formData.valueText}
+                  onChange={(e) => setFormData({ ...formData, valueText: e.target.value })}
+                  placeholder={t('inventory.value')}
+                  className="h-10"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-sm text-muted-foreground">{t('inventory.damage')}</label>
+                  <Input
+                    value={formData.damageText}
+                    onChange={(e) => setFormData({ ...formData, damageText: e.target.value })}
+                    placeholder={t('inventory.damage')}
+                    className="h-10"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm text-muted-foreground">{t('inventory.damageType')}</label>
+                  <Input
+                    value={formData.damageType}
+                    onChange={(e) => setFormData({ ...formData, damageType: e.target.value })}
+                    placeholder={t('inventory.damageType')}
+                    className="h-10"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm text-muted-foreground">{t('inventory.range')}</label>
+                <Input
+                  value={formData.rangeText}
+                  onChange={(e) => setFormData({ ...formData, rangeText: e.target.value })}
+                  placeholder={t('inventory.range')}
+                  className="h-10"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm text-muted-foreground">{t('inventory.properties')}</label>
+                <Input
+                  value={formData.propertiesText}
+                  onChange={(e) => setFormData({ ...formData, propertiesText: e.target.value })}
+                  placeholder="finesse, light, thrown"
+                  className="h-10"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm text-muted-foreground">{t('inventory.tags')}</label>
+                <Input
+                  value={formData.tagsText}
+                  onChange={(e) => setFormData({ ...formData, tagsText: e.target.value })}
+                  placeholder="weapon, martial, melee"
+                  className="h-10"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm text-muted-foreground">Source</label>
+                <Input
+                  value={formData.sourceText}
+                  onChange={(e) => setFormData({ ...formData, sourceText: e.target.value })}
+                  placeholder="https://example.com"
+                  className="h-10"
+                />
+              </div>
+            </>
+          ) : null}
           <Button onClick={handleSubmit} className="w-full h-10">
             {item ? t('inventory.saveChanges') : t('inventory.addItem')}
           </Button>
