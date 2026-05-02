@@ -671,6 +671,10 @@ export const DMDashboard = memo(function DMDashboard() {
   const handleAddCustomEntity = useCallback(async (payload: { name: string; entityType: 'summon' | 'npc' | 'monster'; ac?: string; currentHp: number; maxHp: number; initiative?: number | null; notes?: string }) => {
     if (!user?.id) return
     const fight = await getActiveFight(user.id) ?? await startCombatForCampaign(user.id)
+    const activeEntity = fight.status === 'active'
+      ? fightEntities.find((entity) => !isAutoSkipEntity(entity)) ?? null
+      : null
+    const defaultInitiative = payload.initiative ?? (activeEntity?.initiative != null ? activeEntity.initiative - 0.01 : null)
     const notes = composeFightEntityNotes({
       ac: payload.ac?.trim() || null,
       conditions: [],
@@ -679,13 +683,13 @@ export const DMDashboard = memo(function DMDashboard() {
       fightId: fight.id,
       entityType: payload.entityType,
       name: payload.name,
-      initiative: payload.initiative ?? null,
+      initiative: defaultInitiative,
       currentHp: payload.currentHp,
       maxHp: payload.maxHp,
       notes,
     })
     await loadFightState(false)
-  }, [loadFightState, user?.id])
+  }, [fightEntities, loadFightState, user?.id])
 
   const handleEditEntity = useCallback(async (entityId: string, payload: { name: string; ac?: string; initiative?: number | null; currentHp: number; maxHp: number; notes?: string }) => {
     await updateFightEntity(entityId, {

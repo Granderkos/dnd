@@ -242,16 +242,43 @@ export async function createCreatureEntryFromTemplate(template: CreatureTemplate
 }
 
 export async function updateCreature(id: string, patch: Partial<CompendiumEntry>) {
+  const payload: Record<string, unknown> = {}
+  if (typeof patch.name === 'string') payload.name = patch.name
+  if (typeof patch.description === 'string' || patch.description === null) payload.description = patch.description
+  if (patch.data && typeof patch.data === 'object') payload.data = patch.data
+  if (typeof patch.subtype === 'string' || patch.subtype === null) payload.subtype = patch.subtype
+
   const { data, error } = await supabase
     .from('compendium_entries')
-    .update(patch)
+    .update(payload)
     .eq('id', id)
+    .eq('type', 'creature')
+    .eq('is_system', false)
     .select('id, type, subtype, slug, name, description, is_system, data, created_by, created_at')
     .maybeSingle()
 
   if (error) throw error
   if (!data) throw new Error(`Creature update failed: no editable creature found for id ${id}.`)
   return data as CompendiumEntry
+}
+
+export async function updateCompanionAssignment(
+  companionId: string,
+  patch: Partial<Pick<CharacterCompanion, 'name_override' | 'notes' | 'is_active' | 'custom_data'>>
+) {
+  const payload: Record<string, unknown> = {}
+  if (typeof patch.name_override === 'string' || patch.name_override === null) payload.name_override = patch.name_override
+  if (typeof patch.notes === 'string' || patch.notes === null) payload.notes = patch.notes
+  if (typeof patch.is_active === 'boolean') payload.is_active = patch.is_active
+  if (patch.custom_data && typeof patch.custom_data === 'object') payload.custom_data = patch.custom_data
+  const { data, error } = await supabase
+    .from('character_companions')
+    .update(payload)
+    .eq('id', companionId)
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, source_companion_template_id, source_origin, template_snapshot, created_at')
+    .single()
+  if (error) throw error
+  return data as CharacterCompanion
 }
 
 export async function createFight(campaignId: string) {
