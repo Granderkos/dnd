@@ -96,14 +96,6 @@ export const DMMapManager = memo(function DMMapManager() {
     setTvGridOpacity(activeMap.gridOpacity ?? 0.3)
   }, [activeMap?.id, activeMap?.gridEnabled, activeMap?.gridSize, activeMap?.gridOpacity])
 
-  const commitTvGridSize = useCallback(() => {
-    const parsed = Number.parseInt(tvGridSizeInput, 10)
-    const next = Math.max(10, Math.min(200, Number.isFinite(parsed) ? parsed : tvGridSize))
-    setTvGridSize(next)
-    setTvGridSizeInput(String(next))
-    persistTvGrid({ gridEnabled: tvGridEnabled, gridSize: next, gridOpacity: tvGridOpacity })
-  }, [persistTvGrid, tvGridEnabled, tvGridOpacity, tvGridSize, tvGridSizeInput])
-
   const persistTvGrid = useCallback((next: { gridEnabled: boolean; gridSize: number; gridOpacity: number }) => {
     if (!activeMapId) return
     if (tvGridSaveTimeoutRef.current) clearTimeout(tvGridSaveTimeoutRef.current)
@@ -115,6 +107,14 @@ export const DMMapManager = memo(function DMMapManager() {
       })()
     }, 120)
   }, [activeMapId, refreshMaps])
+
+  const commitTvGridSize = useCallback(() => {
+    const parsed = Number.parseInt(tvGridSizeInput, 10)
+    const next = Math.max(10, Math.min(200, Number.isFinite(parsed) ? parsed : tvGridSize))
+    setTvGridSize(next)
+    setTvGridSizeInput(String(next))
+    persistTvGrid({ gridEnabled: tvGridEnabled, gridSize: next, gridOpacity: tvGridOpacity })
+  }, [persistTvGrid, tvGridEnabled, tvGridOpacity, tvGridSize, tvGridSizeInput])
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
