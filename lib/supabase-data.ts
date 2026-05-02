@@ -115,6 +115,8 @@ const characterBlobCache = new Map<string, CharacterNotesBlob>()
 const portraitUploadCache = new Map<string, string>()
 const templateQueryCache = new Map<string, { expiresAt: number; data: unknown[] }>()
 const templateQueryInFlight = new Map<string, Promise<unknown[]>>()
+const TEMPLATE_SESSION_CACHE_TTL_MS = 5 * 60 * 1000
+const TEMPLATE_SESSION_CACHE_VERSION = 'v1'
 const characterSaveSignatures = new Map<string, {
   row: string
   attacks: string
@@ -126,6 +128,11 @@ const INVENTORY_CATEGORIES = new Set(['Weapons', 'Armor', 'Equipment', 'Tools', 
 const TEMPLATE_CACHE_TTL_MS = 30 * 60 * 1000
 
 async function withTemplateCache<T>(key: string, loader: () => Promise<T[]>): Promise<T[]> {
+  const sessionCached = loadTemplateSessionCache<T>(key)
+  if (sessionCached) {
+    templateQueryCache.set(key, { expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS, data: sessionCached as unknown[] })
+    return sessionCached
+  }
   const cached = templateQueryCache.get(key)
   if (cached && cached.expiresAt > Date.now()) return cached.data as T[]
   const inFlight = templateQueryInFlight.get(key)
@@ -133,6 +140,7 @@ async function withTemplateCache<T>(key: string, loader: () => Promise<T[]>): Pr
   const promise = (async () => {
     const rows = await loader()
     templateQueryCache.set(key, { expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS, data: rows as unknown[] })
+    saveTemplateSessionCache(key, rows)
     return rows
   })()
   templateQueryInFlight.set(key, promise as Promise<unknown[]>)
@@ -140,6 +148,38 @@ async function withTemplateCache<T>(key: string, loader: () => Promise<T[]>): Pr
     return await promise
   } finally {
     templateQueryInFlight.delete(key)
+  }
+}
+
+function getTemplateSessionStorageKey(key: string) {
+  return `dnd:template-list:${TEMPLATE_SESSION_CACHE_VERSION}:${key}`
+}
+
+function loadTemplateSessionCache<T>(key: string): T[] | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.sessionStorage.getItem(getTemplateSessionStorageKey(key))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { expiresAt?: number; data?: T[] }
+    if (!Array.isArray(parsed.data) || typeof parsed.expiresAt !== 'number' || parsed.expiresAt <= Date.now()) {
+      window.sessionStorage.removeItem(getTemplateSessionStorageKey(key))
+      return null
+    }
+    return parsed.data
+  } catch {
+    return null
+  }
+}
+
+function saveTemplateSessionCache<T>(key: string, data: T[]) {
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.setItem(
+      getTemplateSessionStorageKey(key),
+      JSON.stringify({ expiresAt: Date.now() + TEMPLATE_SESSION_CACHE_TTL_MS, data })
+    )
+  } catch {
+    // Ignore storage write failures.
   }
 }
 
