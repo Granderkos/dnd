@@ -51,7 +51,11 @@ export const DMMapManager = memo(function DMMapManager() {
   const [newMapFile, setNewMapFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [tvPreviewKey, setTvPreviewKey] = useState(0)
+  const [tvGridEnabled, setTvGridEnabled] = useState(false)
+  const [tvGridSize, setTvGridSize] = useState(50)
+  const [tvGridOpacity, setTvGridOpacity] = useState(0.3)
   const gridSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const tvGridSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -82,6 +86,25 @@ export const DMMapManager = memo(function DMMapManager() {
   useEffect(() => {
     void refreshMaps()
   }, [refreshMaps])
+  const activeMap = maps.find((m) => m.id === activeMapId) ?? null
+  useEffect(() => {
+    if (!activeMap) return
+    setTvGridEnabled(activeMap.gridEnabled ?? false)
+    setTvGridSize(activeMap.gridSize ?? 50)
+    setTvGridOpacity(activeMap.gridOpacity ?? 0.3)
+  }, [activeMap?.id, activeMap?.gridEnabled, activeMap?.gridSize, activeMap?.gridOpacity])
+
+  const persistTvGrid = useCallback((next: { gridEnabled: boolean; gridSize: number; gridOpacity: number }) => {
+    if (!activeMapId) return
+    if (tvGridSaveTimeoutRef.current) clearTimeout(tvGridSaveTimeoutRef.current)
+    tvGridSaveTimeoutRef.current = setTimeout(() => {
+      void (async () => {
+        await updateMapGridSettings(activeMapId, next)
+        await refreshMaps(true)
+        setTvPreviewKey((prev) => prev + 1)
+      })()
+    }, 120)
+  }, [activeMapId, refreshMaps])
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -404,18 +427,17 @@ export const DMMapManager = memo(function DMMapManager() {
               </div>
             </div>
             <div className="text-xs text-muted-foreground">
-              Active map: <span className="font-medium text-foreground">{maps.find((m) => m.id === activeMapId)?.name ?? 'None'}</span>
+              Active map: <span className="font-medium text-foreground">{activeMap?.name ?? 'None'}</span>
             </div>
             <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
               <Label className="text-xs text-muted-foreground">Grid on active map</Label>
               <Switch
-                checked={maps.find((m) => m.id === activeMapId)?.gridEnabled ?? false}
+                checked={tvGridEnabled}
                 disabled={!activeMapId}
-                onCheckedChange={async (checked) => {
+                onCheckedChange={(checked) => {
                   if (!activeMapId) return
-                  await updateMapGridSettings(activeMapId, { gridEnabled: checked })
-                  await refreshMaps(true)
-                  setTvPreviewKey((prev) => prev + 1)
+                  setTvGridEnabled(checked)
+                  persistTvGrid({ gridEnabled: checked, gridSize: tvGridSize, gridOpacity: tvGridOpacity })
                 }}
               />
             </div>
@@ -426,22 +448,21 @@ export const DMMapManager = memo(function DMMapManager() {
                     type="number"
                     min={10}
                     max={200}
-                    value={maps.find((m) => m.id === activeMapId)?.gridSize ?? 50}
-                    onChange={async (e) => {
+                    value={tvGridSize}
+                    onChange={(e) => {
                       const next = Math.max(10, Math.min(200, Number.parseInt(e.target.value, 10) || 50))
-                      await updateMapGridSettings(activeMapId, { gridSize: next })
-                      await refreshMaps(true)
-                      setTvPreviewKey((prev) => prev + 1)
+                      setTvGridSize(next)
+                      persistTvGrid({ gridEnabled: tvGridEnabled, gridSize: next, gridOpacity: tvGridOpacity })
                     }}
                   />
                 </label>
                 <label className="text-xs text-muted-foreground">Grid opacity
                   <Slider
-                    value={[Math.round((maps.find((m) => m.id === activeMapId)?.gridOpacity ?? 0.3) * 100)]}
-                    onValueChange={async ([v]) => {
-                      await updateMapGridSettings(activeMapId, { gridOpacity: Math.max(0.1, Math.min(1, v / 100)) })
-                      await refreshMaps(true)
-                      setTvPreviewKey((prev) => prev + 1)
+                    value={[Math.round(tvGridOpacity * 100)]}
+                    onValueChange={([v]) => {
+                      const next = Math.max(0.1, Math.min(1, v / 100))
+                      setTvGridOpacity(next)
+                      persistTvGrid({ gridEnabled: tvGridEnabled, gridSize: tvGridSize, gridOpacity: next })
                     }}
                     min={10}
                     max={100}
