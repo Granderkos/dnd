@@ -450,7 +450,7 @@ export const DMMapManager = memo(function DMMapManager() {
               </div>
             ) : null}
             <div className="rounded-md border overflow-hidden bg-black">
-              <iframe key={tvPreviewKey} src="/tv-map" title="TV Preview" className="h-64 w-full" />
+              <iframe key={tvPreviewKey} src={`/tv-map?preview=${tvPreviewKey}`} title="TV Preview" className="h-64 w-full" />
             </div>
           </CardContent>
         </Card>
