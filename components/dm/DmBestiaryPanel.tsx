@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { MonsterCard } from '@/components/dm/MonsterCard'
 import { addCompendiumMonsterToActiveFight, createCreature, listCreatures, updateCreature } from '@/lib/supabase-v3'
 import type { CompendiumEntry } from '@/lib/v3-types'
