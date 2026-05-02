@@ -39,6 +39,7 @@ export function TvMapMode() {
   const activeFightIdRef = useRef<string | null>(null)
   const refreshInFlightRef = useRef(false)
   const refreshQueuedRef = useRef(false)
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const refreshTvState = useCallback(async () => {
     if (!user?.id) return
@@ -84,6 +85,13 @@ export function TvMapMode() {
     }
   }, [user?.id])
 
+  const scheduleRefresh = useCallback((delayMs = 120) => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+    refreshTimerRef.current = setTimeout(() => {
+      void refreshTvState()
+    }, delayMs)
+  }, [refreshTvState])
+
   useEffect(() => {
     if (!user?.id) return
     void refreshTvState()
@@ -93,22 +101,25 @@ export function TvMapMode() {
     }, 3500)
     const channel = supabase
       .channel('tv-map-state')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'maps' }, () => { void refreshTvState() })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fights' }, () => { void refreshTvState() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'maps' }, () => { scheduleRefresh(60) })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fights' }, () => { scheduleRefresh(60) })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fight_initiative_requests' }, () => { scheduleRefresh(80) })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'characters' }, () => { scheduleRefresh(120) })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fight_entities' }, (payload) => {
         const row = payload.new as { fight_id?: string } | null
         const oldRow = payload.old as { fight_id?: string } | null
         const incomingFightId = row?.fight_id ?? oldRow?.fight_id ?? null
         if (!activeFightIdRef.current || !incomingFightId || incomingFightId === activeFightIdRef.current) {
-          void refreshTvState()
+          scheduleRefresh(40)
         }
       })
       .subscribe()
     return () => {
       clearInterval(poll)
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
       void supabase.removeChannel(channel)
     }
-  }, [refreshTvState, user?.id])
+  }, [refreshTvState, scheduleRefresh, user?.id])
 
   const modeLabel = useMemo(() => (sceneMode === 'combat' ? 'Combat' : 'Exploration'), [sceneMode])
   const currentTurnLabel = currentTurn?.name ?? '—'
