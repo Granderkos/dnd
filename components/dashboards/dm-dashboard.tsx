@@ -22,7 +22,7 @@ import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
 import { DmItemTemplatePanel } from '@/components/dm/DmItemTemplatePanel'
-import { addFightEntity, clearFightEntities, endCombatForFight, ensureActivePlayerInitiativeRequest, finalizeInitiativeCollectionForFight, getActiveFight, listCampaignActiveCompanions, listFightCharacterCombatState, listFightEntities, listInitiativeCandidatesForCampaign, moveFightTurnToEnd, removeEntity, requestInitiativeForSelected, setFightEntityCurrentHp, setFightRoundNumber, startCombatForCampaign, updateFightEntity, updateFightEntityNotes } from '@/lib/supabase-v3'
+import { addFightEntity, clearFightEntities, endCombatForFight, finalizeInitiativeCollectionForFight, getActiveFight, listCampaignActiveCompanions, listFightCharacterCombatState, listFightEntities, listInitiativeCandidatesForCampaign, moveFightTurnToEnd, removeEntity, requestInitiativeForSelected, setFightEntityCurrentHp, setFightRoundNumber, startCombatForCampaign, updateFightEntity, updateFightEntityNotes } from '@/lib/supabase-v3'
 import type { FightStatus } from '@/lib/v3-types'
 import type { FightEntity } from '@/lib/v3-types'
 import { Character, calculateModifier, formatFeetWithSquares, formatModifier } from '@/lib/dnd-types'
@@ -257,9 +257,6 @@ export const DMDashboard = memo(function DMDashboard() {
             return changed ? updated : prev
           })
 
-          if (fightId && fightStatus === 'collecting_initiative' && next?.is_online) {
-            void ensureActivePlayerInitiativeRequest(fightId, userId)
-          }
         }
       )
       .subscribe()

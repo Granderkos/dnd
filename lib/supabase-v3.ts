@@ -247,9 +247,10 @@ export async function updateCreature(id: string, patch: Partial<CompendiumEntry>
     .update(patch)
     .eq('id', id)
     .select('id, type, subtype, slug, name, description, is_system, data, created_by, created_at')
-    .single()
+    .maybeSingle()
 
   if (error) throw error
+  if (!data) throw new Error(`Creature update failed: no editable creature found for id ${id}.`)
   return data as CompendiumEntry
 }
 

@@ -53,6 +53,7 @@ export const DMMapManager = memo(function DMMapManager() {
   const [tvPreviewKey, setTvPreviewKey] = useState(0)
   const [tvGridEnabled, setTvGridEnabled] = useState(false)
   const [tvGridSize, setTvGridSize] = useState(50)
+  const [tvGridSizeInput, setTvGridSizeInput] = useState('50')
   const [tvGridOpacity, setTvGridOpacity] = useState(0.3)
   const gridSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tvGridSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -91,8 +92,17 @@ export const DMMapManager = memo(function DMMapManager() {
     if (!activeMap) return
     setTvGridEnabled(activeMap.gridEnabled ?? false)
     setTvGridSize(activeMap.gridSize ?? 50)
+    setTvGridSizeInput(String(activeMap.gridSize ?? 50))
     setTvGridOpacity(activeMap.gridOpacity ?? 0.3)
   }, [activeMap?.id, activeMap?.gridEnabled, activeMap?.gridSize, activeMap?.gridOpacity])
+
+  const commitTvGridSize = useCallback(() => {
+    const parsed = Number.parseInt(tvGridSizeInput, 10)
+    const next = Math.max(10, Math.min(200, Number.isFinite(parsed) ? parsed : tvGridSize))
+    setTvGridSize(next)
+    setTvGridSizeInput(String(next))
+    persistTvGrid({ gridEnabled: tvGridEnabled, gridSize: next, gridOpacity: tvGridOpacity })
+  }, [persistTvGrid, tvGridEnabled, tvGridOpacity, tvGridSize, tvGridSizeInput])
 
   const persistTvGrid = useCallback((next: { gridEnabled: boolean; gridSize: number; gridOpacity: number }) => {
     if (!activeMapId) return
@@ -448,12 +458,12 @@ export const DMMapManager = memo(function DMMapManager() {
                     type="number"
                     min={10}
                     max={200}
-                    value={tvGridSize}
+                    value={tvGridSizeInput}
                     onChange={(e) => {
-                      const next = Math.max(10, Math.min(200, Number.parseInt(e.target.value, 10) || 50))
-                      setTvGridSize(next)
-                      persistTvGrid({ gridEnabled: tvGridEnabled, gridSize: next, gridOpacity: tvGridOpacity })
+                      setTvGridSizeInput(e.target.value)
                     }}
+                    onBlur={commitTvGridSize}
+                    onKeyDown={(e) => { if (e.key === 'Enter') commitTvGridSize() }}
                   />
                 </label>
                 <label className="text-xs text-muted-foreground">Grid opacity
