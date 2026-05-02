@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { getActiveMap, type StoredMap } from '@/lib/supabase-data'
 import { getActiveFight, listFightEntities } from '@/lib/supabase-v3'
@@ -26,6 +27,7 @@ function isSkippedForTvOverlay(entity: FightEntity) {
 }
 
 export function TvMapMode() {
+  const searchParams = useSearchParams()
   const { user, isLoading } = useAuth()
   const [activeMap, setActiveMap] = useState<StoredMap | null>(null)
   const [sceneMode, setSceneMode] = useState<TvSceneMode>('exploration')
@@ -119,6 +121,7 @@ export function TvMapMode() {
   }, [refreshTvState, scheduleRefresh, user?.id])
 
   const modeLabel = useMemo(() => (sceneMode === 'combat' ? 'Combat' : 'Exploration'), [sceneMode])
+  const isPreviewMode = useMemo(() => searchParams.has('preview'), [searchParams])
   const currentTurnLabel = currentTurn?.name ?? '—'
   const nextTurnLabel = nextTurn?.name ?? '—'
 
@@ -132,11 +135,15 @@ export function TvMapMode() {
 
   return (
     <main className="relative h-dvh w-full overflow-hidden bg-black text-white">
-      <div className="pointer-events-none absolute left-4 top-4 z-10 flex items-center gap-2">
-        <span className="rounded bg-black/70 px-2 py-1 text-xs uppercase tracking-wide">{modeLabel}</span>
-        <span className="rounded bg-black/70 px-2 py-1 text-xs">{activeMap?.name ?? 'No active map'}</span>
-      </div>
-      <div className="pointer-events-none absolute right-4 top-4 z-10 rounded bg-black/60 px-2 py-1 text-[10px] text-white/80">{APP_VERSION}</div>
+      {!isPreviewMode ? (
+        <>
+          <div className="pointer-events-none absolute left-4 top-4 z-10 flex items-center gap-2">
+            <span className="rounded bg-black/70 px-2 py-1 text-xs uppercase tracking-wide">{modeLabel}</span>
+            <span className="rounded bg-black/70 px-2 py-1 text-xs">{activeMap?.name ?? 'No active map'}</span>
+          </div>
+          <div className="pointer-events-none absolute right-4 top-4 z-10 rounded bg-black/60 px-2 py-1 text-[10px] text-white/80">{APP_VERSION}</div>
+        </>
+      ) : null}
       {!activeMap ? (
         <div className="flex h-full items-center justify-center text-center text-sm text-white/70">
           Waiting for DM to select an active map.
@@ -157,7 +164,7 @@ export function TvMapMode() {
       )}
       {sceneMode === 'combat' ? (
         <>
-        <div className="pointer-events-none absolute top-12 left-1/2 z-10 w-[min(92vw,980px)] -translate-x-1/2 rounded-lg border border-white/20 bg-black/50 px-4 py-2 backdrop-blur-[1px]">
+        <div className="pointer-events-none absolute top-12 left-1/2 z-10 w-[min(92vw,980px)] -translate-x-1/2 rotate-180 rounded-lg border border-white/20 bg-black/50 px-4 py-2 backdrop-blur-[1px]">
           <div className="flex items-center justify-between text-xs sm:text-sm">
             <span className="uppercase tracking-[0.15em] text-white/75">ACTIVE COMBAT · Round {roundNumber}</span>
             <span className="truncate">Now: <span className="font-semibold">{currentTurnLabel}</span> · Next: <span className="font-semibold text-white/90">{nextTurnLabel}</span></span>
