@@ -166,7 +166,7 @@ export const DMDashboard = memo(function DMDashboard() {
   const [initiativePickerOpen, setInitiativePickerOpen] = useState(false)
   const [initiativeCandidates, setInitiativeCandidates] = useState<Array<{ userId: string; username: string; isOnline: boolean; lastSeen: string | null; characterId: string | null; characterName: string | null }>>([])
   const [selectedInitiativeUsers, setSelectedInitiativeUsers] = useState<string[]>([])
-  const [dmCompanions, setDmCompanions] = useState<Array<{ characterId: string; ownerName: string; companionId: string; companionName: string; kind: 'pet' | 'mount' | 'summon' | 'familiar'; notes: string | null; customData: Record<string, unknown>; templateSnapshot: Record<string, unknown> | null }>>([])
+  const [dmCompanions, setDmCompanions] = useState<Array<{ characterId: string; ownerName: string; companionId: string; companionName: string; kind: 'pet' | 'mount' | 'summon' | 'familiar'; notes: string | null; customData: Record<string, unknown>; templateSnapshot: Record<string, unknown> | null; isActive: boolean }>>([])
   const fightLoadedRef = useRef(false)
   const hpPersistTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const confirmedHpRef = useRef<Record<string, number>>({})
@@ -223,7 +223,7 @@ export const DMDashboard = memo(function DMDashboard() {
 
   useEffect(() => {
     if (!user?.id) return
-    void listCampaignActiveCompanions(user.id).then(setDmCompanions).catch(() => setDmCompanions([]))
+    void listCampaignActiveCompanions(user.id, true).then(setDmCompanions).catch(() => setDmCompanions([]))
   }, [user?.id, players.length])
 
   useEffect(() => {
@@ -671,6 +671,10 @@ export const DMDashboard = memo(function DMDashboard() {
   const handleAddCustomEntity = useCallback(async (payload: { name: string; entityType: 'summon' | 'npc' | 'monster'; ac?: string; currentHp: number; maxHp: number; initiative?: number | null; notes?: string }) => {
     if (!user?.id) return
     const fight = await getActiveFight(user.id) ?? await startCombatForCampaign(user.id)
+    const activeEntity = fight.status === 'active'
+      ? fightEntities.find((entity) => !isAutoSkipEntity(entity)) ?? null
+      : null
+    const defaultInitiative = payload.initiative ?? (activeEntity?.initiative != null ? activeEntity.initiative - 0.01 : null)
     const notes = composeFightEntityNotes({
       ac: payload.ac?.trim() || null,
       conditions: [],
@@ -679,13 +683,13 @@ export const DMDashboard = memo(function DMDashboard() {
       fightId: fight.id,
       entityType: payload.entityType,
       name: payload.name,
-      initiative: payload.initiative ?? null,
+      initiative: defaultInitiative,
       currentHp: payload.currentHp,
       maxHp: payload.maxHp,
       notes,
     })
     await loadFightState(false)
-  }, [loadFightState, user?.id])
+  }, [fightEntities, loadFightState, user?.id])
 
   const handleEditEntity = useCallback(async (entityId: string, payload: { name: string; ac?: string; initiative?: number | null; currentHp: number; maxHp: number; notes?: string }) => {
     await updateFightEntity(entityId, {
@@ -998,8 +1002,8 @@ function DMFightPanel({
     clearConfirmTitle: string
     clearConfirmDescription: string
   }
-  companions: Array<{ characterId: string; ownerName: string; companionId: string; companionName: string; kind: 'pet' | 'mount' | 'summon' | 'familiar'; notes: string | null; customData: Record<string, unknown>; templateSnapshot: Record<string, unknown> | null }>
-  onAddCompanionToFight: (companion: { characterId: string; ownerName: string; companionId: string; companionName: string; kind: 'pet' | 'mount' | 'summon' | 'familiar'; notes: string | null; customData: Record<string, unknown>; templateSnapshot: Record<string, unknown> | null }) => Promise<void>
+  companions: Array<{ characterId: string; ownerName: string; companionId: string; companionName: string; kind: 'pet' | 'mount' | 'summon' | 'familiar'; notes: string | null; customData: Record<string, unknown>; templateSnapshot: Record<string, unknown> | null; isActive: boolean }>
+  onAddCompanionToFight: (companion: { characterId: string; ownerName: string; companionId: string; companionName: string; kind: 'pet' | 'mount' | 'summon' | 'familiar'; notes: string | null; customData: Record<string, unknown>; templateSnapshot: Record<string, unknown> | null; isActive: boolean }) => Promise<void>
 }) {
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [roundNumber, setRoundNumber] = useState(initialRoundNumber)
@@ -1126,12 +1130,12 @@ function DMFightPanel({
       </div>
       {companions.length > 0 ? (
         <div className="rounded-lg border border-border/70 bg-muted/20 p-2">
-          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Active companions / familiars</div>
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Companions / familiars (active + inactive)</div>
           <div className="space-y-1">
             {companions.map((companion) => (
               <div key={companion.companionId} className="flex items-center justify-between gap-2 rounded border bg-background/70 px-2 py-1 text-xs">
                 <div className="min-w-0">
-                  <div className="truncate font-medium">{companion.companionName} <span className="text-muted-foreground">({companion.kind})</span></div>
+                  <div className="truncate font-medium">{companion.companionName} <span className="text-muted-foreground">({companion.kind})</span> {!companion.isActive ? <span className="text-amber-700">(inactive)</span> : null}</div>
                   <div className="truncate text-muted-foreground">Owner: {companion.ownerName}{typeof companion.customData.ac === 'number' ? ` · AC ${companion.customData.ac}` : ''}{typeof companion.customData.hp === 'number' ? ` · HP ${companion.customData.hp}` : ''}</div>
                 </div>
                 <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => void onAddCompanionToFight(companion)}>Add to fight</Button>
