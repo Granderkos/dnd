@@ -125,14 +125,53 @@ const characterSaveSignatures = new Map<string, {
 const INVENTORY_CATEGORIES = new Set(['Weapons', 'Armor', 'Equipment', 'Tools', 'Consumables', 'Supplies', 'Treasure', 'Other'])
 const TEMPLATE_CACHE_TTL_MS = 30 * 60 * 1000
 
+const TEMPLATE_SESSION_CACHE_PREFIX = 'supabase-template-cache:v1:'
+
+function readTemplateSessionCache<T>(key: string): T[] | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.sessionStorage.getItem(`${TEMPLATE_SESSION_CACHE_PREFIX}${key}`)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { expiresAt?: number; data?: T[] }
+    if (!parsed || !Array.isArray(parsed.data)) return null
+    if (typeof parsed.expiresAt !== 'number' || parsed.expiresAt <= Date.now()) {
+      window.sessionStorage.removeItem(`${TEMPLATE_SESSION_CACHE_PREFIX}${key}`)
+      return null
+    }
+    return parsed.data
+  } catch {
+    return null
+  }
+}
+
+function writeTemplateSessionCache<T>(key: string, data: T[], ttlMs: number) {
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.setItem(
+      `${TEMPLATE_SESSION_CACHE_PREFIX}${key}`,
+      JSON.stringify({ expiresAt: Date.now() + ttlMs, data })
+    )
+  } catch {
+    // Ignore storage quota/privacy mode issues.
+  }
+}
+
 async function withTemplateCache<T>(key: string, loader: () => Promise<T[]>): Promise<T[]> {
   const cached = templateQueryCache.get(key)
   if (cached && cached.expiresAt > Date.now()) return cached.data as T[]
+
+  const sessionCached = readTemplateSessionCache<T>(key)
+  if (sessionCached) {
+    templateQueryCache.set(key, { expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS, data: sessionCached as unknown[] })
+    return sessionCached
+  }
+
   const inFlight = templateQueryInFlight.get(key)
   if (inFlight) return inFlight as Promise<T[]>
   const promise = (async () => {
     const rows = await loader()
     templateQueryCache.set(key, { expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS, data: rows as unknown[] })
+    writeTemplateSessionCache(key, rows, TEMPLATE_CACHE_TTL_MS)
     return rows
   })()
   templateQueryInFlight.set(key, promise as Promise<unknown[]>)
