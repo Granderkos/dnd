@@ -157,7 +157,7 @@ export function TvMapMode() {
       )}
       {sceneMode === 'combat' ? (
         <>
-        <div className="pointer-events-none absolute top-12 left-1/2 z-10 w-[min(92vw,980px)] -translate-x-1/2 rounded-lg border border-white/20 bg-black/50 px-4 py-2 backdrop-blur-[1px]">
+        <div className="pointer-events-none absolute top-12 left-1/2 z-10 w-[min(92vw,980px)] -translate-x-1/2 rotate-180 rounded-lg border border-white/20 bg-black/50 px-4 py-2 backdrop-blur-[1px]">
           <div className="flex items-center justify-between text-xs sm:text-sm">
             <span className="uppercase tracking-[0.15em] text-white/75">ACTIVE COMBAT · Round {roundNumber}</span>
             <span className="truncate">Now: <span className="font-semibold">{currentTurnLabel}</span> · Next: <span className="font-semibold text-white/90">{nextTurnLabel}</span></span>
