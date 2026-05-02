@@ -216,6 +216,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [createCompanionError, setCreateCompanionError] = useState<string | null>(null)
   const [isCreatingCompanion, setIsCreatingCompanion] = useState(false)
   const [pendingCompanionDelete, setPendingCompanionDelete] = useState<(CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }) | null>(null)
+  const [selectedCompanion, setSelectedCompanion] = useState<(CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }) | null>(null)
   const [compendiumError, setCompendiumError] = useState<string | null>(null)
   const [isCompendiumLoading, setIsCompendiumLoading] = useState(false)
   const [selectedCreature, setSelectedCreature] = useState<{ entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'>; isUnlocked: boolean } | null>(null)
@@ -704,8 +705,24 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
                       <div className="min-w-0">
                         <p className="font-medium">{companion.name_override || companion.entry?.name || t('compendium.unnamedCompanion')}</p>
                         <p className="text-xs text-muted-foreground">{companion.kind} · {companion.source_origin ?? 'custom'}</p>
+                        {(() => {
+                          const custom = companion.custom_data ?? {}
+                          const snapshot = (companion.template_snapshot ?? null) as Record<string, unknown> | null
+                          const ac = typeof custom.ac === 'number' ? custom.ac : (typeof snapshot?.armor_class === 'number' ? snapshot.armor_class : null)
+                          const hp = typeof custom.hp === 'number' ? custom.hp : (typeof snapshot?.hit_points === 'number' ? snapshot.hit_points : null)
+                          const speed = typeof custom.speed === 'string' ? custom.speed : (typeof snapshot?.speed_text === 'string' ? snapshot.speed_text : null)
+                          return (
+                            <p className="text-[11px] text-muted-foreground">
+                              {ac !== null ? `AC ${ac}` : 'AC —'} · {hp !== null ? `HP ${hp}` : 'HP —'} · {speed ?? 'Speed —'}
+                            </p>
+                          )
+                        })()}
+                        {companion.notes ? <p className="mt-1 text-[11px] text-muted-foreground whitespace-pre-wrap break-words line-clamp-2">{companion.notes}</p> : null}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => setSelectedCompanion(companion)}>
+                          Details
+                        </Button>
                         <Button
                           variant={companion.is_active ? 'default' : 'outline'}
                           size="sm"
@@ -933,6 +950,37 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         }}
         importDisabled={!selectedCompanionTemplateId}
       />
+
+      <Dialog open={!!selectedCompanion} onOpenChange={(open) => { if (!open) setSelectedCompanion(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{selectedCompanion?.name_override || selectedCompanion?.entry?.name || t('compendium.unnamedCompanion')}</DialogTitle>
+          </DialogHeader>
+          {selectedCompanion ? (
+            <div className="space-y-2 text-sm">
+              {(() => {
+                const custom = selectedCompanion.custom_data ?? {}
+                const snapshot = (selectedCompanion.template_snapshot ?? null) as Record<string, unknown> | null
+                const ac = typeof custom.ac === 'number' ? custom.ac : (typeof snapshot?.armor_class === 'number' ? snapshot.armor_class : null)
+                const hp = typeof custom.hp === 'number' ? custom.hp : (typeof snapshot?.hit_points === 'number' ? snapshot.hit_points : null)
+                const speed = typeof custom.speed === 'string' ? custom.speed : (typeof snapshot?.speed_text === 'string' ? snapshot.speed_text : null)
+                return (
+                  <>
+                    <div><span className="font-semibold">Owner/Character:</span> {character.info.name || '—'}</div>
+                    <div><span className="font-semibold">Kind/Source:</span> {selectedCompanion.kind} / {selectedCompanion.source_origin ?? 'custom'}</div>
+                    <div><span className="font-semibold">AC:</span> {ac ?? '—'}</div>
+                    <div><span className="font-semibold">HP:</span> {hp ?? '—'}</div>
+                    <div><span className="font-semibold">Speed:</span> {speed ?? '—'}</div>
+                    <div><span className="font-semibold">Notes:</span> <span className="whitespace-pre-wrap">{selectedCompanion.notes || selectedCompanion.entry?.description || '—'}</span></div>
+                    <div><span className="font-semibold">State:</span> {selectedCompanion.is_active ? t('compendium.active') : t('compendium.inactive')}</div>
+                    <div><span className="font-semibold">Template:</span> {selectedCompanion.entry?.name || '—'}</div>
+                  </>
+                )
+              })()}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!pendingCompanionDelete} onOpenChange={(open) => { if (!open) setPendingCompanionDelete(null) }}>
         <AlertDialogContent>
