@@ -164,15 +164,15 @@ export function TvMapMode() {
       )}
       {sceneMode === 'combat' ? (
         <>
-        <div className="pointer-events-none absolute top-12 left-1/2 z-10 w-[min(92vw,980px)] -translate-x-1/2 rotate-180 rounded-lg border border-white/20 bg-black/50 px-4 py-2 backdrop-blur-[1px]">
+        <div className="pointer-events-none absolute top-12 left-1/2 z-10 w-[min(92vw,980px)] -translate-x-1/2 rotate-180 transform-gpu rounded-lg border border-white/25 bg-black/60 px-4 py-2 backdrop-blur-[1px]">
           <div className="flex items-center justify-between text-xs sm:text-sm">
-            <span className="uppercase tracking-[0.15em] text-white/75">ACTIVE COMBAT · Round {roundNumber}</span>
-            <span className="truncate">Now: <span className="font-semibold">{currentTurnLabel}</span> · Next: <span className="font-semibold text-white/90">{nextTurnLabel}</span></span>
+            <span className="uppercase tracking-[0.15em] text-white/80">Round {roundNumber}</span>
+            <span className="truncate">Now: <span className="font-semibold">{currentTurnLabel}</span> · Next: <span className="font-semibold text-white/95">{nextTurnLabel}</span></span>
           </div>
         </div>
         <div className="pointer-events-none absolute bottom-5 left-1/2 z-10 w-[min(92vw,980px)] -translate-x-1/2 rounded-xl border border-white/20 bg-black/55 px-6 py-4 backdrop-blur-[1px]">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs uppercase tracking-[0.2em] text-white/75">ACTIVE COMBAT</span>
+            <span className="text-xs uppercase tracking-[0.2em] text-white/75">Round</span>
             <span className="text-lg font-semibold">Round {roundNumber}</span>
           </div>
           <div className="grid grid-cols-1 gap-3 text-center sm:grid-cols-2">
