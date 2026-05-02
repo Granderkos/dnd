@@ -13,9 +13,11 @@ interface MonsterCardProps {
   hpFormula?: string | null
   creatureType?: string | null
   descriptionPreview?: string | null
+  onView?: () => void
+  onEdit?: () => void
 }
 
-export function MonsterCard({ name, hp, ac, initiativeBonus, isCustom = false, addToFightLabel, onAddToFight, isAdding = false, hpFormula = null, creatureType = null, descriptionPreview = null }: MonsterCardProps) {
+export function MonsterCard({ name, hp, ac, initiativeBonus, isCustom = false, addToFightLabel, onAddToFight, isAdding = false, hpFormula = null, creatureType = null, descriptionPreview = null, onView, onEdit }: MonsterCardProps) {
   return (
     <Card>
       <CardContent className="p-4">
@@ -33,7 +35,9 @@ export function MonsterCard({ name, hp, ac, initiativeBonus, isCustom = false, a
         <p className="mt-2 text-sm text-muted-foreground">Initiative bonus: {initiativeBonus >= 0 ? `+${initiativeBonus}` : initiativeBonus}</p>
         {descriptionPreview ? <p className="mt-2 line-clamp-3 text-xs text-muted-foreground whitespace-pre-wrap">{descriptionPreview}</p> : null}
 
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={onView}>View</Button>
+          {isCustom ? <Button type="button" size="sm" variant="outline" onClick={onEdit}>Edit</Button> : null}
           <Button type="button" size="sm" onClick={onAddToFight} disabled={isAdding}>
             {isAdding ? 'Adding...' : addToFightLabel}
           </Button>
