@@ -446,6 +446,26 @@ export async function updateFightEntityNotes(entityId: string, notes: string) {
   return data as FightEntity
 }
 
+export async function updateFightEntity(
+  entityId: string,
+  patch: Partial<Pick<FightEntity, 'name' | 'initiative' | 'current_hp' | 'max_hp' | 'notes'>>
+) {
+  const payload: Record<string, unknown> = {}
+  if (typeof patch.name === 'string') payload.name = patch.name
+  if (typeof patch.initiative === 'number' || patch.initiative === null) payload.initiative = patch.initiative
+  if (typeof patch.current_hp === 'number' || patch.current_hp === null) payload.current_hp = patch.current_hp
+  if (typeof patch.max_hp === 'number' || patch.max_hp === null) payload.max_hp = patch.max_hp
+  if (typeof patch.notes === 'string' || patch.notes === null) payload.notes = patch.notes
+  const { data, error } = await supabase
+    .from('fight_entities')
+    .update(payload)
+    .eq('id', entityId)
+    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, initiative_mod, current_hp, max_hp, turn_order, notes, created_at')
+    .single()
+  if (error) throw error
+  return data as FightEntity
+}
+
 export async function moveFightTurnToEnd(entityId: string, turnOrder: number) {
   const { error } = await supabase
     .from('fight_entities')
@@ -798,6 +818,52 @@ export async function startCombatForCampaign(campaignId: string) {
   return fight
 }
 
+export async function listInitiativeCandidatesForCampaign(campaignId: string) {
+  const [{ data: players, error: playersError }, { data: activity, error: activityError }, { data: characters, error: charError }] = await Promise.all([
+    supabase.from('profiles').select('id, username').eq('role', 'player'),
+    supabase.from('activity_status').select('user_id, is_online, last_seen'),
+    supabase.from('characters').select('id, user_id, name, hp_current, hp_max, dex_score'),
+  ])
+  if (playersError) throw playersError
+  if (activityError) throw activityError
+  if (charError) throw charError
+  const activityByUser = new Map((activity ?? []).map((row) => [row.user_id, row]))
+  return (players ?? []).map((player) => {
+    const userChars = (characters ?? []).filter((c) => c.user_id === player.id)
+    const primary = userChars[0] ?? null
+    const status = activityByUser.get(player.id)
+    return {
+      userId: player.id as string,
+      username: (player as { username?: string | null }).username ?? 'player',
+      isOnline: Boolean(status?.is_online),
+      lastSeen: (status as { last_seen?: string | null } | undefined)?.last_seen ?? null,
+      characterId: primary?.id ?? null,
+      characterName: primary?.name ?? null,
+    }
+  })
+}
+
+export async function requestInitiativeForSelected(campaignId: string, selectedUserIds: string[]) {
+  const fight = await createOrGetDraftFight(campaignId)
+  const uniqueUserIds = [...new Set(selectedUserIds)].filter(Boolean)
+  await supabase.from('fight_initiative_requests').delete().eq('fight_id', fight.id)
+  if (uniqueUserIds.length === 0) {
+    await setFightStatus(fight.id, 'draft')
+    return fight
+  }
+  const rows = uniqueUserIds.map((userId) => ({
+    fight_id: fight.id,
+    user_id: userId,
+    status: 'pending' as const,
+    initiative_roll: null as number | null,
+    submitted_at: null as string | null,
+  }))
+  const { error } = await supabase.from('fight_initiative_requests').insert(rows)
+  if (error) throw error
+  await setFightStatus(fight.id, 'collecting_initiative')
+  return fight
+}
+
 export async function unlockFightCreaturesForCampaign(campaignId: string, fightId: string) {
   const { data: rpcCount, error: rpcError } = await supabase.rpc('unlock_fight_creatures_for_campaign', {
     p_campaign_id: campaignId,
@@ -1139,6 +1205,43 @@ export async function listCompanionsForUser(userId: string) {
   }
   console.log('[perf]', 'listCompanionsForUser', Date.now() - t0)
   return result
+}
+
+export async function listCampaignActiveCompanions(campaignId: string) {
+  const { data, error } = await supabase
+    .from('characters')
+    .select('id, user_id, name, character_companions(id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, template_snapshot, compendium_entries(id, name, subtype, description, data))')
+    .eq('user_id', campaignId)
+  if (error) throw error
+  const rows: Array<{
+    characterId: string
+    ownerName: string
+    companionId: string
+    companionName: string
+    kind: CompanionKind
+    notes: string | null
+    customData: Record<string, unknown>
+    templateSnapshot: Record<string, unknown> | null
+  }> = []
+  for (const character of (data ?? [])) {
+    const companions = (character as { character_companions?: unknown[] }).character_companions ?? []
+    companions.forEach((companionRaw) => {
+      const companion = companionRaw as Record<string, unknown>
+      if (!companion.is_active) return
+      const entry = Array.isArray(companion.compendium_entries) ? companion.compendium_entries[0] as Record<string, unknown> : companion.compendium_entries as Record<string, unknown> | null
+      rows.push({
+        characterId: character.id as string,
+        ownerName: (character.name as string) || 'Character',
+        companionId: companion.id as string,
+        companionName: (companion.name_override as string | null) || (entry?.name as string) || 'Companion',
+        kind: companion.kind as CompanionKind,
+        notes: (companion.notes as string | null) ?? (entry?.description as string | null) ?? null,
+        customData: (companion.custom_data as Record<string, unknown>) ?? {},
+        templateSnapshot: (companion.template_snapshot as Record<string, unknown> | null) ?? null,
+      })
+    })
+  }
+  return rows
 }
 
 export async function getPlayerCombatState(userId: string): Promise<'none' | 'collecting_initiative' | 'active'> {
