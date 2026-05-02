@@ -1011,7 +1011,10 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
               placeholder={t('inventory.description') + '...'}
               className="min-h-20"
             />
-          </div> : null}
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => setShowAdvanced((prev) => !prev)} className="w-full">
+            {showAdvanced ? 'Hide advanced fields' : 'Show advanced fields'}
+          </Button>
           {showAdvanced ? <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-sm text-muted-foreground">{t('inventory.rarity')}</label>

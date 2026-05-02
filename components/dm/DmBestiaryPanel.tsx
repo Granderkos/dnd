@@ -297,7 +297,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
             </label>
             <label className="sm:col-span-2 text-xs font-medium text-muted-foreground">
               Notes / Description
-              <Textarea value={customNotes} onChange={(e) => setCustomNotes(e.target.value)} className="min-h-40 max-h-72 overflow-y-auto whitespace-pre-wrap" />
+              <Textarea value={customNotes} onChange={(e) => setCustomNotes(e.target.value)} className="min-h-24 max-h-72 overflow-y-auto" />
             </label>
           </div>
           <DialogFooter>
