@@ -446,6 +446,26 @@ export async function updateFightEntityNotes(entityId: string, notes: string) {
   return data as FightEntity
 }
 
+export async function updateFightEntity(
+  entityId: string,
+  patch: Partial<Pick<FightEntity, 'name' | 'initiative' | 'current_hp' | 'max_hp' | 'notes'>>
+) {
+  const payload: Record<string, unknown> = {}
+  if (typeof patch.name === 'string') payload.name = patch.name
+  if (typeof patch.initiative === 'number' || patch.initiative === null) payload.initiative = patch.initiative
+  if (typeof patch.current_hp === 'number' || patch.current_hp === null) payload.current_hp = patch.current_hp
+  if (typeof patch.max_hp === 'number' || patch.max_hp === null) payload.max_hp = patch.max_hp
+  if (typeof patch.notes === 'string' || patch.notes === null) payload.notes = patch.notes
+  const { data, error } = await supabase
+    .from('fight_entities')
+    .update(payload)
+    .eq('id', entityId)
+    .select('id, fight_id, entity_type, character_id, entry_id, name, initiative, initiative_mod, current_hp, max_hp, turn_order, notes, created_at')
+    .single()
+  if (error) throw error
+  return data as FightEntity
+}
+
 export async function moveFightTurnToEnd(entityId: string, turnOrder: number) {
   const { error } = await supabase
     .from('fight_entities')
