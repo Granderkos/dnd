@@ -29,6 +29,7 @@ import {
   assignCompanion,
   assignCompanionFromTemplate,
   createCompanionEntry,
+  updateCompanionAssignment,
   getPendingInitiativeForUser,
   listCompanionTemplates,
   listCompanionsForUser,
@@ -217,6 +218,13 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
   const [isCreatingCompanion, setIsCreatingCompanion] = useState(false)
   const [pendingCompanionDelete, setPendingCompanionDelete] = useState<(CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }) | null>(null)
   const [selectedCompanion, setSelectedCompanion] = useState<(CharacterCompanion & { entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description'> | null }) | null>(null)
+  const [isEditingCompanion, setIsEditingCompanion] = useState(false)
+  const [editingCompanionName, setEditingCompanionName] = useState('')
+  const [editingCompanionNotes, setEditingCompanionNotes] = useState('')
+  const [editingCompanionActive, setEditingCompanionActive] = useState(true)
+  const [editingCompanionAc, setEditingCompanionAc] = useState('')
+  const [editingCompanionHp, setEditingCompanionHp] = useState('')
+  const [editingCompanionSpeed, setEditingCompanionSpeed] = useState('')
   const [compendiumError, setCompendiumError] = useState<string | null>(null)
   const [isCompendiumLoading, setIsCompendiumLoading] = useState(false)
   const [selectedCreature, setSelectedCreature] = useState<{ entry: Pick<CompendiumEntry, 'id' | 'name' | 'subtype' | 'description' | 'data'>; isUnlocked: boolean } | null>(null)
@@ -951,7 +959,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
         importDisabled={!selectedCompanionTemplateId}
       />
 
-      <Dialog open={!!selectedCompanion} onOpenChange={(open) => { if (!open) setSelectedCompanion(null) }}>
+      <Dialog open={!!selectedCompanion} onOpenChange={(open) => { if (!open) { setSelectedCompanion(null); setIsEditingCompanion(false) } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{selectedCompanion?.name_override || selectedCompanion?.entry?.name || t('compendium.unnamedCompanion')}</DialogTitle>
@@ -979,6 +987,55 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
               })()}
             </div>
           ) : null}
+          {selectedCompanion ? (
+            <div className="mt-3 flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => {
+                const custom = selectedCompanion.custom_data ?? {}
+                setEditingCompanionName(selectedCompanion.name_override ?? '')
+                setEditingCompanionNotes(selectedCompanion.notes ?? '')
+                setEditingCompanionActive(selectedCompanion.is_active)
+                setEditingCompanionAc(typeof custom.ac === 'number' ? String(custom.ac) : '')
+                setEditingCompanionHp(typeof custom.hp === 'number' ? String(custom.hp) : '')
+                setEditingCompanionSpeed(typeof custom.speed === 'string' ? custom.speed : '')
+                setIsEditingCompanion(true)
+              }}>Edit</Button>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isEditingCompanion} onOpenChange={setIsEditingCompanion}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Edit Companion</DialogTitle></DialogHeader>
+          <div className="space-y-2">
+            <Input value={editingCompanionName} onChange={(e) => setEditingCompanionName(e.target.value)} placeholder="Name override" />
+            <Textarea value={editingCompanionNotes} onChange={(e) => setEditingCompanionNotes(e.target.value)} placeholder="Notes" />
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editingCompanionActive} onChange={(e) => setEditingCompanionActive(e.target.checked)} />Active</label>
+            <div className="grid grid-cols-3 gap-2">
+              <Input value={editingCompanionAc} onChange={(e) => setEditingCompanionAc(e.target.value)} placeholder="AC" />
+              <Input value={editingCompanionHp} onChange={(e) => setEditingCompanionHp(e.target.value)} placeholder="HP" />
+              <Input value={editingCompanionSpeed} onChange={(e) => setEditingCompanionSpeed(e.target.value)} placeholder="Speed" />
+            </div>
+            <Button size="sm" onClick={async () => {
+              if (!selectedCompanion) return
+              const priorCustom = selectedCompanion.custom_data ?? {}
+              const nextCustom: Record<string, unknown> = { ...priorCustom }
+              if (editingCompanionAc.trim()) nextCustom.ac = Number(editingCompanionAc)
+              else delete nextCustom.ac
+              if (editingCompanionHp.trim()) nextCustom.hp = Number(editingCompanionHp)
+              else delete nextCustom.hp
+              if (editingCompanionSpeed.trim()) nextCustom.speed = editingCompanionSpeed.trim()
+              else delete nextCustom.speed
+              await updateCompanionAssignment(selectedCompanion.id, {
+                name_override: editingCompanionName.trim() || null,
+                notes: editingCompanionNotes.trim() || null,
+                is_active: editingCompanionActive,
+                custom_data: nextCustom,
+              })
+              setIsEditingCompanion(false)
+              setSelectedCompanion(null)
+              await refreshCompendium()
+            }}>Save companion</Button>
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -242,16 +242,96 @@ export async function createCreatureEntryFromTemplate(template: CreatureTemplate
 }
 
 export async function updateCreature(id: string, patch: Partial<CompendiumEntry>) {
+  const payload: Record<string, unknown> = {}
+  if (typeof patch.name === 'string') payload.name = patch.name
+  if (typeof patch.description === 'string' || patch.description === null) payload.description = patch.description
+  if (patch.data && typeof patch.data === 'object') payload.data = patch.data
+  if (typeof patch.subtype === 'string' || patch.subtype === null) payload.subtype = patch.subtype
+
+  const { data: authData } = await supabase.auth.getUser()
+  const actorUserId = authData.user?.id ?? null
   const { data, error } = await supabase
     .from('compendium_entries')
-    .update(patch)
+    .update(payload)
     .eq('id', id)
+    .eq('type', 'creature')
     .select('id, type, subtype, slug, name, description, is_system, data, created_by, created_at')
     .maybeSingle()
 
-  if (error) throw error
-  if (!data) throw new Error(`Creature update failed: no editable creature found for id ${id}.`)
+  if (error) {
+    const { data: debugRow } = await supabase
+      .from('compendium_entries')
+      .select('id, type, subtype, is_system, created_by, data')
+      .eq('id', id)
+      .maybeSingle()
+    console.error('[creature:update] direct update failed', {
+      requestedId: id,
+      actorUserId,
+      error: { message: error.message, details: error.details, hint: error.hint, code: error.code },
+      row: debugRow,
+    })
+    const rpc = await supabase.rpc('update_creature_entry_for_dm', {
+      p_entry_id: id,
+      p_name: typeof payload.name === 'string' ? payload.name : null,
+      p_description: typeof payload.description === 'string' || payload.description === null ? payload.description : null,
+      p_data: (payload.data as Record<string, unknown>) ?? {},
+      p_subtype: typeof payload.subtype === 'string' || payload.subtype === null ? payload.subtype : null,
+    })
+    if (rpc.error) throw error
+    const rpcRow = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data
+    if (rpcRow) return rpcRow as CompendiumEntry
+  }
+  if (!data) {
+    const { data: debugRow } = await supabase
+      .from('compendium_entries')
+      .select('id, type, subtype, is_system, created_by, data')
+      .eq('id', id)
+      .maybeSingle()
+    console.warn('[creature:update] no editable row matched', {
+      requestedId: id,
+      actorUserId,
+      row: debugRow ? {
+        id: debugRow.id,
+        type: debugRow.type,
+        subtype: debugRow.subtype,
+        is_system: debugRow.is_system,
+        created_by: debugRow.created_by,
+        source_origin: ((debugRow.data ?? {}) as Record<string, unknown>).source_origin ?? null,
+      } : null,
+    })
+    const rpc = await supabase.rpc('update_creature_entry_for_dm', {
+      p_entry_id: id,
+      p_name: typeof payload.name === 'string' ? payload.name : null,
+      p_description: typeof payload.description === 'string' || payload.description === null ? payload.description : null,
+      p_data: (payload.data as Record<string, unknown>) ?? {},
+      p_subtype: typeof payload.subtype === 'string' || payload.subtype === null ? payload.subtype : null,
+    })
+    if (!rpc.error) {
+      const rpcRow = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data
+      if (rpcRow) return rpcRow as CompendiumEntry
+    }
+    throw new Error(`Creature update failed: no editable creature found for id ${id}.`)
+  }
   return data as CompendiumEntry
+}
+
+export async function updateCompanionAssignment(
+  companionId: string,
+  patch: Partial<Pick<CharacterCompanion, 'name_override' | 'notes' | 'is_active' | 'custom_data'>>
+) {
+  const payload: Record<string, unknown> = {}
+  if (typeof patch.name_override === 'string' || patch.name_override === null) payload.name_override = patch.name_override
+  if (typeof patch.notes === 'string' || patch.notes === null) payload.notes = patch.notes
+  if (typeof patch.is_active === 'boolean') payload.is_active = patch.is_active
+  if (patch.custom_data && typeof patch.custom_data === 'object') payload.custom_data = patch.custom_data
+  const { data, error } = await supabase
+    .from('character_companions')
+    .update(payload)
+    .eq('id', companionId)
+    .select('id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, source_companion_template_id, source_origin, template_snapshot, created_at')
+    .single()
+  if (error) throw error
+  return data as CharacterCompanion
 }
 
 export async function createFight(campaignId: string) {
@@ -365,8 +445,6 @@ export async function addCompendiumMonsterToActiveFight(campaignId: string, entr
       notes: `ac:${ac}`,
     })
     await sortInitiative(fight.id)
-    await unlockFightCreaturesForCampaign(campaignId, fight.id)
-
     return { fight, entity }
   } catch (error) {
     console.error('[fight:add] failed to insert fight entity', { fightId: fight.id, entryId: entry.id, error })
@@ -926,6 +1004,13 @@ export async function unlockFightCreaturesForCampaign(campaignId: string, fightI
 }
 
 export async function endCombatForFight(fightId: string) {
+  const { data: fight, error: fightError } = await supabase
+    .from('fights')
+    .select('campaign_id')
+    .eq('id', fightId)
+    .single()
+  if (fightError) throw fightError
+  await unlockFightCreaturesForCampaign(fight.campaign_id as string, fightId)
   const result = await setFightStatus(fightId, 'ended')
   const { error } = await supabase.from('fight_initiative_requests').delete().eq('fight_id', fightId)
   if (error) throw error
@@ -1208,7 +1293,7 @@ export async function listCompanionsForUser(userId: string) {
   return result
 }
 
-export async function listCampaignActiveCompanions(campaignId: string) {
+export async function listCampaignActiveCompanions(campaignId: string, includeInactive = false) {
   const { data, error } = await supabase
     .from('characters')
     .select('id, user_id, name, character_companions(id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, template_snapshot, compendium_entries(id, name, subtype, description, data))')
@@ -1228,7 +1313,8 @@ export async function listCampaignActiveCompanions(campaignId: string) {
     const companions = (character as { character_companions?: unknown[] }).character_companions ?? []
     companions.forEach((companionRaw) => {
       const companion = companionRaw as Record<string, unknown>
-      if (!companion.is_active) return
+      const isActive = Boolean(companion.is_active)
+      if (!includeInactive && !isActive) return
       const entry = Array.isArray(companion.compendium_entries) ? companion.compendium_entries[0] as Record<string, unknown> : companion.compendium_entries as Record<string, unknown> | null
       rows.push({
         characterId: character.id as string,
@@ -1239,6 +1325,7 @@ export async function listCampaignActiveCompanions(campaignId: string) {
         notes: (companion.notes as string | null) ?? (entry?.description as string | null) ?? null,
         customData: (companion.custom_data as Record<string, unknown>) ?? {},
         templateSnapshot: (companion.template_snapshot as Record<string, unknown> | null) ?? null,
+        isActive,
       })
     })
   }
