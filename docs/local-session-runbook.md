@@ -88,3 +88,13 @@ If mobile clients show stale auth state or "Profile not found":
 3. Fully close/reopen mobile browser tab.
 4. Re-login to force a fresh Supabase session + profile fetch.
 5. If needed, restart Supabase and re-test from a new private tab.
+
+## Quick sanity check before connecting mobile clients
+
+From the host machine, confirm the app responds on the LAN-bound interface:
+
+```bash
+curl -I http://<LAN_IP>:3000
+```
+
+Expected outcome: an HTTP response header (for example `HTTP/1.1 200 OK` or `HTTP/1.1 307 Temporary Redirect`).
