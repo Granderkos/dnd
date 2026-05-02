@@ -968,7 +968,10 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
               className="h-10"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <Button type="button" variant="outline" size="sm" onClick={() => setShowAdvanced((prev) => !prev)} className="w-full">
+            {showAdvanced ? 'Hide advanced fields' : 'Show advanced fields'}
+          </Button>
+          {showAdvanced ? <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-sm text-muted-foreground">{t('inventory.quantity')}</label>
               <Input
@@ -999,8 +1002,8 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <div className="space-y-1">
+          </div> : null}
+          {showAdvanced ? <div className="space-y-1">
             <label className="text-sm text-muted-foreground">{t('inventory.description')}</label>
             <Textarea
               value={formData.description}
