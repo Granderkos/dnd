@@ -880,7 +880,6 @@ function applyConsumableUse(item: InventoryItem): InventoryItem | null {
 
 function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
   const { t } = useI18n()
-  const [showAdvanced, setShowAdvanced] = useState(false)
   const buildFormState = useCallback((current?: InventoryItem): ItemFormState => {
     const snapshot = (current?.templateSnapshot ?? null) as Record<string, unknown> | null
     const listToText = (value: unknown): string => Array.isArray(value)
@@ -908,9 +907,6 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
   useEffect(() => {
     setFormData(buildFormState(item))
   }, [item, open, buildFormState])
-  useEffect(() => {
-    if (open) setShowAdvanced(false)
-  }, [open])
 
   const parseCommaSeparated = useCallback((value: string): string[] => (
     value
@@ -968,10 +964,7 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
               className="h-10"
             />
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => setShowAdvanced((prev) => !prev)} className="w-full">
-            {showAdvanced ? 'Hide advanced fields' : 'Show advanced fields'}
-          </Button>
-          {showAdvanced ? <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-sm text-muted-foreground">{t('inventory.quantity')}</label>
               <Input
@@ -1002,8 +995,8 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
                 </SelectContent>
               </Select>
             </div>
-          </div> : null}
-          {showAdvanced ? <div className="space-y-1">
+          </div>
+          <div className="space-y-1">
             <label className="text-sm text-muted-foreground">{t('inventory.description')}</label>
             <Textarea
               value={formData.description}
@@ -1012,10 +1005,7 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
               className="min-h-20"
             />
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => setShowAdvanced((prev) => !prev)} className="w-full">
-            {showAdvanced ? 'Hide advanced fields' : 'Show advanced fields'}
-          </Button>
-          {showAdvanced ? <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-sm text-muted-foreground">{t('inventory.rarity')}</label>
               <Input
@@ -1037,8 +1027,8 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
                 className="h-10"
               />
             </div>
-          </div> : null}
-          {showAdvanced ? <div className="space-y-1">
+          </div>
+          <div className="space-y-1">
             <label className="text-sm text-muted-foreground">{t('inventory.value')}</label>
             <Input
               value={formData.valueText}
@@ -1046,8 +1036,8 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
               placeholder={t('inventory.value')}
               className="h-10"
             />
-          </div> : null}
-          {showAdvanced ? <div className="grid grid-cols-2 gap-3">
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-sm text-muted-foreground">{t('inventory.damage')}</label>
               <Input
@@ -1066,8 +1056,8 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
                 className="h-10"
               />
             </div>
-          </div> : null}
-          {showAdvanced ? <div className="space-y-1">
+          </div>
+          <div className="space-y-1">
             <label className="text-sm text-muted-foreground">{t('inventory.range')}</label>
             <Input
               value={formData.rangeText}
@@ -1075,8 +1065,8 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
               placeholder={t('inventory.range')}
               className="h-10"
             />
-          </div> : null}
-          {showAdvanced ? <div className="space-y-1">
+          </div>
+          <div className="space-y-1">
             <label className="text-sm text-muted-foreground">{t('inventory.properties')}</label>
             <Input
               value={formData.propertiesText}
@@ -1084,8 +1074,8 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
               placeholder="finesse, light, thrown"
               className="h-10"
             />
-          </div> : null}
-          {showAdvanced ? <div className="space-y-1">
+          </div>
+          <div className="space-y-1">
             <label className="text-sm text-muted-foreground">{t('inventory.tags')}</label>
             <Input
               value={formData.tagsText}
@@ -1093,7 +1083,7 @@ function ItemDialog({ open, onOpenChange, item, onSave }: ItemDialogProps) {
               placeholder="weapon, martial, melee"
               className="h-10"
             />
-          </div> : null}
+          </div>
           <Button onClick={handleSubmit} className="w-full h-10">
             {item ? t('inventory.saveChanges') : t('inventory.addItem')}
           </Button>
