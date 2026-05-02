@@ -58,6 +58,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
   const [customAlignment, setCustomAlignment] = useState('Unaligned')
   const [customAc, setCustomAc] = useState('10')
   const [customHp, setCustomHp] = useState('10')
+  const [customHpFormula, setCustomHpFormula] = useState('')
   const [customSpeed, setCustomSpeed] = useState('30 ft.')
   const [customNotes, setCustomNotes] = useState('')
   const [customStr, setCustomStr] = useState('10')
@@ -290,9 +291,13 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
               CHA
               <Input type="number" value={customCha} onChange={(e) => setCustomCha(e.target.value)} />
             </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              HP Formula
+              <Input placeholder="7d8 + 14" value={customHpFormula} onChange={(e) => setCustomHpFormula(e.target.value)} />
+            </label>
             <label className="sm:col-span-2 text-xs font-medium text-muted-foreground">
               Notes / Description
-              <Textarea value={customNotes} onChange={(e) => setCustomNotes(e.target.value)} className="min-h-20 break-all" />
+              <Textarea value={customNotes} onChange={(e) => setCustomNotes(e.target.value)} className="min-h-24 max-h-72 overflow-y-auto" />
             </label>
           </div>
           <DialogFooter>
@@ -315,6 +320,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
                       alignment: customAlignment.trim() || 'Unaligned',
                       ac: Number(customAc) || 10,
                       hp: Number(customHp) || 1,
+                      hp_formula: customHpFormula.trim() || null,
                       speed: customSpeed.trim() || '30 ft.',
                       str: Number(customStr) || 10,
                       dex: Number(customDex) || 10,
