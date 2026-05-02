@@ -50,7 +50,13 @@ export const DMMapManager = memo(function DMMapManager() {
   const [newMapName, setNewMapName] = useState('')
   const [newMapFile, setNewMapFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const [tvPreviewKey, setTvPreviewKey] = useState(0)
+  const [tvGridEnabled, setTvGridEnabled] = useState(false)
+  const [tvGridSize, setTvGridSize] = useState(50)
+  const [tvGridSizeInput, setTvGridSizeInput] = useState('50')
+  const [tvGridOpacity, setTvGridOpacity] = useState(0.3)
   const gridSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const tvGridSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -81,6 +87,34 @@ export const DMMapManager = memo(function DMMapManager() {
   useEffect(() => {
     void refreshMaps()
   }, [refreshMaps])
+  const activeMap = maps.find((m) => m.id === activeMapId) ?? null
+  useEffect(() => {
+    if (!activeMap) return
+    setTvGridEnabled(activeMap.gridEnabled ?? false)
+    setTvGridSize(activeMap.gridSize ?? 50)
+    setTvGridSizeInput(String(activeMap.gridSize ?? 50))
+    setTvGridOpacity(activeMap.gridOpacity ?? 0.3)
+  }, [activeMap?.id, activeMap?.gridEnabled, activeMap?.gridSize, activeMap?.gridOpacity])
+
+  const commitTvGridSize = useCallback(() => {
+    const parsed = Number.parseInt(tvGridSizeInput, 10)
+    const next = Math.max(10, Math.min(200, Number.isFinite(parsed) ? parsed : tvGridSize))
+    setTvGridSize(next)
+    setTvGridSizeInput(String(next))
+    persistTvGrid({ gridEnabled: tvGridEnabled, gridSize: next, gridOpacity: tvGridOpacity })
+  }, [persistTvGrid, tvGridEnabled, tvGridOpacity, tvGridSize, tvGridSizeInput])
+
+  const persistTvGrid = useCallback((next: { gridEnabled: boolean; gridSize: number; gridOpacity: number }) => {
+    if (!activeMapId) return
+    if (tvGridSaveTimeoutRef.current) clearTimeout(tvGridSaveTimeoutRef.current)
+    tvGridSaveTimeoutRef.current = setTimeout(() => {
+      void (async () => {
+        await updateMapGridSettings(activeMapId, next)
+        await refreshMaps(true)
+        setTvPreviewKey((prev) => prev + 1)
+      })()
+    }, 120)
+  }, [activeMapId, refreshMaps])
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -388,6 +422,69 @@ export const DMMapManager = memo(function DMMapManager() {
             </Dialog>
           </div>
         </div>
+        <Card>
+          <CardContent className="py-3 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold">TV Control</p>
+                <p className="text-xs text-muted-foreground">Control what the public TV screen shows without touching the TV page.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" asChild>
+                  <a href="/tv-map" target="_blank" rel="noreferrer"><Tv className="size-4 mr-1" />Open TV Display</a>
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setTvPreviewKey((prev) => prev + 1)}>Refresh Preview</Button>
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Active map: <span className="font-medium text-foreground">{activeMap?.name ?? 'None'}</span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+              <Label className="text-xs text-muted-foreground">Grid on active map</Label>
+              <Switch
+                checked={tvGridEnabled}
+                disabled={!activeMapId}
+                onCheckedChange={(checked) => {
+                  if (!activeMapId) return
+                  setTvGridEnabled(checked)
+                  persistTvGrid({ gridEnabled: checked, gridSize: tvGridSize, gridOpacity: tvGridOpacity })
+                }}
+              />
+            </div>
+            {activeMapId ? (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="text-xs text-muted-foreground">Grid size
+                  <Input
+                    type="number"
+                    min={10}
+                    max={200}
+                    value={tvGridSizeInput}
+                    onChange={(e) => {
+                      setTvGridSizeInput(e.target.value)
+                    }}
+                    onBlur={commitTvGridSize}
+                    onKeyDown={(e) => { if (e.key === 'Enter') commitTvGridSize() }}
+                  />
+                </label>
+                <label className="text-xs text-muted-foreground">Grid opacity
+                  <Slider
+                    value={[Math.round(tvGridOpacity * 100)]}
+                    onValueChange={([v]) => {
+                      const next = Math.max(0.1, Math.min(1, v / 100))
+                      setTvGridOpacity(next)
+                      persistTvGrid({ gridEnabled: tvGridEnabled, gridSize: tvGridSize, gridOpacity: next })
+                    }}
+                    min={10}
+                    max={100}
+                  />
+                </label>
+              </div>
+            ) : null}
+            <div className="rounded-md border overflow-hidden bg-black">
+              <iframe key={tvPreviewKey} src={`/tv-map?preview=${tvPreviewKey}`} title="TV Preview" className="h-64 w-full" />
+            </div>
+          </CardContent>
+        </Card>
         {maps.length === 0 ? (
           <Card><CardContent className="py-8 text-center"><MapIcon className="size-12 text-muted-foreground mx-auto mb-3" /><p className="text-muted-foreground">{t('map.noMapsYet')}</p><p className="text-sm text-muted-foreground mt-1">{t('map.uploadToStart')}</p></CardContent></Card>
         ) : (

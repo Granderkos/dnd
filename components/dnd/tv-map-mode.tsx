@@ -7,8 +7,6 @@ import { getActiveFight, listFightEntities } from '@/lib/supabase-v3'
 import { supabase } from '@/lib/supabase'
 import { APP_VERSION } from '@/lib/app-config'
 import type { FightEntity } from '@/lib/v3-types'
-import { Button } from '@/components/ui/button'
-import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
 
 type TvSceneMode = 'exploration' | 'combat'
 
@@ -34,11 +32,11 @@ export function TvMapMode() {
   const [roundNumber, setRoundNumber] = useState(1)
   const [currentTurn, setCurrentTurn] = useState<FightEntity | null>(null)
   const [nextTurn, setNextTurn] = useState<FightEntity | null>(null)
-  const [zoom, setZoom] = useState(1)
   const [loadingMap, setLoadingMap] = useState(true)
   const activeFightIdRef = useRef<string | null>(null)
   const refreshInFlightRef = useRef(false)
   const refreshQueuedRef = useRef(false)
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const refreshTvState = useCallback(async () => {
     if (!user?.id) return
@@ -84,6 +82,13 @@ export function TvMapMode() {
     }
   }, [user?.id])
 
+  const scheduleRefresh = useCallback((delayMs = 120) => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+    refreshTimerRef.current = setTimeout(() => {
+      void refreshTvState()
+    }, delayMs)
+  }, [refreshTvState])
+
   useEffect(() => {
     if (!user?.id) return
     void refreshTvState()
@@ -93,22 +98,25 @@ export function TvMapMode() {
     }, 3500)
     const channel = supabase
       .channel('tv-map-state')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'maps' }, () => { void refreshTvState() })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fights' }, () => { void refreshTvState() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'maps' }, () => { scheduleRefresh(60) })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fights' }, () => { scheduleRefresh(60) })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fight_initiative_requests' }, () => { scheduleRefresh(80) })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'characters' }, () => { scheduleRefresh(120) })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fight_entities' }, (payload) => {
         const row = payload.new as { fight_id?: string } | null
         const oldRow = payload.old as { fight_id?: string } | null
         const incomingFightId = row?.fight_id ?? oldRow?.fight_id ?? null
         if (!activeFightIdRef.current || !incomingFightId || incomingFightId === activeFightIdRef.current) {
-          void refreshTvState()
+          scheduleRefresh(40)
         }
       })
       .subscribe()
     return () => {
       clearInterval(poll)
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
       void supabase.removeChannel(channel)
     }
-  }, [refreshTvState, user?.id])
+  }, [refreshTvState, scheduleRefresh, user?.id])
 
   const modeLabel = useMemo(() => (sceneMode === 'combat' ? 'Combat' : 'Exploration'), [sceneMode])
   const currentTurnLabel = currentTurn?.name ?? '—'
@@ -129,25 +137,13 @@ export function TvMapMode() {
         <span className="rounded bg-black/70 px-2 py-1 text-xs">{activeMap?.name ?? 'No active map'}</span>
       </div>
       <div className="pointer-events-none absolute right-4 top-4 z-10 rounded bg-black/60 px-2 py-1 text-[10px] text-white/80">{APP_VERSION}</div>
-      <div className="absolute right-4 top-12 z-10 flex items-center gap-1 rounded bg-black/60 p-1">
-        <Button size="icon" variant="ghost" className="size-8 text-white hover:bg-white/15 hover:text-white" onClick={() => setZoom((prev) => Math.max(0.5, prev - 0.1))}>
-          <ZoomOut className="size-4" />
-        </Button>
-        <span className="min-w-12 text-center text-xs text-white/90">{Math.round(zoom * 100)}%</span>
-        <Button size="icon" variant="ghost" className="size-8 text-white hover:bg-white/15 hover:text-white" onClick={() => setZoom((prev) => Math.min(2.5, prev + 0.1))}>
-          <ZoomIn className="size-4" />
-        </Button>
-        <Button size="icon" variant="ghost" className="size-8 text-white hover:bg-white/15 hover:text-white" onClick={() => setZoom(1)}>
-          <RotateCcw className="size-4" />
-        </Button>
-      </div>
       {!activeMap ? (
         <div className="flex h-full items-center justify-center text-center text-sm text-white/70">
           Waiting for DM to select an active map.
         </div>
       ) : (
         <div className="relative flex h-full w-full items-center justify-center">
-          <img src={activeMap.imageData} alt={activeMap.name} className="max-h-full max-w-full object-contain transition-transform duration-150" style={{ transform: `scale(${zoom})`, transformOrigin: 'center' }} draggable={false} />
+          <img src={activeMap.imageData} alt={activeMap.name} className="max-h-full max-w-full object-contain" draggable={false} />
           {activeMap.gridEnabled ? (
             <div
               className="pointer-events-none absolute inset-0"
@@ -160,6 +156,13 @@ export function TvMapMode() {
         </div>
       )}
       {sceneMode === 'combat' ? (
+        <>
+        <div className="pointer-events-none absolute top-12 left-1/2 z-10 w-[min(92vw,980px)] -translate-x-1/2 rounded-lg border border-white/20 bg-black/50 px-4 py-2 backdrop-blur-[1px]">
+          <div className="flex items-center justify-between text-xs sm:text-sm">
+            <span className="uppercase tracking-[0.15em] text-white/75">ACTIVE COMBAT · Round {roundNumber}</span>
+            <span className="truncate">Now: <span className="font-semibold">{currentTurnLabel}</span> · Next: <span className="font-semibold text-white/90">{nextTurnLabel}</span></span>
+          </div>
+        </div>
         <div className="pointer-events-none absolute bottom-5 left-1/2 z-10 w-[min(92vw,980px)] -translate-x-1/2 rounded-xl border border-white/20 bg-black/55 px-6 py-4 backdrop-blur-[1px]">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs uppercase tracking-[0.2em] text-white/75">ACTIVE COMBAT</span>
@@ -176,6 +179,7 @@ export function TvMapMode() {
             </div>
           </div>
         </div>
+        </>
       ) : null}
     </main>
   )
