@@ -7,7 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "seed:compendium": "node scripts/import-compendium-seeds.mjs"
+    "seed:compendium": "node scripts/import-compendium-seeds.mjs",
+    "local:supabase:start": "supabase start",
+    "local:supabase:stop": "supabase stop",
+    "local:build": "next build",
+    "local:start": "next start -H 0.0.0.0 -p 3000",
+    "local:session": "npm run local:supabase:start && npm run local:build && npm run local:start"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
