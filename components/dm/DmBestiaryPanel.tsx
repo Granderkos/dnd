@@ -36,6 +36,17 @@ function formatError(error: unknown, fallback: string) {
   return fallback
 }
 
+function parseHpFormulaAverage(formula: string): number | null {
+  const normalized = formula.trim().toLowerCase()
+  const match = normalized.match(/^(\d+)\s*d\s*(\d+)\s*([+-]\s*\d+)?$/i)
+  if (!match) return null
+  const diceCount = Number.parseInt(match[1], 10)
+  const diceSides = Number.parseInt(match[2], 10)
+  const modifier = match[3] ? Number.parseInt(match[3].replace(/\s+/g, ''), 10) : 0
+  if (!Number.isFinite(diceCount) || !Number.isFinite(diceSides) || diceCount <= 0 || diceSides <= 0) return null
+  return Math.max(1, Math.round(diceCount * ((diceSides + 1) / 2) + modifier))
+}
+
 let cachedMonsters: CompendiumEntry[] | null = null
 const SIZE_OPTIONS = ['Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'] as const
 const CREATURE_TYPE_OPTIONS = ['Humanoid', 'Beast', 'Undead', 'Dragon', 'Fiend', 'Construct', 'Monstrosity', 'Aberration', 'Elemental'] as const
@@ -58,6 +69,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
   const [customAlignment, setCustomAlignment] = useState('Unaligned')
   const [customAc, setCustomAc] = useState('10')
   const [customHp, setCustomHp] = useState('10')
+  const [customHpFormula, setCustomHpFormula] = useState('')
   const [customSpeed, setCustomSpeed] = useState('30 ft.')
   const [customNotes, setCustomNotes] = useState('')
   const [customStr, setCustomStr] = useState('10')
@@ -116,6 +128,9 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
         hp: numberFromData(data, 'hp', 0),
         ac: numberFromData(data, 'ac', 0),
         initiativeBonus: numberFromData(data, 'initiative_bonus', 0),
+        hpFormula: typeof data.hp_formula === 'string' ? data.hp_formula : null,
+        creatureType: typeof data.creature_type === 'string' ? data.creature_type : null,
+        descriptionPreview: monster.description ?? null,
       }
     })
   }, [monsters])
@@ -181,6 +196,9 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
               hp={monster.hp}
               ac={monster.ac}
               initiativeBonus={monster.initiativeBonus}
+              hpFormula={monster.hpFormula}
+              creatureType={monster.creatureType}
+              descriptionPreview={monster.descriptionPreview}
               isCustom={((monster.entry.data ?? {}) as Record<string, unknown>).source_origin === 'custom'}
               addToFightLabel={t('bestiary.addToFight')}
               onAddToFight={() => void handleAddToFight(monster.entry)}
@@ -290,9 +308,13 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
               CHA
               <Input type="number" value={customCha} onChange={(e) => setCustomCha(e.target.value)} />
             </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              HP Formula
+              <Input placeholder="7d8 + 14" value={customHpFormula} onChange={(e) => setCustomHpFormula(e.target.value)} />
+            </label>
             <label className="sm:col-span-2 text-xs font-medium text-muted-foreground">
               Notes / Description
-              <Textarea value={customNotes} onChange={(e) => setCustomNotes(e.target.value)} className="min-h-20 break-all" />
+              <Textarea value={customNotes} onChange={(e) => setCustomNotes(e.target.value)} className="min-h-24 max-h-72 overflow-y-auto" />
             </label>
           </div>
           <DialogFooter>
@@ -303,6 +325,11 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
                 setCreateError(null)
                 setIsCreating(true)
                 try {
+                  const formulaAverage = customHpFormula.trim() ? parseHpFormulaAverage(customHpFormula) : null
+                  const numericHpInput = Number(customHp) || 1
+                  const resolvedHp = (customHp.trim() === '10' && formulaAverage !== null)
+                    ? formulaAverage
+                    : numericHpInput
                   const creature = await createCreature({
                     subtype: 'monster',
                     slug: `custom-${customName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}-${Date.now()}`,
@@ -314,7 +341,8 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
                       subtype: customSubtype.trim() || null,
                       alignment: customAlignment.trim() || 'Unaligned',
                       ac: Number(customAc) || 10,
-                      hp: Number(customHp) || 1,
+                      hp: resolvedHp,
+                      hp_formula: customHpFormula.trim() || null,
                       speed: customSpeed.trim() || '30 ft.',
                       str: Number(customStr) || 10,
                       dex: Number(customDex) || 10,

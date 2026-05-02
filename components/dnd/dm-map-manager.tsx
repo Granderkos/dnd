@@ -50,6 +50,7 @@ export const DMMapManager = memo(function DMMapManager() {
   const [newMapName, setNewMapName] = useState('')
   const [newMapFile, setNewMapFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const [tvPreviewKey, setTvPreviewKey] = useState(0)
   const gridSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -388,6 +389,71 @@ export const DMMapManager = memo(function DMMapManager() {
             </Dialog>
           </div>
         </div>
+        <Card>
+          <CardContent className="py-3 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold">TV Control</p>
+                <p className="text-xs text-muted-foreground">Control what the public TV screen shows without touching the TV page.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" asChild>
+                  <a href="/tv-map" target="_blank" rel="noreferrer"><Tv className="size-4 mr-1" />Open TV Display</a>
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setTvPreviewKey((prev) => prev + 1)}>Refresh Preview</Button>
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Active map: <span className="font-medium text-foreground">{maps.find((m) => m.id === activeMapId)?.name ?? 'None'}</span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+              <Label className="text-xs text-muted-foreground">Grid on active map</Label>
+              <Switch
+                checked={maps.find((m) => m.id === activeMapId)?.gridEnabled ?? false}
+                disabled={!activeMapId}
+                onCheckedChange={async (checked) => {
+                  if (!activeMapId) return
+                  await updateMapGridSettings(activeMapId, { gridEnabled: checked })
+                  await refreshMaps(true)
+                  setTvPreviewKey((prev) => prev + 1)
+                }}
+              />
+            </div>
+            {activeMapId ? (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="text-xs text-muted-foreground">Grid size
+                  <Input
+                    type="number"
+                    min={10}
+                    max={200}
+                    value={maps.find((m) => m.id === activeMapId)?.gridSize ?? 50}
+                    onChange={async (e) => {
+                      const next = Math.max(10, Math.min(200, Number.parseInt(e.target.value, 10) || 50))
+                      await updateMapGridSettings(activeMapId, { gridSize: next })
+                      await refreshMaps(true)
+                      setTvPreviewKey((prev) => prev + 1)
+                    }}
+                  />
+                </label>
+                <label className="text-xs text-muted-foreground">Grid opacity
+                  <Slider
+                    value={[Math.round((maps.find((m) => m.id === activeMapId)?.gridOpacity ?? 0.3) * 100)]}
+                    onValueChange={async ([v]) => {
+                      await updateMapGridSettings(activeMapId, { gridOpacity: Math.max(0.1, Math.min(1, v / 100)) })
+                      await refreshMaps(true)
+                      setTvPreviewKey((prev) => prev + 1)
+                    }}
+                    min={10}
+                    max={100}
+                  />
+                </label>
+              </div>
+            ) : null}
+            <div className="rounded-md border overflow-hidden bg-black">
+              <iframe key={tvPreviewKey} src={`/tv-map?preview=${tvPreviewKey}`} title="TV Preview" className="h-64 w-full" />
+            </div>
+          </CardContent>
+        </Card>
         {maps.length === 0 ? (
           <Card><CardContent className="py-8 text-center"><MapIcon className="size-12 text-muted-foreground mx-auto mb-3" /><p className="text-muted-foreground">{t('map.noMapsYet')}</p><p className="text-sm text-muted-foreground mt-1">{t('map.uploadToStart')}</p></CardContent></Card>
         ) : (
