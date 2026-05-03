@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { resolveHpFromFormula } from '@/lib/hp-formula'
+import { supabase } from '@/lib/supabase'
 
 function numberFromData(data: Record<string, unknown>, key: string, fallback = 0) {
   const value = data[key]
@@ -73,6 +74,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
   const [customCha, setCustomCha] = useState('10')
   const [createError, setCreateError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
 
   const hydrateEditorFromEntry = useCallback((entry: CompendiumEntry | null) => {
     const data = (entry?.data ?? {}) as Record<string, unknown>
@@ -126,6 +128,27 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
     }
   }, [])
 
+
+
+  const handleUploadImage = useCallback(async (file: File | null) => {
+    if (!file || !user?.id) return
+    setCreateError(null)
+    setIsUploadingImage(true)
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'webp'
+      const safeExt = ['png', 'jpg', 'jpeg', 'webp'].includes(ext) ? ext : 'webp'
+      const path = `creatures/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${safeExt}`
+      const { error: uploadError } = await supabase.storage.from('portraits').upload(path, file, { upsert: true })
+      if (uploadError) throw uploadError
+      const { data } = supabase.storage.from('portraits').getPublicUrl(path)
+      setCustomImageUrl(data.publicUrl)
+    } catch (error) {
+      console.error('Failed to upload creature image', error)
+      setCreateError(formatError(error, 'Failed to upload image. Ensure Supabase storage bucket/policies allow upload.'))
+    } finally {
+      setIsUploadingImage(false)
+    }
+  }, [user?.id])
   useEffect(() => {
     if (isCreateOpen) {
       setCreateError(null)
@@ -352,8 +375,12 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
               <Input placeholder="7d8 + 14" value={customHpFormula} onChange={(e) => setCustomHpFormula(e.target.value)} />
             </label>
             <label className="sm:col-span-2 text-xs font-medium text-muted-foreground">
-              Image URL
-              <Input placeholder="https://..." value={customImageUrl} onChange={(e) => setCustomImageUrl(e.target.value)} />
+              Creature Image
+              <div className="space-y-2">
+                <Input type="file" accept="image/png,image/jpeg,image/webp" disabled={isUploadingImage} onChange={(e) => { void handleUploadImage(e.target.files?.[0] ?? null) }} />
+                <Input placeholder="Image URL (optional fallback)" value={customImageUrl} onChange={(e) => setCustomImageUrl(e.target.value)} />
+                {isUploadingImage ? <p className="text-[11px] text-muted-foreground">Uploading image…</p> : null}
+              </div>
             </label>
             <label className="sm:col-span-2 text-xs font-medium text-muted-foreground">
               Notes / Description
