@@ -22,7 +22,7 @@ import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
 import { DmItemTemplatePanel } from '@/components/dm/DmItemTemplatePanel'
-import { addFightEntity, clearFightEntities, endCombatForFight, finalizeInitiativeCollectionForFight, getActiveFight, listDmVisibleCompanions, listCreatures, listFightCharacterCombatState, listFightEntities, listInitiativeCandidatesForCampaign, moveFightTurnToEnd, removeEntity, requestInitiativeForSelected, setFightEntityCurrentHp, setFightRoundNumber, startCombatForCampaign, updateFightEntity, updateFightEntityNotes } from '@/lib/supabase-v3'
+import { addFightEntity, clearFightEntities, endCombatForFight, finalizeInitiativeCollectionForFight, getActiveFight, listDmVisibleCompanions, listFightCharacterCombatState, listFightEntities, listInitiativeCandidatesForCampaign, moveFightTurnToEnd, removeEntity, requestInitiativeForSelected, setFightEntityCurrentHp, setFightRoundNumber, startCombatForCampaign, updateFightEntity, updateFightEntityNotes } from '@/lib/supabase-v3'
 import type { FightStatus } from '@/lib/v3-types'
 import type { FightEntity } from '@/lib/v3-types'
 import { Character, calculateModifier, formatFeetWithSquares, formatModifier } from '@/lib/dnd-types'
@@ -1017,24 +1017,14 @@ function DMFightPanel({
 
 
   const [companionSourceOptions, setCompanionSourceOptions] = useState<Array<{ id: string; label: string; entityType: 'summon' | 'npc' | 'monster'; ac: string; hp: number; notes: string; speed: string }>>([])
-  const [creatureSourceOptions, setCreatureSourceOptions] = useState<Array<{ id: string; label: string; entityType: 'summon' | 'npc' | 'monster'; ac: string; hp: number; notes: string; speed: string }>>([])
   const [selectedSourceId, setSelectedSourceId] = useState('manual')
 
   useEffect(() => {
     let active = true
     void (async () => {
       try {
-        const creatureRows = await listCreatures()
-        if (!active) return
-        const creatureOptions = creatureRows
-          .filter((row) => ((row.data ?? {}) as Record<string, unknown>).source_origin === 'custom')
-          .map((row) => {
-            const data = (row.data ?? {}) as Record<string, unknown>
-            return { id: `creature:${row.id}`, label: `${row.name} (custom creature)`, entityType: 'monster' as const, ac: String(data.ac ?? ''), hp: Number(data.hp ?? 1), notes: row.description ?? '', speed: String(data.speed ?? '') }
-          })
         const companionOptions = companions.map((companion) => ({ id: `companion:${companion.companionId}`, label: `${companion.companionName} (${companion.kind}) — owner ${companion.ownerName}${companion.characterId ? ` · character ${companion.characterId.slice(0, 8)}` : ''}${companion.isActive ? ' · active' : ' · inactive'}`, entityType: 'summon' as const, ac: String(companion.customData.ac ?? companion.templateSnapshot?.armor_class ?? ''), hp: Number(companion.customData.hp ?? companion.templateSnapshot?.hit_points ?? 1), notes: `controller:${companion.ownerName}${companion.notes ? `|${companion.notes}` : ''}`, speed: String(companion.customData.speed ?? companion.templateSnapshot?.speed_text ?? '') }))
         setCompanionSourceOptions(companionOptions)
-        setCreatureSourceOptions(creatureOptions)
       } catch (error) {
         console.warn('Failed to load custom entity source options', error)
       }
@@ -1154,22 +1144,6 @@ function DMFightPanel({
           <Button size="sm" onClick={() => void onAdvanceTurn()} disabled={!fightId || entities.length === 0 || isAdvancingTurn || !hasActiveTurn || fightStatus !== 'active'}>{labels.nextTurn}</Button>
         </div>
       </div>
-      {companions.length > 0 ? (
-        <div className="rounded-lg border border-border/70 bg-muted/20 p-2">
-          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Companions / familiars (active + inactive)</div>
-          <div className="space-y-1">
-            {companions.map((companion) => (
-              <div key={companion.companionId} className="flex items-center justify-between gap-2 rounded border bg-background/70 px-2 py-1 text-xs">
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{companion.companionName} <span className="text-muted-foreground">({companion.kind})</span> {!companion.isActive ? <span className="text-amber-700">(inactive)</span> : null}</div>
-                  <div className="truncate text-muted-foreground">Owner: {companion.ownerName}{typeof companion.customData.ac === 'number' ? ` · AC ${companion.customData.ac}` : ''}{typeof companion.customData.hp === 'number' ? ` · HP ${companion.customData.hp}` : ''}</div>
-                </div>
-                <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => void onAddCompanionToFight(companion)}>Add to fight</Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
       <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
         <div className="grid gap-2 text-sm sm:grid-cols-3">
           <div>
@@ -1328,7 +1302,7 @@ function DMFightPanel({
         <AlertDialogContent>
           <AlertDialogHeader><AlertDialogTitle>{editingEntityId ? 'Edit custom entity' : 'Add custom entity'}</AlertDialogTitle></AlertDialogHeader>
           <div className="space-y-2">
-            <select className="h-9 w-full rounded border bg-background px-2 text-sm" value={selectedSourceId} onChange={(e) => { const value = e.target.value; setSelectedSourceId(value); if (value === 'manual') return; const picked = [...companionSourceOptions, ...creatureSourceOptions].find((row) => row.id === value); if (!picked) return; setCustomDraft((d) => ({ ...d, name: picked.label.split(' — ')[0], entityType: picked.entityType, ac: picked.ac, currentHp: Math.max(0, picked.hp), maxHp: Math.max(1, picked.hp), notes: [picked.notes, picked.speed ? `speed:${picked.speed}` : null].filter(Boolean).join('|') })) }}><option value="manual">Manual entry</option>{companionSourceOptions.length > 0 ? <optgroup label="Player companions / familiars">{companionSourceOptions.map((opt) => (<option key={opt.id} value={opt.id}>{opt.label}</option>))}</optgroup> : null}{creatureSourceOptions.length > 0 ? <optgroup label="Custom creatures">{creatureSourceOptions.map((opt) => (<option key={opt.id} value={opt.id}>{opt.label}</option>))}</optgroup> : null}</select>
+            <select className="h-9 w-full rounded border bg-background px-2 text-sm" value={selectedSourceId} onChange={(e) => { const value = e.target.value; setSelectedSourceId(value); if (value === 'manual') return; const picked = companionSourceOptions.find((row) => row.id === value); if (!picked) return; setCustomDraft((d) => ({ ...d, name: picked.label.split(' — ')[0], entityType: picked.entityType, ac: picked.ac, currentHp: Math.max(0, picked.hp), maxHp: Math.max(1, picked.hp), notes: [picked.notes, picked.speed ? `speed:${picked.speed}` : null].filter(Boolean).join('|') })) }}><option value="manual">Manual entry</option>{companionSourceOptions.length > 0 ? <optgroup label="Player companions / familiars">{companionSourceOptions.map((opt) => (<option key={opt.id} value={opt.id}>{opt.label}</option>))}</optgroup> : null}</select>
             <input className="h-9 w-full rounded border bg-background px-2 text-sm" placeholder="Name" value={customDraft.name} onChange={(e) => setCustomDraft((d) => ({ ...d, name: e.target.value }))} />
             <select className="h-9 w-full rounded border bg-background px-2 text-sm" value={customDraft.entityType} onChange={(e) => setCustomDraft((d) => ({ ...d, entityType: e.target.value as 'summon' | 'npc' | 'monster' }))}><option value="summon">summon</option><option value="npc">npc</option><option value="monster">monster</option></select>
             <div className="grid grid-cols-3 gap-2">
