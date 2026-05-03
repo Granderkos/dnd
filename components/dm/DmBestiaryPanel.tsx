@@ -399,6 +399,18 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
                     },
                   }
                   if (editingCreatureId) {
+                    const existing = monsters.find((row) => row.id === editingCreatureId) ?? null
+                    console.info('[bestiary:edit] saving creature', {
+                      editingCreatureId,
+                      existingRow: existing ? {
+                        id: existing.id,
+                        type: existing.type,
+                        subtype: existing.subtype,
+                        is_system: existing.is_system,
+                        created_by: existing.created_by,
+                        source_origin: ((existing.data ?? {}) as Record<string, unknown>).source_origin ?? null,
+                      } : null,
+                    })
                     const updated = await updateCreature(editingCreatureId, payload)
                     setMonsters((current) => current.map((row) => row.id === updated.id ? updated : row))
                     cachedMonsters = (cachedMonsters ?? monsters).map((row) => row.id === updated.id ? updated : row)
