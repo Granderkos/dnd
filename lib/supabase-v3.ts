@@ -250,69 +250,34 @@ export async function updateCreature(id: string, patch: Partial<CompendiumEntry>
 
   const { data: authData } = await supabase.auth.getUser()
   const actorUserId = authData.user?.id ?? null
-  const { data, error } = await supabase
-    .from('compendium_entries')
-    .update(payload)
-    .eq('id', id)
-    .eq('type', 'creature')
-    .select('id, type, subtype, slug, name, description, is_system, data, created_by, created_at')
-    .maybeSingle()
+  const rpc = await supabase.rpc('update_creature_entry_for_dm', {
+    p_entry_id: id,
+    p_name: typeof payload.name === 'string' ? payload.name : null,
+    p_description: typeof payload.description === 'string' || payload.description === null ? payload.description : null,
+    p_data: (payload.data as Record<string, unknown>) ?? null,
+    p_subtype: typeof payload.subtype === 'string' || payload.subtype === null ? payload.subtype : null,
+  })
 
-  if (error) {
+  if (rpc.error) {
     const { data: debugRow } = await supabase
       .from('compendium_entries')
       .select('id, type, subtype, is_system, created_by, data')
       .eq('id', id)
       .maybeSingle()
-    console.error('[creature:update] direct update failed', {
+    console.error('[creature:update] rpc update failed', {
       requestedId: id,
       actorUserId,
-      error: { message: error.message, details: error.details, hint: error.hint, code: error.code },
+      error: { message: rpc.error.message, details: rpc.error.details, hint: rpc.error.hint, code: rpc.error.code },
       row: debugRow,
     })
-    const rpc = await supabase.rpc('update_creature_entry_for_dm', {
-      p_entry_id: id,
-      p_name: typeof payload.name === 'string' ? payload.name : null,
-      p_description: typeof payload.description === 'string' || payload.description === null ? payload.description : null,
-      p_data: (payload.data as Record<string, unknown>) ?? {},
-      p_subtype: typeof payload.subtype === 'string' || payload.subtype === null ? payload.subtype : null,
-    })
-    if (rpc.error) throw error
-    const rpcRow = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data
-    if (rpcRow) return rpcRow as CompendiumEntry
+    throw rpc.error
   }
-  if (!data) {
-    const { data: debugRow } = await supabase
-      .from('compendium_entries')
-      .select('id, type, subtype, is_system, created_by, data')
-      .eq('id', id)
-      .maybeSingle()
-    console.warn('[creature:update] no editable row matched', {
-      requestedId: id,
-      actorUserId,
-      row: debugRow ? {
-        id: debugRow.id,
-        type: debugRow.type,
-        subtype: debugRow.subtype,
-        is_system: debugRow.is_system,
-        created_by: debugRow.created_by,
-        source_origin: ((debugRow.data ?? {}) as Record<string, unknown>).source_origin ?? null,
-      } : null,
-    })
-    const rpc = await supabase.rpc('update_creature_entry_for_dm', {
-      p_entry_id: id,
-      p_name: typeof payload.name === 'string' ? payload.name : null,
-      p_description: typeof payload.description === 'string' || payload.description === null ? payload.description : null,
-      p_data: (payload.data as Record<string, unknown>) ?? {},
-      p_subtype: typeof payload.subtype === 'string' || payload.subtype === null ? payload.subtype : null,
-    })
-    if (!rpc.error) {
-      const rpcRow = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data
-      if (rpcRow) return rpcRow as CompendiumEntry
-    }
+
+  const row = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data
+  if (!row) {
     throw new Error(`Creature update failed: no editable creature found for id ${id}.`)
   }
-  return data as CompendiumEntry
+  return row as CompendiumEntry
 }
 
 export async function updateCompanionAssignment(
@@ -1293,11 +1258,10 @@ export async function listCompanionsForUser(userId: string) {
   return result
 }
 
-export async function listCampaignActiveCompanions(campaignId: string, includeInactive = false) {
+export async function listDmVisibleCompanions(includeInactive = false) {
   const { data, error } = await supabase
     .from('characters')
     .select('id, user_id, name, character_companions(id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, template_snapshot, compendium_entries(id, name, subtype, description, data))')
-    .eq('user_id', campaignId)
   if (error) throw error
   const rows: Array<{
     characterId: string

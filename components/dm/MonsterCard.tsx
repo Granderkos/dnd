@@ -15,14 +15,16 @@ interface MonsterCardProps {
   descriptionPreview?: string | null
   onView?: () => void
   onEdit?: () => void
+  imageUrl?: string | null
 }
 
-export function MonsterCard({ name, hp, ac, initiativeBonus, isCustom = false, addToFightLabel, onAddToFight, isAdding = false, hpFormula = null, creatureType = null, descriptionPreview = null, onView, onEdit }: MonsterCardProps) {
+export function MonsterCard({ name, hp, ac, initiativeBonus, isCustom = false, addToFightLabel, onAddToFight, isAdding = false, hpFormula = null, creatureType = null, descriptionPreview = null, onView, onEdit, imageUrl = null }: MonsterCardProps) {
   return (
     <Card>
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2">
+            <img src={imageUrl || '/logo.svg'} alt={name} className="size-10 rounded border object-cover" loading="lazy" />
             <h3 className="text-base font-semibold text-foreground">{name}</h3>
             {isCustom ? <span className="rounded-md border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">Custom</span> : null}
           </div>
