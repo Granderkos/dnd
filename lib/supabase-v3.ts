@@ -1258,11 +1258,10 @@ export async function listCompanionsForUser(userId: string) {
   return result
 }
 
-export async function listCampaignActiveCompanions(campaignId: string, includeInactive = false) {
+export async function listDmVisibleCompanions(includeInactive = false) {
   const { data, error } = await supabase
     .from('characters')
     .select('id, user_id, name, character_companions(id, character_id, entry_id, kind, name_override, notes, is_active, custom_data, template_snapshot, compendium_entries(id, name, subtype, description, data))')
-    .eq('user_id', campaignId)
   if (error) throw error
   const rows: Array<{
     characterId: string

@@ -22,7 +22,7 @@ import { loadDmNotes, saveDmNotes } from '@/lib/supabase-data'
 import { DMMapManager } from '@/components/dnd/dm-map-manager'
 import { DmBestiaryPanel } from '@/components/dm/DmBestiaryPanel'
 import { DmItemTemplatePanel } from '@/components/dm/DmItemTemplatePanel'
-import { addFightEntity, clearFightEntities, endCombatForFight, finalizeInitiativeCollectionForFight, getActiveFight, listCampaignActiveCompanions, listCreatures, listFightCharacterCombatState, listFightEntities, listInitiativeCandidatesForCampaign, moveFightTurnToEnd, removeEntity, requestInitiativeForSelected, setFightEntityCurrentHp, setFightRoundNumber, startCombatForCampaign, updateFightEntity, updateFightEntityNotes } from '@/lib/supabase-v3'
+import { addFightEntity, clearFightEntities, endCombatForFight, finalizeInitiativeCollectionForFight, getActiveFight, listDmVisibleCompanions, listCreatures, listFightCharacterCombatState, listFightEntities, listInitiativeCandidatesForCampaign, moveFightTurnToEnd, removeEntity, requestInitiativeForSelected, setFightEntityCurrentHp, setFightRoundNumber, startCombatForCampaign, updateFightEntity, updateFightEntityNotes } from '@/lib/supabase-v3'
 import type { FightStatus } from '@/lib/v3-types'
 import type { FightEntity } from '@/lib/v3-types'
 import { Character, calculateModifier, formatFeetWithSquares, formatModifier } from '@/lib/dnd-types'
@@ -223,7 +223,7 @@ export const DMDashboard = memo(function DMDashboard() {
 
   useEffect(() => {
     if (!user?.id) return
-    void listCampaignActiveCompanions(user.id, true).then(setDmCompanions).catch(() => setDmCompanions([]))
+    void listDmVisibleCompanions(true).then(setDmCompanions).catch(() => setDmCompanions([]))
   }, [user?.id, players.length])
 
   useEffect(() => {
