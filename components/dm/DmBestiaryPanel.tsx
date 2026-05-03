@@ -63,6 +63,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
   const [customHp, setCustomHp] = useState('10')
   const [customHpFormula, setCustomHpFormula] = useState('')
   const [customSpeed, setCustomSpeed] = useState('30 ft.')
+  const [customImageUrl, setCustomImageUrl] = useState('')
   const [customNotes, setCustomNotes] = useState('')
   const [customStr, setCustomStr] = useState('10')
   const [customDex, setCustomDex] = useState('10')
@@ -84,6 +85,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
     setCustomHp(String(numberFromData(data, 'hp', 10)))
     setCustomHpFormula(typeof data.hp_formula === 'string' ? data.hp_formula : '')
     setCustomSpeed(String(data.speed ?? '30 ft.'))
+    setCustomImageUrl(String(data.image_url ?? data.image ?? ''))
     setCustomStr(String(numberFromData(data, 'str', 10)))
     setCustomDex(String(numberFromData(data, 'dex', 10)))
     setCustomCon(String(numberFromData(data, 'con', 10)))
@@ -143,6 +145,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
         hpFormula: typeof data.hp_formula === 'string' ? data.hp_formula : null,
         creatureType: typeof data.creature_type === 'string' ? data.creature_type : null,
         descriptionPreview: monster.description ?? null,
+        imageUrl: typeof data.image_url === 'string' ? data.image_url : (typeof data.image === 'string' ? data.image : null),
       }
     })
   }, [monsters])
@@ -226,6 +229,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
               hpFormula={monster.hpFormula}
               creatureType={monster.creatureType}
               descriptionPreview={monster.descriptionPreview}
+              imageUrl={monster.imageUrl}
               onView={() => setViewingCreature(monster.entry)}
               onEdit={((monster.entry.data ?? {}) as Record<string, unknown>).source_origin === 'custom'
                 ? () => {
@@ -348,6 +352,10 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
               <Input placeholder="7d8 + 14" value={customHpFormula} onChange={(e) => setCustomHpFormula(e.target.value)} />
             </label>
             <label className="sm:col-span-2 text-xs font-medium text-muted-foreground">
+              Image URL
+              <Input placeholder="https://..." value={customImageUrl} onChange={(e) => setCustomImageUrl(e.target.value)} />
+            </label>
+            <label className="sm:col-span-2 text-xs font-medium text-muted-foreground">
               Notes / Description
               <Textarea value={customNotes} onChange={(e) => setCustomNotes(e.target.value)} className="min-h-24 max-h-72 overflow-y-auto" />
             </label>
@@ -378,6 +386,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
                       hp: resolvedHp,
                       hp_formula: customHpFormula.trim() || null,
                       speed: customSpeed.trim() || '30 ft.',
+                      image_url: customImageUrl.trim() || null,
                       str: Number(customStr) || 10,
                       dex: Number(customDex) || 10,
                       con: Number(customCon) || 10,
@@ -437,6 +446,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
             const data = (viewingCreature.data ?? {}) as Record<string, unknown>
             return (
               <div className="space-y-2 text-sm">
+                <img src={typeof data.image_url === 'string' ? data.image_url : (typeof data.image === 'string' ? data.image : '/logo.svg')} alt={viewingCreature.name} className="h-40 w-full rounded-md border object-cover" loading="lazy" />
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   <div><b>Size</b>: {String(data.size ?? 'Medium')}</div>
                   <div><b>Type</b>: {String(data.creature_type ?? 'Humanoid')}</div>

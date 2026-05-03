@@ -1016,7 +1016,7 @@ function DMFightPanel({
   const [customDraft, setCustomDraft] = useState({ name: '', entityType: 'summon' as 'summon' | 'npc' | 'monster', ac: '', currentHp: 1, maxHp: 1, initiative: '', notes: '' })
 
 
-  const [sourceOptions, setSourceOptions] = useState<Array<{ id: string; label: string; entityType: 'summon' | 'npc' | 'monster'; ac: string; hp: number; notes: string }>>([])
+  const [sourceOptions, setSourceOptions] = useState<Array<{ id: string; label: string; entityType: 'summon' | 'npc' | 'monster'; ac: string; hp: number; notes: string; speed: string; imageUrl: string | null }>>([])
   const [selectedSourceId, setSelectedSourceId] = useState('manual')
 
   useEffect(() => {
@@ -1029,9 +1029,9 @@ function DMFightPanel({
           .filter((row) => ((row.data ?? {}) as Record<string, unknown>).source_origin === 'custom')
           .map((row) => {
             const data = (row.data ?? {}) as Record<string, unknown>
-            return { id: `creature:${row.id}`, label: `${row.name} (custom creature)`, entityType: 'monster' as const, ac: String(data.ac ?? ''), hp: Number(data.hp ?? 1), notes: row.description ?? '' }
+            return { id: `creature:${row.id}`, label: `${row.name} (custom creature)`, entityType: 'monster' as const, ac: String(data.ac ?? ''), hp: Number(data.hp ?? 1), notes: row.description ?? '', speed: String(data.speed ?? ''), imageUrl: typeof data.image_url === 'string' ? data.image_url : null }
           })
-        const companionOptions = companions.map((companion) => ({ id: `companion:${companion.companionId}`, label: `${companion.companionName} (${companion.kind})`, entityType: 'summon' as const, ac: String(companion.customData.ac ?? companion.templateSnapshot?.armor_class ?? ''), hp: Number(companion.customData.hp ?? companion.templateSnapshot?.hit_points ?? 1), notes: companion.notes ?? '' }))
+        const companionOptions = companions.map((companion) => ({ id: `companion:${companion.companionId}`, label: `${companion.companionName} (${companion.kind}) — owner ${companion.ownerName}${companion.characterId ? ` · char ${companion.characterId.slice(0, 8)}` : ''}${companion.isActive ? '' : ' · inactive'}`, entityType: 'summon' as const, ac: String(companion.customData.ac ?? companion.templateSnapshot?.armor_class ?? ''), hp: Number(companion.customData.hp ?? companion.templateSnapshot?.hit_points ?? 1), notes: `owner:${companion.ownerName}${companion.notes ? `|${companion.notes}` : ''}`, speed: String(companion.customData.speed ?? companion.templateSnapshot?.speed_text ?? ''), imageUrl: null }))
         setSourceOptions([...companionOptions, ...creatureOptions])
       } catch (error) {
         console.warn('Failed to load custom entity source options', error)
@@ -1326,7 +1326,7 @@ function DMFightPanel({
         <AlertDialogContent>
           <AlertDialogHeader><AlertDialogTitle>{editingEntityId ? 'Edit custom entity' : 'Add custom entity'}</AlertDialogTitle></AlertDialogHeader>
           <div className="space-y-2">
-            <select className="h-9 w-full rounded border bg-background px-2 text-sm" value={selectedSourceId} onChange={(e) => { const value = e.target.value; setSelectedSourceId(value); if (value === 'manual') return; const picked = sourceOptions.find((row) => row.id === value); if (!picked) return; setCustomDraft((d) => ({ ...d, name: picked.label.replace(/ \(.*\)$/, ''), entityType: picked.entityType, ac: picked.ac, currentHp: Math.max(0, picked.hp), maxHp: Math.max(1, picked.hp), notes: picked.notes })) }}><option value="manual">Manual entry</option>{sourceOptions.map((opt) => (<option key={opt.id} value={opt.id}>{opt.label}</option>))}</select>
+            <select className="h-9 w-full rounded border bg-background px-2 text-sm" value={selectedSourceId} onChange={(e) => { const value = e.target.value; setSelectedSourceId(value); if (value === 'manual') return; const picked = sourceOptions.find((row) => row.id === value); if (!picked) return; setCustomDraft((d) => ({ ...d, name: picked.label.split(' — ')[0], entityType: picked.entityType, ac: picked.ac, currentHp: Math.max(0, picked.hp), maxHp: Math.max(1, picked.hp), notes: [picked.notes, picked.speed ? `speed:${picked.speed}` : null].filter(Boolean).join('|') })) }}><option value="manual">Manual entry</option>{sourceOptions.map((opt) => (<option key={opt.id} value={opt.id}>{opt.label}</option>))}</select>
             <input className="h-9 w-full rounded border bg-background px-2 text-sm" placeholder="Name" value={customDraft.name} onChange={(e) => setCustomDraft((d) => ({ ...d, name: e.target.value }))} />
             <select className="h-9 w-full rounded border bg-background px-2 text-sm" value={customDraft.entityType} onChange={(e) => setCustomDraft((d) => ({ ...d, entityType: e.target.value as 'summon' | 'npc' | 'monster' }))}><option value="summon">summon</option><option value="npc">npc</option><option value="monster">monster</option></select>
             <div className="grid grid-cols-3 gap-2">
