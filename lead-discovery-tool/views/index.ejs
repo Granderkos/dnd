@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lead Discovery Tool</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; max-width: 900px; }
+    h1 { margin-bottom: 8px; }
+    .hint { color: #555; margin-top: 0; }
+    textarea { width: 100%; min-height: 260px; font-size: 15px; padding: 10px; box-sizing: border-box; }
+    button { margin-top: 12px; padding: 10px 14px; font-size: 14px; cursor: pointer; }
+    .error { color: #b00020; margin-top: 14px; }
+    .results { margin-top: 28px; }
+    .top-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+    ul { padding-left: 18px; }
+    li { margin: 3px 0; }
+    #copyStatus { color: #166534; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>Lead Discovery Helper</h1>
+  <p class="hint">Vlož keywordy (1 na řádek), aplikace projde Google a vrátí unikátní domény.</p>
+
+  <form method="POST" action="/discover">
+    <textarea name="keywords" placeholder="např.\nrealitní kancelář praha\nadvokátní kancelář brno"><%= keywordsText %></textarea>
+    <br />
+    <button type="submit">Spustit discovery</button>
+  </form>
+
+  <% if (error) { %>
+    <p class="error"><%= error %></p>
+  <% } %>
+
+  <% if (domains && domains.length) { %>
+    <div class="results">
+      <div class="top-row">
+        <h2 style="margin:0;">Výsledky: <%= count %> unikátních domén</h2>
+        <button type="button" id="copyBtn">Kopírovat seznam</button>
+        <span id="copyStatus"></span>
+      </div>
+
+      <ul id="domainList">
+        <% domains.forEach(function(domain) { %>
+          <li><%= domain %></li>
+        <% }) %>
+      </ul>
+    </div>
+  <% } %>
+
+  <script>
+    const copyBtn = document.getElementById('copyBtn');
+    const copyStatus = document.getElementById('copyStatus');
+    const domainList = document.getElementById('domainList');
+
+    if (copyBtn && domainList) {
+      copyBtn.addEventListener('click', async () => {
+        const text = Array.from(domainList.querySelectorAll('li'))
+          .map((li) => li.textContent.trim())
+          .filter(Boolean)
+          .join('\n');
+
+        try {
+          await navigator.clipboard.writeText(text);
+          copyStatus.textContent = 'Zkopírováno do schránky.';
+          setTimeout(() => (copyStatus.textContent = ''), 2500);
+        } catch {
+          copyStatus.textContent = 'Kopírování selhalo.';
+        }
+      });
+    }
+  </script>
+</body>
+</html>
