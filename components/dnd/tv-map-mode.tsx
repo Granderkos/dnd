@@ -122,6 +122,7 @@ export function TvMapMode() {
 
   const modeLabel = useMemo(() => (sceneMode === 'combat' ? 'Combat' : 'Exploration'), [sceneMode])
   const isPreviewMode = useMemo(() => searchParams.has('preview'), [searchParams])
+  const isEmbedMode = useMemo(() => searchParams.has('embed'), [searchParams])
   const currentTurnLabel = currentTurn?.name ?? '—'
   const nextTurnLabel = nextTurn?.name ?? '—'
 
@@ -164,25 +165,25 @@ export function TvMapMode() {
       )}
       {sceneMode === 'combat' ? (
         <>
-        <div className="pointer-events-none absolute top-12 left-1/2 z-10 w-[min(92vw,980px)] -translate-x-1/2 rotate-180 transform-gpu rounded-lg border border-white/25 bg-black/60 px-4 py-2 backdrop-blur-[1px]">
-          <div className="flex items-center justify-between text-xs sm:text-sm">
+        <div className={`pointer-events-none absolute left-1/2 z-10 w-[min(92vw,980px)] -translate-x-1/2 rotate-180 transform-gpu border border-white/25 bg-black/60 backdrop-blur-[1px] ${isEmbedMode ? 'top-3 rounded-md px-3 py-1.5' : 'top-12 rounded-lg px-4 py-2'}`}>
+          <div className={`flex items-center justify-between ${isEmbedMode ? 'text-[11px]' : 'text-xs sm:text-sm'}`}>
             <span className="uppercase tracking-[0.15em] text-white/80">Round {roundNumber}</span>
             <span className="truncate">Now: <span className="font-semibold">{currentTurnLabel}</span> · Next: <span className="font-semibold text-white/95">{nextTurnLabel}</span></span>
           </div>
         </div>
-        <div className="pointer-events-none absolute bottom-5 left-1/2 z-10 w-[min(92vw,980px)] -translate-x-1/2 rounded-xl border border-white/20 bg-black/55 px-6 py-4 backdrop-blur-[1px]">
-          <div className="mb-2 flex items-center justify-between">
+        <div className={`pointer-events-none absolute left-1/2 z-10 w-[min(92vw,980px)] -translate-x-1/2 border border-white/20 bg-black/55 backdrop-blur-[1px] ${isEmbedMode ? 'bottom-2 rounded-lg px-3 py-2' : 'bottom-5 rounded-xl px-6 py-4'}`}>
+          <div className={`flex items-center justify-between ${isEmbedMode ? 'mb-1' : 'mb-2'}`}>
             <span className="text-xs uppercase tracking-[0.2em] text-white/75">Round</span>
-            <span className="text-lg font-semibold">Round {roundNumber}</span>
+            <span className={`${isEmbedMode ? 'text-sm' : 'text-lg'} font-semibold`}>Round {roundNumber}</span>
           </div>
-          <div className="grid grid-cols-1 gap-3 text-center sm:grid-cols-2">
+          <div className={`grid grid-cols-1 text-center sm:grid-cols-2 ${isEmbedMode ? 'gap-2' : 'gap-3'}`}>
             <div className="rounded-lg bg-white/10 px-4 py-3">
               <div className="text-xs uppercase tracking-wider text-white/70">Current Turn</div>
-              <div className="truncate text-2xl font-bold">{currentTurnLabel}</div>
+              <div className={`${isEmbedMode ? 'text-lg' : 'text-2xl'} truncate font-bold`}>{currentTurnLabel}</div>
             </div>
             <div className="rounded-lg bg-white/5 px-4 py-3">
               <div className="text-xs uppercase tracking-wider text-white/70">Next Turn</div>
-              <div className="truncate text-xl font-semibold text-white/90">{nextTurnLabel}</div>
+              <div className={`${isEmbedMode ? 'text-base' : 'text-xl'} truncate font-semibold text-white/90`}>{nextTurnLabel}</div>
             </div>
           </div>
         </div>
