@@ -480,8 +480,14 @@ export const DMMapManager = memo(function DMMapManager() {
                 </label>
               </div>
             ) : null}
-            <div className="rounded-md border overflow-hidden bg-black">
-              <iframe key={tvPreviewKey} src={`/tv-map?preview=${tvPreviewKey}`} title="TV Preview" className="h-64 w-full" />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">TV Output Preview</p>
+                <p className="text-[11px] text-muted-foreground">Display-only feed</p>
+              </div>
+              <div className="overflow-hidden rounded-lg border bg-black shadow-inner">
+                <iframe key={tvPreviewKey} src={`/tv-map?preview=1&embed=1&r=${tvPreviewKey}`} title="TV Preview" className="aspect-video w-full" />
+              </div>
             </div>
           </CardContent>
         </Card>
