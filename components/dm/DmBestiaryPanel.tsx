@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { resolveHpFromFormula } from '@/lib/hp-formula'
 
 function numberFromData(data: Record<string, unknown>, key: string, fallback = 0) {
   const value = data[key]
@@ -34,17 +35,6 @@ function formatError(error: unknown, fallback: string) {
     return [message, details].filter(Boolean).join(' — ') || fallback
   }
   return fallback
-}
-
-function parseHpFormulaAverage(formula: string): number | null {
-  const normalized = formula.trim().toLowerCase()
-  const match = normalized.match(/^(\d+)\s*d\s*(\d+)\s*([+-]\s*\d+)?$/i)
-  if (!match) return null
-  const diceCount = Number.parseInt(match[1], 10)
-  const diceSides = Number.parseInt(match[2], 10)
-  const modifier = match[3] ? Number.parseInt(match[3].replace(/\s+/g, ''), 10) : 0
-  if (!Number.isFinite(diceCount) || !Number.isFinite(diceSides) || diceCount <= 0 || diceSides <= 0) return null
-  return Math.max(1, Math.round(diceCount * ((diceSides + 1) / 2) + modifier))
 }
 
 let cachedMonsters: CompendiumEntry[] | null = null
@@ -176,9 +166,7 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
       const data = (monster.data ?? {}) as Record<string, unknown>
       const hpFormula = typeof data.hp_formula === 'string' ? data.hp_formula : ''
       const numericHp = numberFromData(data, 'hp', 10)
-      const resolvedHp = (numericHp === 10 && hpFormula.trim())
-        ? (parseHpFormulaAverage(hpFormula) ?? numericHp)
-        : numericHp
+      const resolvedHp = resolveHpFromFormula(numericHp, hpFormula).hp
       const normalizedMonster: CompendiumEntry = {
         ...monster,
         data: {
@@ -372,11 +360,12 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
                 setCreateError(null)
                 setIsCreating(true)
                 try {
-                  const formulaAverage = customHpFormula.trim() ? parseHpFormulaAverage(customHpFormula) : null
                   const numericHpInput = Number(customHp) || 1
-                  const resolvedHp = (customHp.trim() === '10' && formulaAverage !== null)
-                    ? formulaAverage
-                    : numericHpInput
+                  const hpResolution = resolveHpFromFormula(numericHpInput, customHpFormula)
+                  const resolvedHp = hpResolution.hp
+                  if (hpResolution.warning) {
+                    setCreateError(hpResolution.warning)
+                  }
                   const payload = {
                     name: customName.trim(),
                     description: customNotes.trim() || null,
@@ -399,6 +388,18 @@ export function DmBestiaryPanel({ onMonsterAdded }: { onMonsterAdded?: () => voi
                     },
                   }
                   if (editingCreatureId) {
+                    const existing = monsters.find((row) => row.id === editingCreatureId) ?? null
+                    console.info('[bestiary:edit] saving creature', {
+                      editingCreatureId,
+                      existingRow: existing ? {
+                        id: existing.id,
+                        type: existing.type,
+                        subtype: existing.subtype,
+                        is_system: existing.is_system,
+                        created_by: existing.created_by,
+                        source_origin: ((existing.data ?? {}) as Record<string, unknown>).source_origin ?? null,
+                      } : null,
+                    })
                     const updated = await updateCreature(editingCreatureId, payload)
                     setMonsters((current) => current.map((row) => row.id === updated.id ? updated : row))
                     cachedMonsters = (cachedMonsters ?? monsters).map((row) => row.id === updated.id ? updated : row)
