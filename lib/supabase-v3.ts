@@ -277,7 +277,7 @@ export async function updateCreature(id: string, patch: Partial<CompendiumEntry>
       p_data: (payload.data as Record<string, unknown>) ?? {},
       p_subtype: typeof payload.subtype === 'string' || payload.subtype === null ? payload.subtype : null,
     })
-    if (rpc.error) throw error
+    if (rpc.error) throw rpc.error
     const rpcRow = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data
     if (rpcRow) return rpcRow as CompendiumEntry
   }
