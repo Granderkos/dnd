@@ -797,21 +797,21 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
       </Tabs>
 
       <Drawer open={!!selectedCreature} onOpenChange={(open) => !open && setSelectedCreature(null)} direction="right">
-        <DrawerContent className="flex max-h-[90vh] flex-col overflow-hidden">
+        <DrawerContent className="flex h-[92vh] max-h-[92vh] flex-col overflow-hidden sm:h-auto sm:max-h-[90vh]">
           <DrawerHeader>
             <DrawerTitle>{selectedCreature?.isUnlocked ? selectedCreature.entry.name : t('compendium.unknownName')}</DrawerTitle>
             <DrawerDescription>
               {selectedCreature?.isUnlocked ? `${statValue(selectedCreature.entry, 'size', 'Medium')} ${selectedCreature.entry.subtype ?? 'creature'}, ${statValue(selectedCreature.entry, 'alignment', 'Unaligned')}` : '???'}
             </DrawerDescription>
           </DrawerHeader>
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-6">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 pb-5 sm:px-4 sm:pb-6">
             <img
-              src={selectedCreature?.isUnlocked && typeof selectedCreature.entry.data?.image === 'string' ? selectedCreature.entry.data.image : '/logo.svg'}
+              src={selectedCreature?.isUnlocked && typeof selectedCreature.entry.data?.image_url === 'string' ? selectedCreature.entry.data.image_url : (selectedCreature?.isUnlocked && typeof selectedCreature.entry.data?.image === 'string' ? selectedCreature.entry.data.image : '/logo.svg')}
               alt={selectedCreature?.isUnlocked ? selectedCreature.entry.name : t('compendium.unknownName')}
-              className="h-40 w-full rounded-md border border-border object-cover"
+              className="h-28 w-full rounded-md border border-border object-cover sm:h-40"
             />
             {selectedCreature?.isUnlocked ? (
-              <div className="space-y-2 rounded-md border border-border p-3 text-sm">
+              <div className="space-y-2 rounded-md border border-border p-3 text-sm leading-relaxed">
                 <div><span className="font-semibold">{t('compendium.stat.ac')}:</span> {statValue(selectedCreature.entry, 'ac')}</div>
                 <div><span className="font-semibold">{t('compendium.stat.hp')}:</span> {statValue(selectedCreature.entry, 'hp')}</div>
                 <div><span className="font-semibold">{t('compendium.stat.speed')}:</span> {statValue(selectedCreature.entry, 'speed')}</div>
@@ -844,7 +844,7 @@ export const PlayerDashboard = memo(function PlayerDashboard() {
             ) : (
               <p className="text-sm text-muted-foreground">{t('compendium.lockedHint')}</p>
             )}
-            <p className="text-sm text-muted-foreground">{selectedCreature?.isUnlocked ? (selectedCreature.entry.description || t('compendium.noSummary')) : null}</p>
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground">{selectedCreature?.isUnlocked ? (selectedCreature.entry.description || t('compendium.noSummary')) : null}</p>
           </div>
         </DrawerContent>
       </Drawer>
